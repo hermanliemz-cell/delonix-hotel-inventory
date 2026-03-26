@@ -8433,7 +8433,7 @@ function UserManagementPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.email')} *</label>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.email')}</label>
               <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
             </div>
             <div>
@@ -8478,7 +8478,7 @@ function UserManagementPage() {
           </div>
           <div className="flex justify-end gap-2 pt-3 border-t">
             <Button variant="secondary" onClick={() => setShowForm(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSave} disabled={!form.full_name || !form.email}>{t('common.save')}</Button>
+            <Button onClick={handleSave} disabled={!form.full_name}>{t('common.save')}</Button>
           </div>
         </div>
       </Modal>
