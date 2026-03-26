@@ -8353,7 +8353,8 @@ function UserManagementPage() {
     loadData();
   }
 
-  const filteredDepts = form.organization_id ? departments.filter(d => d.organization_id === form.organization_id) : departments;
+  // Departments are shared/global master - show all departments regardless of organization
+  const filteredDepts = departments;
 
   return (
     <div>
@@ -9798,19 +9799,47 @@ function RoomMakeUpPage() {
             <option value="CONFIRMED">Confirmed</option>
           </select>
         </div>
-        <DataTable loading={loading} columns={[
-          { header: t('makeup.number'), render: r => <span className="font-medium text-primary-700">{r.makeup_number}</span> },
-          { header: t('common.date'), render: r => new Date(r.makeup_date).toLocaleDateString('id-ID') },
-          { header: t('makeup.room'), render: r => <span className="font-medium">{r.rooms?.room_number || '-'}</span> },
-          { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
-          { header: t('makeup.itemCount'), render: r => r.room_makeup_items?.length || 0 },
-          { header: t('common.actions'), render: r => (
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => openView(r)}>{t('common.view') || 'View'}</Button>
-              {r.status === 'DRAFT' && <Button size="sm" variant="primary" onClick={() => confirmMakeup(r)} disabled={saving}>{t('makeup.confirm')}</Button>}
-            </div>
-          )},
-        ]} data={filtered} />
+        {/* Desktop table */}
+        <div className="hidden sm:block">
+          <DataTable loading={loading} columns={[
+            { header: t('makeup.number'), render: r => <span className="font-medium text-primary-700">{r.makeup_number}</span> },
+            { header: t('common.date'), render: r => new Date(r.makeup_date).toLocaleDateString('id-ID') },
+            { header: t('makeup.room'), render: r => <span className="font-medium">{r.rooms?.room_number || '-'}</span> },
+            { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
+            { header: t('makeup.itemCount'), render: r => r.room_makeup_items?.length || 0 },
+            { header: t('common.actions'), render: r => (
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" onClick={() => openView(r)}>{t('common.view') || 'View'}</Button>
+                {r.status === 'DRAFT' && <Button size="sm" variant="primary" onClick={() => confirmMakeup(r)} disabled={saving}>{t('makeup.confirm')}</Button>}
+              </div>
+            )},
+          ]} data={filtered} />
+        </div>
+        {/* Mobile card list */}
+        <div className="sm:hidden">
+          {loading ? <div className="p-6 text-center text-gray-400"><div className="spinner mx-auto mb-2"></div></div> :
+           filtered.length === 0 ? <div className="p-6 text-center text-gray-400 text-sm">{t('common.noData') || 'No data'}</div> :
+           <div className="divide-y divide-gray-100">
+            {filtered.map(r => (
+              <div key={r.id} className="p-4 hover:bg-gray-50 active:bg-gray-100" onClick={() => openView(r)}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-semibold text-primary-700 text-sm">{r.makeup_number}</span>
+                  <StatusBadge status={r.status} />
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>{t('makeup.room')}: <span className="font-medium text-gray-700">{r.rooms?.room_number || '-'}</span></span>
+                  <span>{new Date(r.makeup_date).toLocaleDateString('id-ID')}</span>
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-xs text-gray-400">{r.room_makeup_items?.length || 0} items</span>
+                  {r.status === 'DRAFT' && (
+                    <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); confirmMakeup(r); }} disabled={saving}>{t('makeup.confirm')}</Button>
+                  )}
+                </div>
+              </div>
+            ))}
+           </div>}
+        </div>
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={isView ? `${viewing.makeup_number}` : t('makeup.newMakeup')} size="xl">
@@ -9842,7 +9871,48 @@ function RoomMakeUpPage() {
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <Badge color="blue">Replace</Badge> {t('makeup.replaceItems')}
             </h4>
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            {/* Mobile card layout */}
+            <div className="sm:hidden space-y-2">
+              {replaceItems.map((item, idx) => {
+                const origIdx = makeupItems.indexOf(item);
+                return (
+                  <div key={origIdx} className="border border-gray-200 rounded-lg p-3 bg-white">
+                    <div className="font-medium text-sm">{item.items?.name}</div>
+                    {item.items?.brand && <span className="text-xs text-gray-400">({item.items.brand})</span>}
+                    <div className="text-xs text-gray-400 mb-2">{item.items?.code}</div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.defaultQty')}</span>
+                        <span className="font-medium">{formatNumber(item.default_qty)} {item.items?.units?.abbreviation}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.actualQty')}</span>
+                        {isView ? <span className="font-semibold">{formatNumber(item.actual_qty)}</span> :
+                          <input type="number" value={item.actual_qty} min="0" onChange={e => updateItem(origIdx, 'actual_qty', parseFloat(e.target.value) || 0)}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center mt-0.5" />}
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.dirtyQty')}</span>
+                        {isView ? <span className="font-semibold text-orange-600">{formatNumber(item.dirty_qty)}</span> :
+                          <input type="number" value={item.dirty_qty} min="0" onChange={e => updateItem(origIdx, 'dirty_qty', parseFloat(e.target.value) || 0)}
+                            className="w-full border border-orange-300 rounded px-2 py-1 text-sm text-center bg-orange-50 mt-0.5" />}
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs">
+                      <span className="text-gray-500">{t('makeup.warehouse')}: </span>
+                      {isView ? <span>{warehouses.find(w => w.id === item.warehouse_id)?.name || '-'}</span> :
+                        <select value={item.warehouse_id} onChange={e => updateItem(origIdx, 'warehouse_id', e.target.value)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm mt-0.5">
+                          <option value="">Select</option>
+                          {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
+                        </select>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop table layout */}
+            <div className="hidden sm:block overflow-x-auto border border-gray-200 rounded-lg">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
@@ -9897,7 +9967,42 @@ function RoomMakeUpPage() {
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <Badge color="green">Refill</Badge> {t('makeup.refillItems')}
             </h4>
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            {/* Mobile card layout */}
+            <div className="sm:hidden space-y-2">
+              {refillItems.map((item, idx) => {
+                const origIdx = makeupItems.indexOf(item);
+                return (
+                  <div key={origIdx} className="border border-green-200 rounded-lg p-3 bg-white">
+                    <div className="font-medium text-sm">{item.items?.name}</div>
+                    {item.items?.brand && <span className="text-xs text-gray-400">({item.items.brand})</span>}
+                    <div className="text-xs text-gray-400 mb-2">{item.items?.code}</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.defaultQty')}</span>
+                        <span className="font-medium">{formatNumber(item.default_qty)} {item.items?.units?.abbreviation}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.actualQty')}</span>
+                        {isView ? <span className="font-semibold">{formatNumber(item.actual_qty)}</span> :
+                          <input type="number" value={item.actual_qty} min="0" onChange={e => updateItem(origIdx, 'actual_qty', parseFloat(e.target.value) || 0)}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center mt-0.5" />}
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs">
+                      <span className="text-gray-500">{t('makeup.warehouse')}: </span>
+                      {isView ? <span>{warehouses.find(w => w.id === item.warehouse_id)?.name || '-'}</span> :
+                        <select value={item.warehouse_id} onChange={e => updateItem(origIdx, 'warehouse_id', e.target.value)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm mt-0.5">
+                          <option value="">Select</option>
+                          {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
+                        </select>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop table layout */}
+            <div className="hidden sm:block overflow-x-auto border border-gray-200 rounded-lg">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
@@ -9950,7 +10055,62 @@ function RoomMakeUpPage() {
               {!isView && <Button size="sm" variant="secondary" onClick={addLBItem}>+ {t('makeup.addLBItem')}</Button>}
             </div>
             {lbItems.length > 0 ? (
-              <div className="overflow-x-auto border border-red-200 rounded-lg">
+              <>
+              {/* Mobile card layout */}
+              <div className="sm:hidden space-y-2">
+                {lbItems.map((lb, idx) => (
+                  <div key={idx} className="border border-red-200 rounded-lg p-3 bg-white">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        {isView ? (
+                          <><div className="font-medium text-sm">{lb.items?.name}</div>{lb.items?.brand && <span className="text-xs text-gray-400">({lb.items.brand})</span>}<div className="text-xs text-gray-400">{lb.items?.code}</div></>
+                        ) : (
+                          <select value={lb.item_id} onChange={e => updateLBItem(idx, 'item_id', e.target.value)}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                            <option value="">{t('makeup.lbSelectItem')}</option>
+                            {allItems.map(it => <option key={it.id} value={it.id}>{it.code} - {it.name}{it.brand ? ` (${it.brand})` : ''}</option>)}
+                          </select>
+                        )}
+                      </div>
+                      {!isView && <button onClick={() => removeLBItem(idx)} className="text-red-500 hover:text-red-700 text-sm ml-2">✕</button>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.lbQty')}</span>
+                        {isView ? <span className="font-semibold text-red-600">{formatNumber(lb.quantity)}</span> :
+                          <input type="number" value={lb.quantity} min="1" onChange={e => updateLBItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                            className="w-full border border-red-300 rounded px-2 py-1 text-sm text-center bg-red-50 mt-0.5" />}
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.lbReason')}</span>
+                        {isView ? <Badge color={lb.reason === 'lost' ? 'orange' : 'red'}>{lb.reason === 'lost' ? t('makeup.lbReasonLost') : t('makeup.lbReasonDamaged')}</Badge> :
+                          <select value={lb.reason} onChange={e => updateLBItem(idx, 'reason', e.target.value)}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm mt-0.5">
+                            <option value="damaged">{t('makeup.lbReasonDamaged')}</option>
+                            <option value="lost">{t('makeup.lbReasonLost')}</option>
+                          </select>}
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs">
+                      <span className="text-gray-500">{t('makeup.lbSourceWarehouse')}: </span>
+                      {isView ? <span>{warehouses.find(w => w.id === lb.source_warehouse_id)?.name || '-'}</span> :
+                        <select value={lb.source_warehouse_id} onChange={e => updateLBItem(idx, 'source_warehouse_id', e.target.value)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm mt-0.5">
+                          <option value="">Select</option>
+                          {nonDamageWarehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
+                        </select>}
+                    </div>
+                    <div className="mt-2 text-xs">
+                      <span className="text-gray-500">{t('makeup.notes')}: </span>
+                      {isView ? <span className="text-gray-600">{lb.notes || '-'}</span> :
+                        <input value={lb.notes || ''} onChange={e => updateLBItem(idx, 'notes', e.target.value)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm mt-0.5" placeholder="..." />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Desktop table layout */}
+              <div className="hidden sm:block overflow-x-auto border border-red-200 rounded-lg">
                 <table className="w-full text-sm">
                   <thead className="bg-red-50">
                     <tr>
@@ -10010,6 +10170,8 @@ function RoomMakeUpPage() {
                   </tbody>
                 </table>
               </div>
+              </>
+
             ) : (
               !isView && <p className="text-xs text-gray-400 italic">{t('makeup.lbNoItems')}</p>
             )}
@@ -10060,7 +10222,58 @@ function RoomMakeUpPage() {
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <Badge color="purple">{t('makeup.inuseVerification')}</Badge> {t('makeup.inuseVerificationDesc')}
             </h4>
-            <div className="overflow-x-auto border border-purple-200 rounded-lg">
+            {/* Mobile card layout */}
+            <div className="sm:hidden space-y-2">
+              {(isView ? inuseChecks : inuseItems).map((entry, idx) => {
+                const item = isView ? entry : entry;
+                const ic = isView ? entry : inuseChecks.find(c => c.item_id === entry.item_id);
+                const expectedQty = isView ? (entry.expected_qty || 0) : (ic?.expected_qty || entry.quantity || 0);
+                const actualQty = isView ? (entry.actual_qty || 0) : (ic?.actual_qty ?? expectedQty);
+                const diff = actualQty - expectedQty;
+                const itemData = isView ? entry.items : entry.items;
+                return (
+                  <div key={idx} className={`border border-purple-200 rounded-lg p-3 ${diff < 0 ? 'bg-red-50' : 'bg-white'}`}>
+                    <div className="font-medium text-sm">{itemData?.name || '-'}</div>
+                    {itemData?.brand && <span className="text-xs text-gray-400">({itemData.brand})</span>}
+                    <div className="text-xs text-gray-400 mb-2">{itemData?.code}</div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.expectedQty')}</span>
+                        <span className="font-medium">{expectedQty}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.actualQty')}</span>
+                        {isView ? <span className="font-semibold text-purple-600">{actualQty}</span> :
+                          <input type="number" value={actualQty} min="0"
+                            onChange={e => setInuseChecks(prev => prev.map(c =>
+                              c.item_id === entry.item_id ? {...c, actual_qty: parseInt(e.target.value) || 0} : c
+                            ))}
+                            className="w-full border border-purple-300 rounded px-2 py-1 text-sm text-center bg-purple-50 mt-0.5" />}
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">{t('makeup.difference')}</span>
+                        <span className={`font-semibold ${diff < 0 ? 'text-red-600' : diff > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                          {diff > 0 ? '+' : ''}{diff}
+                        </span>
+                      </div>
+                    </div>
+                    {(!isView || ic?.notes) && (
+                      <div className="mt-2 text-xs">
+                        <span className="text-gray-500">{t('makeup.notes')}: </span>
+                        {isView ? <span className="text-gray-600">{ic?.notes || '-'}</span> :
+                          <input type="text" value={ic?.notes || ''} placeholder="..."
+                            onChange={e => setInuseChecks(prev => prev.map(c =>
+                              c.item_id === entry.item_id ? {...c, notes: e.target.value} : c
+                            ))}
+                            className="w-full border border-purple-200 rounded px-2 py-1 text-sm mt-0.5" />}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop table layout */}
+            <div className="hidden sm:block overflow-x-auto border border-purple-200 rounded-lg">
               <table className="w-full text-sm">
                 <thead className="bg-purple-50">
                   <tr>
