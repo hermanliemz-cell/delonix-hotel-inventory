@@ -1,0 +1,13 @@
+{
+  "name": "hotel-inventory-system",
+  "version": "1.0.0",
+  "description": "Hotel Inventory Management System - Model J Hotel Group",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
