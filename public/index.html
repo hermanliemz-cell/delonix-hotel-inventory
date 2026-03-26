@@ -8687,27 +8687,21 @@ function RoleManagementPage() {
 // CHANGE PASSWORD PAGE
 // ============================================================
 function ChangePasswordPage() {
-  const { showNotification } = useApp();
+  const { showNotification, currentUser } = useApp();
   const { t } = useTranslation();
-  const [users, setUsers] = useState([]);
-  const [selectedUserId, setSelectedUserId] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    supabase.from('users').select('id, full_name, email, username').order('full_name').then(({ data }) => setUsers(data || []));
-  }, []);
-
   async function handleChangePassword() {
+    if (!currentUser?.id) return;
     if (newPassword.length < 6) { showNotification(t('pwd.errorShort'), 'error'); return; }
     if (newPassword !== confirmPassword) { showNotification(t('pwd.errorMismatch'), 'error'); return; }
-    if (!selectedUserId) return;
 
     setLoading(true);
     // Verify current password
-    const { data: user } = await supabase.from('users').select('password_hash').eq('id', selectedUserId).single();
+    const { data: user } = await supabase.from('users').select('password_hash').eq('id', currentUser.id).single();
     const currentHash = await hashPassword(currentPassword);
     if (user?.password_hash && user.password_hash !== currentHash) {
       showNotification(t('pwd.errorCurrent'), 'error');
@@ -8717,7 +8711,8 @@ function ChangePasswordPage() {
 
     // Update password
     const newHash = await hashPassword(newPassword);
-    await supabase.from('users').update({ password_hash: newHash, updated_at: new Date().toISOString() }).eq('id', selectedUserId);
+    const { error } = await supabase.from('users').update({ password_hash: newHash, must_change_password: false, updated_at: new Date().toISOString() }).eq('id', currentUser.id);
+    if (error) { showNotification('Error: ' + error.message, 'error'); setLoading(false); return; }
     showNotification(t('pwd.success'), 'success');
     setCurrentPassword('');
     setNewPassword('');
@@ -8737,21 +8732,13 @@ function ChangePasswordPage() {
             </div>
             <div>
               <h3 className="font-semibold text-gray-800">{t('pwd.title')}</h3>
-              <p className="text-sm text-gray-500">{t('pwd.subtitle')}</p>
+              <p className="text-sm text-gray-500">{currentUser?.full_name} ({currentUser?.username})</p>
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('pwd.selectUser')} *</label>
-              <select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-                <option value="">{t('pwd.selectUser')}</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.username || u.email})</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('pwd.currentPassword')}</label>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('pwd.currentPassword')} *</label>
               <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Enter current password" />
             </div>
 
@@ -8770,7 +8757,7 @@ function ChangePasswordPage() {
             )}
 
             <div className="pt-3">
-              <Button onClick={handleChangePassword} disabled={!selectedUserId || !newPassword || !confirmPassword || newPassword !== confirmPassword || loading} className="w-full">
+              <Button onClick={handleChangePassword} disabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword || loading} className="w-full">
                 <Icons.Lock /> {loading ? '...' : t('pwd.change')}
               </Button>
             </div>
