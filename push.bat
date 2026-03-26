@@ -1,7 +1,6 @@
 @echo off
 cd /d "C:\Users\herma\My Drive\Claude\Finance\Stock Opname Hotel\hotel-inventory"
 git add -A
-set /p MSG="Commit message: "
-git commit -m "%MSG%"
+git commit -m "Fix department dropdown, change password page, and responsive mobile layout for all pages"
 git push
 pause
