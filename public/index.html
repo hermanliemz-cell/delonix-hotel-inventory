@@ -11212,7 +11212,7 @@ function TransferPage() {
         .select('*, transfer_items(*, items(code, name, brand, units:unit_id(abbreviation)))')
         .eq('organization_id', selectedOrg.id)
         .order('created_at', { ascending: false }),
-      supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
+      supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
       supabase.from('items').select('id, code, name, brand').eq('is_active', true).order('name'),
     ]);
     setTransfers(trRes.data || []);
@@ -11299,6 +11299,23 @@ function TransferPage() {
         showNotification('Period is locked', 'error');
         setSaving(false);
         return;
+      }
+
+      // Validate In-Use Warehouse: cannot transfer same item if it still has stock there
+      const destWh = warehouses.find(w => w.id === toWarehouse);
+      if (destWh && destWh.warehouse_type === 'in_use') {
+        const itemIds = validItems.map(i => i.item_id);
+        const { data: existingStock } = await supabase.from('stock_balance')
+          .select('item_id, quantity, items:item_id(name)')
+          .eq('warehouse_id', toWarehouse)
+          .gt('quantity', 0)
+          .in('item_id', itemIds);
+        if (existingStock && existingStock.length > 0) {
+          const names = existingStock.map(s => s.items?.name || 'Unknown').join(', ');
+          showNotification(`Item masih ada di In-Use Warehouse (harus ditandai habis dulu): ${names}`, 'error');
+          setSaving(false);
+          return;
+        }
       }
 
       const trNumber = await generateNumber();
