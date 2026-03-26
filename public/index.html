@@ -11397,7 +11397,44 @@ function TransferPage() {
         });
         if (inErr) throw new Error('IN movement: ' + inErr.message);
 
-        // Note: stock_balance is per org+item (not per warehouse), so net effect is 0 — no update needed
+        // Update stock_balance for SOURCE warehouse (decrease)
+        const { data: srcBal } = await supabase.from('stock_balance')
+          .select('id, quantity')
+          .eq('item_id', item.item_id)
+          .eq('warehouse_id', tr.from_warehouse_id)
+          .maybeSingle();
+        if (srcBal) {
+          const newSrcQty = Math.max(0, parseFloat(srcBal.quantity) - qty);
+          await supabase.from('stock_balance').update({
+            quantity: newSrcQty,
+            updated_at: new Date().toISOString()
+          }).eq('id', srcBal.id);
+        }
+
+        // Update stock_balance for DESTINATION warehouse (increase or create)
+        const { data: destBal } = await supabase.from('stock_balance')
+          .select('id, quantity')
+          .eq('item_id', item.item_id)
+          .eq('warehouse_id', tr.to_warehouse_id)
+          .maybeSingle();
+        if (destBal) {
+          const newDestQty = parseFloat(destBal.quantity) + qty;
+          await supabase.from('stock_balance').update({
+            quantity: newDestQty,
+            avg_cost: unitCost,
+            total_value: newDestQty * unitCost,
+            updated_at: new Date().toISOString()
+          }).eq('id', destBal.id);
+        } else {
+          await supabase.from('stock_balance').insert({
+            organization_id: selectedOrg.id,
+            item_id: item.item_id,
+            warehouse_id: tr.to_warehouse_id,
+            quantity: qty,
+            avg_cost: unitCost,
+            total_value: qty * unitCost,
+          });
+        }
       }
 
       await supabase.from('transfers').update({
