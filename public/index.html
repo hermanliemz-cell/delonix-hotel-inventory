@@ -421,6 +421,8 @@ const translations = {
     'stock.totalValue': 'Total Value',
     'stock.lastUpdate': 'Last Update',
     'stock.allCategories': 'All Categories',
+    'stock.allWarehouses': 'All Warehouses',
+    'stock.warehouse': 'Warehouse',
     'stock.totalItems': 'Total Items',
     'stock.lowStock': 'Low Stock Items',
     'common.clearFilters': 'Clear Filters',
@@ -716,6 +718,36 @@ const translations = {
     'makeup.expectedQty': 'Expected',
     'makeup.difference': 'Diff',
     'makeup.noInuseItems': 'No in-use items to verify',
+
+    // Laundry
+    'laundry.title': 'Laundry Management',
+    'laundry.subtitle': 'Manage linen laundry cycle for',
+    'laundry.sendTab': 'Kirim ke Laundry',
+    'laundry.receiveTab': 'Terima dari Laundry',
+    'laundry.itemsInDirty': 'Items di Dirty',
+    'laundry.itemsInLaundry': 'Items di Laundry',
+    'laundry.selectedCount': 'Dipilih untuk Transfer',
+    'laundry.searchPlaceholder': 'Cari item berdasarkan nama, kode, atau brand...',
+    'laundry.allCategories': 'Semua Kategori',
+    'laundry.noDirtyWarehouse': 'Belum ada dirty warehouse untuk hotel ini.',
+    'laundry.noLaundryWarehouse': 'Belum ada laundry warehouse untuk hotel ini.',
+    'laundry.noDirtyItems': 'Tidak ada item di dirty warehouse.',
+    'laundry.noLaundryItems': 'Tidak ada item di laundry warehouse.',
+    'laundry.itemCode': 'Kode Item',
+    'laundry.itemName': 'Nama Item',
+    'laundry.category': 'Kategori',
+    'laundry.availableQty': 'Qty Tersedia',
+    'laundry.transferQty': 'Qty Transfer',
+    'laundry.notes': 'Catatan',
+    'laundry.sendButton': 'Kirim ke Laundry',
+    'laundry.receiveButton': 'Terima dari Laundry',
+    'laundry.successSend': 'Berhasil kirim ke laundry',
+    'laundry.successReceive': 'Berhasil terima dari laundry',
+    'laundry.errorSend': 'Gagal kirim ke laundry',
+    'laundry.errorReceive': 'Gagal terima dari laundry',
+    'laundry.noItemsSelected': 'Pilih minimal 1 item untuk ditransfer',
+    'laundry.history': 'Riwayat Laundry',
+    'laundry.noHistory': 'Belum ada riwayat laundry.',
 
     // Transfer
     'transfer.title': 'Stock Transfer',
@@ -1313,6 +1345,8 @@ const translations = {
     'stock.totalValue': '总价值',
     'stock.lastUpdate': '最后更新',
     'stock.allCategories': '所有类别',
+    'stock.allWarehouses': '所有仓库',
+    'stock.warehouse': '仓库',
     'stock.totalItems': '总项目',
     'stock.lowStock': '低库存项目',
     'common.clearFilters': '清除筛选',
@@ -1960,6 +1994,8 @@ const Icons = {
   Bed: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v11m0-4h18m0 4V8a2 2 0 00-2-2H7a2 2 0 00-2 2v3h16"/></svg>,
   CheckSquare: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>,
   Save: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>,
+  MapPin: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
+  Info: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
 };
 
 // ============================================================
@@ -2065,8 +2101,13 @@ function App() {
       if (error) throw error;
       // Filter by user's hotel access if not superadmin
       let filteredOrgs = data || [];
-      if (currentUser?.role?.code !== 'superadmin' && currentUser?.hotel_access?.length > 0) {
-        filteredOrgs = filteredOrgs.filter(o => currentUser.hotel_access.includes(o.id));
+      if (currentUser?.role?.code !== 'superadmin') {
+        if (currentUser?.hotel_access?.length > 0) {
+          filteredOrgs = filteredOrgs.filter(o => currentUser.hotel_access.includes(o.id));
+        } else {
+          // No hotel_access entries — only show user's primary organization if set
+          filteredOrgs = currentUser?.organization_id ? filteredOrgs.filter(o => o.id === currentUser.organization_id) : [];
+        }
       }
       setOrganizations(filteredOrgs);
       if (filteredOrgs.length > 0) setSelectedOrg(filteredOrgs[0]);
@@ -2204,6 +2245,7 @@ function App() {
       { id: 'transfer', label: t('menu.transfer'), icon: Icons.Truck },
       { id: 'writeoff', label: t('menu.writeoff'), icon: Icons.Trash },
       { id: 'in-use-warehouse', label: t('menu.inUseWarehouse'), icon: Icons.Warehouse },
+      { id: 'laundry', label: 'Laundry', icon: Icons.Truck },
     ]},
     { type: 'item', id: 'approval', label: t('menu.approval'), icon: Icons.Shield, badge: pendingApprovalCount },
     { type: 'item', id: 'reports', label: t('menu.reports'), icon: Icons.BarChart },
@@ -2267,15 +2309,21 @@ function App() {
           {/* Organization Selector */}
           {sidebarOpen && (
             <div className="p-3 border-b border-gray-700">
-              <select
-                value={selectedOrg?.id || ''}
-                onChange={(e) => setSelectedOrg(organizations.find(o => o.id === e.target.value))}
-                className="w-full bg-gray-800 text-sm text-white border border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                {organizations.map(org => (
-                  <option key={org.id} value={org.id}>{org.name}</option>
-                ))}
-              </select>
+              {organizations.length <= 1 ? (
+                <div className="w-full bg-gray-800 text-sm text-white border border-gray-600 rounded-lg px-3 py-2 opacity-75">
+                  {selectedOrg?.name || 'No Hotel'}
+                </div>
+              ) : (
+                <select
+                  value={selectedOrg?.id || ''}
+                  onChange={(e) => setSelectedOrg(organizations.find(o => o.id === e.target.value))}
+                  className="w-full bg-gray-800 text-sm text-white border border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  {organizations.map(org => (
+                    <option key={org.id} value={org.id}>{org.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 
@@ -2554,6 +2602,7 @@ function PageRouter({ page }) {
     case 'direct-purchase': return <DirectPurchasePage />;
     case 'single-usage': return <SingleItemUsagePage />;
     case 'in-use-warehouse': return <InUseWarehousePage />;
+    case 'laundry': return <LaundryPage />;
     case 'approval': return <ApprovalPage />;
     case 'reports': return <ReportsPage />;
     case 'user-mgmt': return <UserManagementPage />;
@@ -2946,6 +2995,20 @@ function formatNumber(num) {
   return new Intl.NumberFormat('id-ID').format(num || 0);
 }
 
+// Helper: get balance_after for stock_movements (sums all warehouse rows for the item)
+async function getBalanceAfter(orgId, itemId, movementType, qty) {
+  try {
+    const { data } = await supabase.from('stock_balance')
+      .select('quantity')
+      .eq('organization_id', orgId)
+      .eq('item_id', itemId);
+    const currentQty = (data || []).reduce((sum, r) => sum + (parseFloat(r.quantity) || 0), 0);
+    if (movementType === 'IN') return currentQty + parseFloat(qty);
+    if (movementType === 'OUT') return Math.max(0, currentQty - parseFloat(qty));
+    return parseFloat(qty); // ADJ/OPNAME = set to qty directly
+  } catch (e) { return 0; }
+}
+
 // ============================================================
 // DASHBOARD PAGE
 // ============================================================
@@ -3107,8 +3170,24 @@ function HotelsPage() {
         if (error) throw error;
       } else {
         payload.is_active = true; payload.created_at = new Date().toISOString();
-        const { error } = await supabase.from('organizations').insert(payload);
+        const { data: newOrg, error } = await supabase.from('organizations').insert(payload).select().single();
         if (error) throw error;
+        // Auto-create default warehouses for new hotel
+        if (newOrg) {
+          const code = newOrg.code || '';
+          const defaultWarehouses = [
+            { code: 'HK-' + code, name: 'Housekeeping Store', warehouse_type: 'store' },
+            { code: 'DMG-' + code, name: 'Damaged Warehouse ' + code, warehouse_type: 'damage' },
+            { code: 'IU-' + code, name: 'In-Use Warehouse ' + code, warehouse_type: 'in_use' },
+            { code: 'DRT-' + code, name: 'Dirty Linen Staging ' + code, warehouse_type: 'dirty' },
+            { code: 'LDR-' + code, name: 'Laundry Vendor ' + code, warehouse_type: 'laundry' },
+          ];
+          for (const wh of defaultWarehouses) {
+            await supabase.from('warehouses').insert({
+              organization_id: newOrg.id, ...wh, is_active: true
+            });
+          }
+        }
       }
       showNotification(t('hotels.saveSuccess'), 'success');
       setShowModal(false); loadHotels();
@@ -3378,7 +3457,7 @@ function ItemsPage() {
   const [filterWarehouse, setFilterWarehouse] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '' });
+  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false });
 
   useEffect(() => { loadData(); }, [selectedOrg]);
 
@@ -3438,13 +3517,13 @@ function ItemsPage() {
 
   function openCreate() {
     setEditItem(null);
-    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '' });
+    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false });
     setShowModal(true);
   }
 
   function openEdit(item) {
     setEditItem(item);
-    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '' });
+    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false });
     setShowModal(true);
   }
 
@@ -3528,6 +3607,7 @@ function ItemsPage() {
             { header: t('items.minStock'), render: r => formatNumber(r.min_stock) },
             { header: t('items.maxStock'), render: r => formatNumber(r.max_stock) },
             { header: 'ROP', render: r => formatNumber(r.reorder_point) },
+            { header: 'SIU', render: r => r.allow_single_usage ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
             { header: t('common.status'), render: r => <Badge color={r.is_active ? 'green' : 'red'}>{r.is_active ? t('common.active') : t('common.inactive')}</Badge> },
           ]}
           data={paginatedItems}
@@ -3621,6 +3701,18 @@ function ItemsPage() {
           </FormField>
           <FormField label={t('common.description')}>
             <Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder={t('items.optionalDesc')} />
+          </FormField>
+          <FormField label="Allow Single Item Usage">
+            <div className="flex items-center gap-3 mt-1">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked={form.allow_single_usage || false}
+                  onChange={e => setForm({...form, allow_single_usage: e.target.checked})}
+                  className="sr-only peer" />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                <span className="ml-2 text-sm text-gray-600">{form.allow_single_usage ? 'Yes' : 'No'}</span>
+              </label>
+              <span className="text-xs text-gray-400">Item ini boleh di-move out via Single Item Usage</span>
+            </div>
           </FormField>
         </div>
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
@@ -4066,13 +4158,13 @@ function WarehousesPage() {
   };
 
   const typeColor = (type) => {
-    const map = { general: 'blue', store: 'green', room: 'purple' };
+    const map = { general: 'blue', store: 'green', room: 'purple', dirty: 'orange', laundry: 'cyan', damage: 'red', in_use: 'yellow' };
     return map[type] || 'gray';
   };
 
   const filteredWarehouses = warehouses.filter(wh => {
     if (activeTab === 'room') return wh.warehouse_type === 'room';
-    return ['store', 'damage', 'in_use', 'general'].includes(wh.warehouse_type);
+    return ['store', 'damage', 'in_use', 'general', 'dirty', 'laundry'].includes(wh.warehouse_type);
   });
 
   return (
@@ -4127,6 +4219,8 @@ function WarehousesPage() {
                   <option value="store">{t('wh.type.store')}</option>
                   <option value="damage">Damage</option>
                   <option value="in_use">In Use</option>
+                  <option value="dirty">Dirty (Linen Kotor)</option>
+                  <option value="laundry">Laundry Vendor</option>
                 </Select>
               </FormField>
             )}
@@ -5052,7 +5146,7 @@ function StockBalancePage() {
     setLoading(true);
     const [stockRes, catRes, whRes] = await Promise.all([
       supabase.from('stock_balance')
-        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code)')
+        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name)')
         .eq('organization_id', selectedOrg.id)
         .order('updated_at', { ascending: false }),
       supabase.from('item_categories').select('id, code, name').eq('is_active', true).order('name'),
@@ -5068,7 +5162,8 @@ function StockBalancePage() {
     const term = search.toLowerCase();
     const matchSearch = !term || (s.items?.name?.toLowerCase().includes(term) || s.items?.code?.toLowerCase().includes(term) || s.departments?.name?.toLowerCase().includes(term) || s.items?.brand?.toLowerCase().includes(term));
     const matchCat = !filterCategory || s.items?.item_categories?.id === filterCategory;
-    return matchSearch && matchCat;
+    const matchWh = !filterWarehouse || s.warehouse_id === filterWarehouse;
+    return matchSearch && matchCat && matchWh;
   });
 
   const totalValue = filtered.reduce((sum, s) => sum + (s.total_value || 0), 0);
@@ -5103,8 +5198,13 @@ function StockBalancePage() {
             <option value="">{t('stock.allCategories')}</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          {(filterCategory || search) && (
-            <button onClick={() => { setFilterCategory(''); setSearch(''); }}
+          <select value={filterWarehouse} onChange={e=>setFilterWarehouse(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
+            <option value="">{t('stock.allWarehouses') || 'Semua Gudang'}</option>
+            {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
+          </select>
+          {(filterCategory || filterWarehouse || search) && (
+            <button onClick={() => { setFilterCategory(''); setFilterWarehouse(''); setSearch(''); }}
               className="px-3 py-2 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg">
               {t('common.clearFilters')}
             </button>
@@ -5114,6 +5214,7 @@ function StockBalancePage() {
           columns={[
             { header: t('dashboard.item'), render: r => <div><span className="font-medium">{r.items?.name}</span>{r.items?.brand && <span className="text-xs text-gray-400 ml-1">({r.items.brand})</span>}<br/><span className="text-xs text-gray-400">{r.items?.code}</span>{r.items?.size && <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded ml-1">{r.items.size}</span>}</div> },
             { header: t('items.category'), render: r => r.items?.item_categories ? <Badge color="purple">{r.items.item_categories.code}</Badge> : '-' },
+            { header: t('stock.warehouse') || 'Gudang', render: r => r.warehouses ? <Badge color="green">{r.warehouses.code}</Badge> : '-' },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
             { header: t('dashboard.qty'), render: r => {
               const isLow = r.items?.reorder_point && r.quantity <= r.items.reorder_point;
@@ -5198,7 +5299,7 @@ function BinCardPage() {
     setLoading(true);
     const [movRes, itemRes, whRes, catRes] = await Promise.all([
       supabase.from('stock_movements')
-        .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code)')
+        .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
         .eq('organization_id', selectedOrg.id)
         .order('created_at', { ascending: false })
         .limit(1000),
@@ -5362,6 +5463,7 @@ function BinCardPage() {
             { header: t('bincard.cost'), render: r => formatCurrency(r.unit_cost) },
             { header: t('dashboard.balance'), render: r => <span className="font-semibold">{formatNumber(r.balance_after)}</span> },
             { header: t('bincard.ref'), render: r => <span className="text-xs">{r.reference_number || '-'}<br/><span className="text-gray-400">{r.reference_type || ''}</span></span> },
+            { header: 'User', render: r => <span className="text-xs text-gray-600">{r.users?.full_name || r.users?.username || '-'}</span> },
             { header: t('bincard.notes'), render: r => <span className="text-xs text-gray-500">{r.notes || '-'}</span> },
           ]}
           data={filtered}
@@ -7349,7 +7451,7 @@ function PurchaseInvoicePage() {
 // PURCHASE RECEIVED PAGE (Goods Receipt from PI)
 // ============================================================
 function PurchaseReceivedPage() {
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, currentUser, showNotification } = useApp();
   const { t } = useTranslation();
   const [receipts, setReceipts] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -7513,6 +7615,7 @@ function PurchaseReceivedPage() {
         const unitPrice = parseFloat(item.unit_price) || 0;
         const totalCost = qty * unitPrice;
 
+        const grBalAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
         const { error: smErr } = await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
@@ -7520,10 +7623,12 @@ function PurchaseReceivedPage() {
           quantity: qty,
           unit_cost: unitPrice,
           total_cost: totalCost,
+          balance_after: grBalAfter,
           reference_type: 'GR',
           reference_number: gr.gr_number,
           notes: 'Goods received from ' + (gr.purchase_invoices?.pi_number || 'PI'),
           warehouse_id: item.warehouse_id || null,
+          created_by: currentUser?.id || null,
         });
         if (smErr) throw new Error('Stock movement error: ' + smErr.message);
 
@@ -7833,6 +7938,32 @@ function ReportsPage() {
         if (dateTo) q = q.lte('opname_date', dateTo);
         const { data: res } = await q.order('opname_date', { ascending: false });
         setData(res || []);
+      } else if (reportType === 'linen') {
+        // Get all stock balances with warehouse info for linen items
+        const { data: balances } = await supabase.from('stock_balance')
+          .select('*, items(id, code, name, brand, category_id, item_categories(code, name)), warehouses(id, code, name, warehouse_type)')
+          .eq('organization_id', selectedOrg.id)
+          .gt('quantity', 0);
+        // Filter only linen items
+        const linenBalances = (balances || []).filter(b => b.items?.item_categories?.code === 'LIN');
+        // Group by item: { item_id: { item, store, room, dirty, laundry, damage, total } }
+        const itemMap = {};
+        for (const b of linenBalances) {
+          if (!itemMap[b.item_id]) {
+            itemMap[b.item_id] = { item: b.items, store: 0, room: 0, dirty: 0, laundry: 0, damage: 0, total: 0, totalValue: 0, roomDetails: [] };
+          }
+          const whType = b.warehouses?.warehouse_type || 'general';
+          const qty = parseFloat(b.quantity) || 0;
+          const val = parseFloat(b.total_value) || 0;
+          if (whType === 'store') itemMap[b.item_id].store += qty;
+          else if (whType === 'room') { itemMap[b.item_id].room += qty; itemMap[b.item_id].roomDetails.push({ warehouse: b.warehouses, qty }); }
+          else if (whType === 'dirty') itemMap[b.item_id].dirty += qty;
+          else if (whType === 'laundry') itemMap[b.item_id].laundry += qty;
+          else if (whType === 'damage') itemMap[b.item_id].damage += qty;
+          itemMap[b.item_id].total += qty;
+          itemMap[b.item_id].totalValue += val;
+        }
+        setData(Object.values(itemMap));
       }
     } catch (err) { console.error(err); }
     setLoading(false);
@@ -7843,6 +7974,7 @@ function ReportsPage() {
     if (reportType === 'movement') return ['Date', 'Item', 'Type', 'Qty', 'Unit Cost', 'Total Cost', 'Department', 'Reference', 'Notes'];
     if (reportType === 'lowstock') return ['Item Code', 'Item Name', 'Category', 'Department', 'Min Stock', 'Current Stock', 'Shortage'];
     if (reportType === 'opname') return ['Opname No.', 'Date', 'Department', 'Type', 'Status', 'Variance Value'];
+    if (reportType === 'linen') return ['Item Code', 'Item Name', 'Brand', 'HK Store', 'In Room', 'Dirty', 'In Laundry', 'Damaged', 'Total', 'Total Value'];
     return [];
   }
 
@@ -7852,6 +7984,7 @@ function ReportsPage() {
     if (reportType === 'movement') return arr.map(r => [new Date(r.created_at).toLocaleDateString('id-ID'), r.items?.code+' - '+r.items?.name, r.movement_type, r.quantity, r.unit_cost, r.total_cost, r.departments?.code||'', r.reference_number||'', r.notes||'']);
     if (reportType === 'lowstock') return arr.map(r => [r.items?.code, r.items?.name, r.items?.item_categories?.name||'', r.departments?.code||'', r.items?.min_stock, r.quantity, r.items?.min_stock - r.quantity]);
     if (reportType === 'opname') return arr.map(r => [r.opname_number, new Date(r.opname_date).toLocaleDateString('id-ID'), r.departments?.code||'', r.opname_type, r.status, r.total_variance_value]);
+    if (reportType === 'linen') return arr.map(r => [r.item?.code, r.item?.name, r.item?.brand||'', r.store, r.room, r.dirty, r.laundry, r.damage, r.total, r.totalValue]);
     return [];
   }
 
@@ -7880,7 +8013,7 @@ function ReportsPage() {
   function exportPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape' });
-    const reportNames = { valuation: t('reports.stockValuation'), movement: t('reports.stockMovement'), purchase: t('reports.purchaseSummary'), lowstock: t('reports.lowStock'), opname: t('reports.opnameSummary') };
+    const reportNames = { valuation: t('reports.stockValuation'), movement: t('reports.stockMovement'), purchase: t('reports.purchaseSummary'), lowstock: t('reports.lowStock'), opname: t('reports.opnameSummary'), linen: 'Linen Position' };
     doc.setFontSize(16);
     doc.text(reportNames[reportType] || 'Report', 14, 15);
     doc.setFontSize(10);
@@ -7910,6 +8043,7 @@ function ReportsPage() {
     { id: 'purchase', label: t('reports.purchaseSummary') },
     { id: 'lowstock', label: t('reports.lowStock') },
     { id: 'opname', label: t('reports.opnameSummary') },
+    { id: 'linen', label: 'Linen Position' },
   ];
 
   const showCatFilter = ['valuation', 'lowstock'].includes(reportType);
@@ -8069,7 +8203,90 @@ function ReportsPage() {
           ]} data={arrData} />
         )}
 
-        {!loading && ((Array.isArray(data) && data.length === 0) || (!Array.isArray(data) && data.pos && data.pos.length === 0 && data.pis && data.pis.length === 0)) && (
+        {reportType === 'linen' && (
+          <div>
+            {/* Linen Summary */}
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 p-4 border-b border-gray-100">
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-green-600 font-medium">HK Store (Bersih)</div>
+                <div className="text-lg font-bold text-green-700">{arrData.reduce((s,r) => s + r.store, 0)}</div>
+              </div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-purple-600 font-medium">In Room</div>
+                <div className="text-lg font-bold text-purple-700">{arrData.reduce((s,r) => s + r.room, 0)}</div>
+              </div>
+              <div className="bg-orange-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-orange-600 font-medium">Dirty</div>
+                <div className="text-lg font-bold text-orange-700">{arrData.reduce((s,r) => s + r.dirty, 0)}</div>
+              </div>
+              <div className="bg-cyan-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-cyan-600 font-medium">In Laundry</div>
+                <div className="text-lg font-bold text-cyan-700">{arrData.reduce((s,r) => s + r.laundry, 0)}</div>
+              </div>
+              <div className="bg-red-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-red-600 font-medium">Damaged</div>
+                <div className="text-lg font-bold text-red-700">{arrData.reduce((s,r) => s + r.damage, 0)}</div>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-blue-600 font-medium">Grand Total</div>
+                <div className="text-lg font-bold text-blue-700">{arrData.reduce((s,r) => s + r.total, 0)}</div>
+              </div>
+            </div>
+            {/* Linen Table */}
+            {loading ? (
+              <div className="p-8 flex justify-center"><div className="spinner"></div></div>
+            ) : arrData.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Tidak ada data linen.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kode</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama Item</th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-green-600 uppercase bg-green-50">HK Store</th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-purple-600 uppercase bg-purple-50">In Room</th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-orange-600 uppercase bg-orange-50">Dirty</th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-cyan-600 uppercase bg-cyan-50">In Laundry</th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-red-600 uppercase bg-red-50">Damaged</th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-blue-600 uppercase bg-blue-50 font-bold">Total</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Nilai</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {arrData.map((r, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-2"><span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{r.item?.code}</span></td>
+                        <td className="px-4 py-2"><span className="font-medium text-sm">{r.item?.name}</span>{r.item?.brand ? <span className="text-xs text-gray-400 ml-1">({r.item.brand})</span> : ''}</td>
+                        <td className="px-3 py-2 text-center bg-green-50/30"><span className={`text-sm font-semibold ${r.store > 0 ? 'text-green-700' : 'text-gray-300'}`}>{r.store || '-'}</span></td>
+                        <td className="px-3 py-2 text-center bg-purple-50/30"><span className={`text-sm font-semibold ${r.room > 0 ? 'text-purple-700' : 'text-gray-300'}`}>{r.room || '-'}</span></td>
+                        <td className="px-3 py-2 text-center bg-orange-50/30"><span className={`text-sm font-semibold ${r.dirty > 0 ? 'text-orange-700' : 'text-gray-300'}`}>{r.dirty || '-'}</span></td>
+                        <td className="px-3 py-2 text-center bg-cyan-50/30"><span className={`text-sm font-semibold ${r.laundry > 0 ? 'text-cyan-700' : 'text-gray-300'}`}>{r.laundry || '-'}</span></td>
+                        <td className="px-3 py-2 text-center bg-red-50/30"><span className={`text-sm font-semibold ${r.damage > 0 ? 'text-red-700' : 'text-gray-300'}`}>{r.damage || '-'}</span></td>
+                        <td className="px-3 py-2 text-center bg-blue-50/30"><span className="text-sm font-bold text-blue-700">{r.total}</span></td>
+                        <td className="px-4 py-2 text-right"><span className="text-sm font-medium text-gray-700">{formatCurrency(Math.round(r.totalValue))}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-100 border-t-2 border-gray-200 font-bold">
+                      <td colSpan={2} className="px-4 py-3 text-sm text-gray-700">TOTAL</td>
+                      <td className="px-3 py-3 text-center text-sm text-green-700 bg-green-50">{arrData.reduce((s,r) => s + r.store, 0)}</td>
+                      <td className="px-3 py-3 text-center text-sm text-purple-700 bg-purple-50">{arrData.reduce((s,r) => s + r.room, 0)}</td>
+                      <td className="px-3 py-3 text-center text-sm text-orange-700 bg-orange-50">{arrData.reduce((s,r) => s + r.dirty, 0)}</td>
+                      <td className="px-3 py-3 text-center text-sm text-cyan-700 bg-cyan-50">{arrData.reduce((s,r) => s + r.laundry, 0)}</td>
+                      <td className="px-3 py-3 text-center text-sm text-red-700 bg-red-50">{arrData.reduce((s,r) => s + r.damage, 0)}</td>
+                      <td className="px-3 py-3 text-center text-sm text-blue-700 bg-blue-50">{arrData.reduce((s,r) => s + r.total, 0)}</td>
+                      <td className="px-4 py-3 text-right text-sm text-gray-700">{formatCurrency(Math.round(arrData.reduce((s,r) => s + r.totalValue, 0)))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!loading && ((Array.isArray(data) && data.length === 0) || (!Array.isArray(data) && data.pos && data.pos.length === 0 && data.pis && data.pis.length === 0)) && reportType !== 'linen' && (
           <div className="p-8 text-center text-gray-500">{t('reports.noData')}</div>
         )}
       </div>
@@ -8312,55 +8529,94 @@ function ApprovalPage() {
 // USER MANAGEMENT PAGE
 // ============================================================
 function UserManagementPage() {
-  const { showNotification } = useApp();
+  const { showNotification, currentUser } = useApp();
   const { t } = useTranslation();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [orgs, setOrgs] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [userHotelMap, setUserHotelMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ full_name: '', username: '', email: '', phone: '', role_id: '', organization_id: '', department_id: '', is_active: true, password: '' });
+  const [form, setForm] = useState({ full_name: '', username: '', email: '', phone: '', role_id: '', hotel_ids: [], department_id: '', is_active: true, password: '' });
 
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     setLoading(true);
-    const [usersRes, rolesRes, orgsRes, deptRes] = await Promise.all([
-      supabase.from('users').select('*, roles(name), organizations(name, code), departments(name, code)').order('full_name'),
-      supabase.from('roles').select('id, name').order('name'),
+    const [usersRes, rolesRes, orgsRes, deptRes, accessRes] = await Promise.all([
+      supabase.from('users').select('*, roles(name, code), organizations(name, code), departments(name, code)').order('full_name'),
+      supabase.from('roles').select('id, name, code').order('name'),
       supabase.from('organizations').select('id, name, code').order('name'),
       supabase.from('departments').select('id, name, code, organization_id').eq('is_active', true).order('name'),
+      supabase.from('user_hotel_access').select('user_id, organization_id, organizations(code, name)'),
     ]);
-    setUsers(usersRes.data || []);
     setRoles(rolesRes.data || []);
     setOrgs(orgsRes.data || []);
     setDepartments(deptRes.data || []);
+    // Build map: userId -> [{ organization_id, code, name }]
+    const map = {};
+    (accessRes.data || []).forEach(a => {
+      if (!map[a.user_id]) map[a.user_id] = [];
+      map[a.user_id].push({ organization_id: a.organization_id, code: a.organizations?.code, name: a.organizations?.name });
+    });
+    setUserHotelMap(map);
+    // Filter users: non-superadmin only sees users who share at least one hotel
+    // Read from localStorage to avoid stale closure issues
+    const activeUser = JSON.parse(localStorage.getItem('inventory_user') || 'null');
+    let allUsers = usersRes.data || [];
+    if (activeUser?.role?.code !== 'superadmin' && activeUser?.hotel_access?.length > 0) {
+      const myHotels = new Set(activeUser.hotel_access);
+      allUsers = allUsers.filter(u => {
+        const userHotels = (map[u.id] || []).map(h => h.organization_id);
+        // Show user if they share at least one hotel with current user
+        return userHotels.some(h => myHotels.has(h));
+      });
+    }
+    setUsers(allUsers);
     setLoading(false);
   }
 
   function openCreate() {
     setEditing(null);
-    setForm({ full_name: '', username: '', email: '', phone: '', role_id: '', organization_id: '', department_id: '', is_active: true, password: '' });
+    setForm({ full_name: '', username: '', email: '', phone: '', role_id: '', hotel_ids: [], department_id: '', is_active: true, password: '' });
     setShowForm(true);
   }
 
-  function openEdit(user) {
+  async function openEdit(user) {
     setEditing(user);
-    setForm({ full_name: user.full_name || '', username: user.username || '', email: user.email || '', phone: user.phone || '', role_id: user.role_id || '', organization_id: user.organization_id || '', department_id: user.department_id || '', is_active: user.is_active !== false, password: '' });
+    // Load user's hotel_access
+    const existingAccess = userHotelMap[user.id] || [];
+    const hotelIds = existingAccess.map(a => a.organization_id);
+    setForm({ full_name: user.full_name || '', username: user.username || '', email: user.email || '', phone: user.phone || '', role_id: user.role_id || '', hotel_ids: hotelIds, department_id: user.department_id || '', is_active: user.is_active !== false, password: '' });
     setShowForm(true);
   }
 
   async function handleSave() {
-    const payload = { full_name: form.full_name, username: form.username || null, email: form.email, phone: form.phone || null, role_id: form.role_id || null, organization_id: form.organization_id || null, department_id: form.department_id || null, is_active: form.is_active };
+    // Set organization_id to first selected hotel (for backward compatibility) or null
+    const primaryOrg = form.hotel_ids.length > 0 ? form.hotel_ids[0] : null;
+    const payload = { full_name: form.full_name, username: form.username || null, email: form.email, phone: form.phone || null, role_id: form.role_id || null, organization_id: primaryOrg, department_id: form.department_id || null, is_active: form.is_active };
     if (form.password && form.password.length >= 6) {
       payload.password_hash = await hashPassword(form.password);
     }
+    let userId;
     if (editing) {
       await supabase.from('users').update(payload).eq('id', editing.id);
+      userId = editing.id;
     } else {
-      await supabase.from('users').insert(payload);
+      const { data: newUser } = await supabase.from('users').insert(payload).select('id').single();
+      userId = newUser?.id;
+    }
+    // Upsert user_hotel_access
+    if (userId) {
+      // Delete existing access entries
+      await supabase.from('user_hotel_access').delete().eq('user_id', userId);
+      // Insert new access entries
+      if (form.hotel_ids.length > 0) {
+        const accessRows = form.hotel_ids.map(orgId => ({ user_id: userId, organization_id: orgId }));
+        await supabase.from('user_hotel_access').insert(accessRows);
+      }
     }
     showNotification(t('users.successSave'), 'success');
     setShowForm(false);
@@ -8392,6 +8648,10 @@ function UserManagementPage() {
     loadData();
   }
 
+  // Filter orgs: superadmin sees all, others only see hotels they have access to
+  const isSuperadmin = currentUser?.role?.code === 'superadmin';
+  const availableOrgs = isSuperadmin ? orgs : orgs.filter(o => (currentUser?.hotel_access || []).includes(o.id));
+
   // Departments are shared/global master - show all departments regardless of organization
   const filteredDepts = departments;
 
@@ -8405,17 +8665,28 @@ function UserManagementPage() {
             { header: t('users.fullName'), render: r => <div><span className="font-medium">{r.full_name}</span>{r.username ? <span className="text-xs text-gray-400 ml-1">@{r.username}</span> : ''}</div> },
             { header: t('users.email'), render: r => <span className="text-sm">{r.email}</span> },
             { header: t('users.role'), render: r => <Badge color="purple">{r.roles?.name || '-'}</Badge> },
-            { header: t('users.hotel'), render: r => r.organizations ? <Badge color="blue">{r.organizations.code}</Badge> : <Badge color="gray">{t('users.allHotels')}</Badge> },
+            { header: t('users.hotel'), render: r => {
+              const hotels = userHotelMap[r.id] || [];
+              if (hotels.length === 0) return <Badge color="gray">{t('users.allHotels')}</Badge>;
+              return <div className="flex flex-wrap gap-1">{hotels.map(h => <Badge key={h.organization_id} color="blue">{h.code}</Badge>)}</div>;
+            }},
             { header: t('users.department'), render: r => r.departments ? <Badge color="green">{r.departments.code}</Badge> : <span className="text-gray-400">-</span> },
             { header: t('common.status'), render: r => <Badge color={r.is_active?'green':'red'}>{r.is_active ? t('common.active') : t('common.inactive')}</Badge> },
           ]}
           data={users}
-          actions={row => (
+          actions={row => {
+            const myRole = currentUser?.role?.code;
+            const targetRole = row.roles?.code;
+            // Non-superadmin cannot edit/delete superadmin users
+            const canModify = myRole === 'superadmin' || targetRole !== 'superadmin';
+            // Cannot delete yourself
+            const canDelete = canModify && row.id !== currentUser?.id;
+            return (
             <div className="flex gap-1 justify-end">
-              <button onClick={() => openEdit(row)} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Icons.Edit /></button>
-              <button onClick={() => handleDelete(row)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Icons.Trash /></button>
+              {canModify && <button onClick={() => openEdit(row)} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Icons.Edit /></button>}
+              {canDelete && <button onClick={() => handleDelete(row)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Icons.Trash /></button>}
             </div>
-          )}
+          );}}
         />
       </div>
 
@@ -8455,10 +8726,18 @@ function UserManagementPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.hotel')}</label>
-              <select value={form.organization_id} onChange={e => setForm({...form, organization_id: e.target.value, department_id: ''})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-                <option value="">{t('users.allHotels')}</option>
-                {orgs.map(o => <option key={o.id} value={o.id}>{o.code} - {o.name}</option>)}
-              </select>
+              <div className="border border-gray-200 rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto bg-white">
+                {availableOrgs.map(o => (
+                  <label key={o.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
+                    <input type="checkbox" checked={form.hotel_ids.includes(o.id)} onChange={e => {
+                      const newIds = e.target.checked ? [...form.hotel_ids, o.id] : form.hotel_ids.filter(id => id !== o.id);
+                      setForm({...form, hotel_ids: newIds});
+                    }} className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                    <span className="text-sm">{o.code} - {o.name}</span>
+                  </label>
+                ))}
+                {availableOrgs.length === 0 && <span className="text-xs text-gray-400 px-2">No hotels available</span>}
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -8514,6 +8793,7 @@ const ALL_MENUS = [
   { id: 'direct-purchase', label: 'Direct Purchase' },
   { id: 'single-usage', label: 'Single Item Usage' },
   { id: 'in-use-warehouse', label: 'In-Use Warehouse' },
+  { id: 'laundry', label: 'Laundry' },
   { id: 'approval', label: 'Approval' },
   { id: 'reports', label: 'Reports' },
   { id: 'user-mgmt', label: 'User Management' },
@@ -8834,9 +9114,18 @@ function getCategoryConfig(categoryCode) {
   return CATEGORY_STATUS_CONFIG[categoryCode] || CATEGORY_STATUS_CONFIG.DEFAULT;
 }
 
+// Warehouse type mapping for linen category
+const LINEN_STATUS_WAREHOUSE_MAP = {
+  in_stock: 'store',
+  in_use: 'room',
+  dirty: 'dirty',
+  in_laundry: 'laundry',
+  damaged: 'damage'
+};
+
 function OpeningBalancePage() {
   const { t } = useTranslation();
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, currentUser, showNotification } = useApp();
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
@@ -8847,6 +9136,21 @@ function OpeningBalancePage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [defaultDepartment, setDefaultDepartment] = useState(null);
+  const [warehouses, setWarehouses] = useState([]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState('');
+  const [roomAssignments, setRoomAssignments] = useState({});
+  const [showRoomPopup, setShowRoomPopup] = useState(false);
+  const [roomPopupItemId, setRoomPopupItemId] = useState(null);
+  const [rooms, setRooms] = useState([]);
+
+  // Helper to get warehouse by type for linen auto-mapping
+  function getWarehouseByType(type) {
+    if (type === 'store') return warehouses.find(w => w.warehouse_type === 'store' && w.code?.startsWith('HK'));
+    if (type === 'dirty') return warehouses.find(w => w.warehouse_type === 'dirty');
+    if (type === 'laundry') return warehouses.find(w => w.warehouse_type === 'laundry');
+    if (type === 'damage') return warehouses.find(w => w.warehouse_type === 'damage');
+    return null;
+  }
 
   useEffect(() => {
     if (selectedOrg) loadOverview();
@@ -8856,19 +9160,25 @@ function OpeningBalancePage() {
   async function loadOverview() {
     setLoading(true);
     try {
-      const [catsRes, itemsRes, locksRes, detailsRes, deptRes, unitsRes] = await Promise.all([
+      const [catsRes, itemsRes, locksRes, detailsRes, deptRes, unitsRes, whRes, roomsRes] = await Promise.all([
         supabase.from('item_categories').select('*').order('name'),
         supabase.from('items').select('*').eq('is_active', true).order('code'),
         supabase.from('opening_balance_locks').select('*').eq('organization_id', selectedOrg.id),
         supabase.from('opening_balance_details').select('*').eq('organization_id', selectedOrg.id),
         supabase.from('departments').select('*').eq('organization_id', selectedOrg.id).order('name'),
-        supabase.from('units').select('*').order('name')
+        supabase.from('units').select('*').order('name'),
+        supabase.from('warehouses').select('*').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
+        supabase.from('rooms').select('id, room_number, floor, warehouse_id, room_types(name)').eq('organization_id', selectedOrg.id).eq('is_active', true).order('room_number')
       ]);
       setCategories(catsRes.data || []);
       setItems(itemsRes.data || []);
       setUnits(unitsRes.data || []);
+      const whList = whRes.data || [];
+      setWarehouses(whList);
+      if (whList.length > 0 && !selectedWarehouse) setSelectedWarehouse(whList[0].id);
       const depts = deptRes.data || [];
       setDefaultDepartment(depts.find(d => d.name === 'General Store') || depts[0]);
+      setRooms(roomsRes.data || []);
 
       // Map locks by category_id
       const lockMap = {};
@@ -8941,6 +9251,15 @@ function OpeningBalancePage() {
 
   async function handleSaveCategory() {
     if (!selectedCategory || !defaultDepartment) return;
+
+    const isLinen = selectedCategory.code === 'LIN';
+
+    // For non-linen, require warehouse selection
+    if (!isLinen && !selectedWarehouse) {
+      showNotification('Pilih gudang terlebih dahulu sebelum menyimpan!', 'error');
+      return;
+    }
+
     setSaving(true);
     try {
       const catItems = getItemsForCategory(selectedCategory.id);
@@ -8953,7 +9272,6 @@ function OpeningBalancePage() {
         const itemDetails = details[item.id] || {};
         let totalQty = 0;
 
-        // Calculate cost per usage unit from purchase cost / conversion
         const convRate = parseFloat(item.conversion_rate) || 1;
         const purchaseCost = parseFloat(itemDetails._purchase_cost) || 0;
         const unitCost = convRate > 0 ? purchaseCost / convRate : 0;
@@ -8973,19 +9291,71 @@ function OpeningBalancePage() {
               updated_at: new Date().toISOString()
             });
           }
+
+          // For linen: create separate balance per status/warehouse
+          if (isLinen && qty > 0) {
+            const whType = LINEN_STATUS_WAREHOUSE_MAP[st];
+
+            if (st === 'in_use') {
+              // In-use: create balance per room from roomAssignments
+              const itemAssignments = roomAssignments[item.id] || {};
+              for (const [roomId, roomQty] of Object.entries(itemAssignments)) {
+                const rQty = parseFloat(roomQty) || 0;
+                if (rQty <= 0) continue;
+                const room = rooms.find(r => r.id === roomId);
+                if (!room?.warehouse_id) continue;
+                balanceUpserts.push({
+                  organization_id: selectedOrg.id,
+                  department_id: defaultDepartment.id,
+                  item_id: item.id,
+                  warehouse_id: room.warehouse_id,
+                  quantity: rQty,
+                  avg_cost: unitCost,
+                  total_value: rQty * unitCost,
+                  last_movement_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  _status: st,
+                  _is_room: true
+                });
+              }
+            } else {
+              // Other statuses: map to specific warehouse type
+              const wh = getWarehouseByType(whType);
+              if (wh) {
+                balanceUpserts.push({
+                  organization_id: selectedOrg.id,
+                  department_id: defaultDepartment.id,
+                  item_id: item.id,
+                  warehouse_id: wh.id,
+                  quantity: qty,
+                  avg_cost: unitCost,
+                  total_value: qty * unitCost,
+                  last_movement_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  _status: st
+                });
+              }
+            }
+          }
         }
 
-        if (totalQty > 0) {
+        // For non-linen: single balance as before
+        if (!isLinen && totalQty > 0) {
           const totalValue = totalQty * unitCost;
           balanceUpserts.push({
             organization_id: selectedOrg.id,
             department_id: defaultDepartment.id,
             item_id: item.id,
+            warehouse_id: selectedWarehouse,
             quantity: totalQty,
             avg_cost: unitCost,
             total_value: totalValue,
-            last_updated: new Date().toISOString()
+            last_movement_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           });
+        }
+
+        if (totalQty > 0) {
           fifoEntries.push({
             organization_id: selectedOrg.id,
             department_id: defaultDepartment.id,
@@ -9007,14 +9377,55 @@ function OpeningBalancePage() {
         if (error) throw error;
       }
 
-      // Upsert stock_balance
+      // Upsert stock_balance - for linen, use warehouse constraint
       if (balanceUpserts.length > 0) {
-        const { error } = await supabase.from('stock_balance')
-          .upsert(balanceUpserts, { onConflict: 'organization_id,item_id' });
-        if (error) throw error;
+        // Clean up internal props before sending to DB
+        const cleanUpserts = balanceUpserts.map(b => {
+          const { _status, _is_room, ...rest } = b;
+          return rest;
+        });
+
+        if (isLinen) {
+          // For linen: upsert per warehouse (use org,item,warehouse constraint)
+          const { error } = await supabase.from('stock_balance')
+            .upsert(cleanUpserts, { onConflict: 'organization_id,item_id,warehouse_id' });
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('stock_balance')
+            .upsert(cleanUpserts, { onConflict: 'organization_id,department_id,item_id' });
+          if (error) throw error;
+        }
       }
 
-      // Delete old FIFO entries for these items then re-insert
+      // Insert/replace stock_movements for opening balance
+      if (balanceUpserts.length > 0) {
+        const movItemIds = [...new Set(balanceUpserts.map(b => b.item_id))];
+        await supabase.from('stock_movements')
+          .delete()
+          .eq('organization_id', selectedOrg.id)
+          .eq('reference_type', 'OPENING_BALANCE')
+          .in('item_id', movItemIds);
+
+        const movementInserts = balanceUpserts.map(b => ({
+          organization_id: b.organization_id,
+          item_id: b.item_id,
+          movement_type: 'IN',
+          quantity: b.quantity,
+          unit_cost: b.avg_cost,
+          total_cost: b.total_value,
+          balance_after: b.quantity,
+          reference_type: 'OPENING_BALANCE',
+          reference_number: 'OB-' + (selectedCategory?.code || 'OB'),
+          notes: 'Opening Balance - ' + (selectedCategory?.name || '') + (b._status ? ' [' + b._status + ']' : ''),
+          warehouse_id: b.warehouse_id || null,
+          department_id: b.department_id || null,
+          created_by: currentUser?.id || null,
+        }));
+        const { error: smErr } = await supabase.from('stock_movements').insert(movementInserts);
+        if (smErr) console.warn('Stock movements warning:', smErr.message);
+      }
+
+      // FIFO entries (same as before)
       const itemIds = fifoEntries.map(f => f.item_id);
       if (itemIds.length > 0) {
         await supabase.from('stock_fifo_queue')
@@ -9026,12 +9437,12 @@ function OpeningBalancePage() {
         if (fifoErr) console.warn('FIFO warning:', fifoErr.message);
       }
 
-      // Update lock record (items_counted, total_value)
+      // Update lock record
       const counted = catItems.filter(i => {
         const d = details[i.id];
         return d && Object.values(d).some(v => (parseFloat(v.quantity) || 0) > 0);
       }).length;
-      const totalVal = balanceUpserts.reduce((s, b) => s + b.total_value, 0);
+      const totalVal = balanceUpserts.reduce((s, b) => s + (b.total_value || 0), 0);
 
       await supabase.from('opening_balance_locks').upsert({
         organization_id: selectedOrg.id,
@@ -9079,6 +9490,7 @@ function OpeningBalancePage() {
     const isMultiStatus = config.statuses.length > 1;
     const lock = locks[selectedCategory.id];
     const isLocked = lock?.is_locked || false;
+    const isLinenCategory = selectedCategory?.code === 'LIN';
 
     const filteredItems = catItems.filter(item =>
       !search || item.name.toLowerCase().includes(search.toLowerCase()) || item.code.toLowerCase().includes(search.toLowerCase())
@@ -9116,7 +9528,7 @@ function OpeningBalancePage() {
                   <Button variant="secondary" onClick={handleLockCategory} disabled={catCounted === 0}>
                     <Icons.Lock /> {t('ob.lockBtn')}
                   </Button>
-                  <Button onClick={handleSaveCategory} disabled={saving}>
+                  <Button onClick={handleSaveCategory} disabled={saving || (!isLinenCategory && !selectedWarehouse)}>
                     {saving ? t('ob.saving') : t('ob.save')}
                   </Button>
                 </>
@@ -9140,16 +9552,40 @@ function OpeningBalancePage() {
           </div>
         )}
 
-        {/* Search */}
+        {/* Warehouse & Search */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4">
-          <div className="p-4">
-            <div className="relative">
+          <div className="p-4 flex flex-col md:flex-row gap-3">
+            {isLinenCategory ? (
+              <div className="flex items-center gap-2 md:w-auto">
+                <Icons.Info className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                <span className="text-sm text-blue-700">Linen: warehouse otomatis per status (HK Store, Room, Dirty, Laundry, Damaged)</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 md:w-72">
+                <Icons.Warehouse className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <select value={selectedWarehouse} onChange={e => setSelectedWarehouse(e.target.value)}
+                  disabled={isLocked}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'} ${selectedWarehouse ? 'border-blue-300 bg-blue-50' : ''}`}>
+                  <option value="">-- Pilih Gudang --</option>
+                  {warehouses.filter(w => !['dirty','laundry','room'].includes(w.warehouse_type)).map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="relative flex-1">
               <Icons.Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                 placeholder={t('ob.searchPlaceholder')}
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
             </div>
           </div>
+          {!isLinenCategory && !selectedWarehouse && !isLocked && (
+            <div className="px-4 pb-3">
+              <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                <Icons.AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span className="text-xs text-amber-700">Pilih gudang terlebih dahulu sebelum menyimpan data counting.</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Items Table */}
@@ -9208,16 +9644,26 @@ function OpeningBalancePage() {
                         </td>
                         {config.statuses.map(st => {
                           const d = itemD[st] || {};
+                          const isInUseLinenCol = isLinenCategory && st === 'in_use';
                           return (
                             <td key={st} className="px-2 py-2">
-                              <input type="number" min="0" step="1"
-                                value={d.quantity || ''}
-                                onChange={e => updateDetail(item.id, st, 'quantity', e.target.value)}
-                                disabled={isLocked} placeholder="0"
-                                className={`w-full text-center text-sm border rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-primary-500
-                                  ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'}
-                                  ${(parseFloat(d.quantity) || 0) > 0 ? 'border-green-300 bg-green-50' : ''}`}
-                              />
+                              <div className={isInUseLinenCol ? 'flex items-center gap-1' : ''}>
+                                <input type="number" min="0" step="1"
+                                  value={d.quantity || ''}
+                                  onChange={e => updateDetail(item.id, st, 'quantity', e.target.value)}
+                                  disabled={isLocked} placeholder="0"
+                                  className={`w-full text-center text-sm border rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-primary-500
+                                    ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'}
+                                    ${(parseFloat(d.quantity) || 0) > 0 ? 'border-green-300 bg-green-50' : ''}`}
+                                />
+                                {isInUseLinenCol && (parseFloat(d.quantity) || 0) > 0 && !isLocked && (
+                                  <button onClick={() => { setRoomPopupItemId(item.id); setShowRoomPopup(true); }}
+                                    title="Assign ke kamar"
+                                    className="flex-shrink-0 p-1 text-blue-600 hover:bg-blue-50 rounded">
+                                    <Icons.MapPin className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           );
                         })}
@@ -9289,12 +9735,103 @@ function OpeningBalancePage() {
               {catCounted} / {catItems.length} {t('ob.itemsCounted').toLowerCase()}
               <span className="mx-2">|</span>
               <span className="font-semibold text-green-700">Rp {catTotalValue.toLocaleString('id-ID')}</span>
+              {(isLinenCategory || selectedWarehouse) && (
+                <span className="mx-2">|</span>
+              )}
+              {isLinenCategory ? (
+                <span className="text-blue-600">
+                  <Icons.Warehouse className="inline w-4 h-4 mr-1" />
+                  Auto
+                </span>
+              ) : (
+                selectedWarehouse && (
+                  <span className="text-blue-600">
+                    <Icons.Warehouse className="inline w-4 h-4 mr-1" />
+                    {warehouses.find(w => w.id === selectedWarehouse)?.code || ''}
+                  </span>
+                )
+              )}
             </div>
-            <Button onClick={handleSaveCategory} disabled={saving}>
+            <Button onClick={handleSaveCategory} disabled={saving || (!isLinenCategory && !selectedWarehouse)}>
               {saving ? t('ob.saving') : t('ob.save')}
             </Button>
           </div>
         )}
+
+        {/* Room Assignment Popup for Linen In-Use */}
+        {showRoomPopup && roomPopupItemId && (() => {
+          const popupItem = items.find(i => i.id === roomPopupItemId);
+          const itemD = details[roomPopupItemId] || {};
+          const inUseQty = parseFloat(itemD.in_use?.quantity) || 0;
+          const assignments = roomAssignments[roomPopupItemId] || {};
+          const assignedTotal = Object.values(assignments).reduce((s, q) => s + (parseFloat(q) || 0), 0);
+          const remaining = inUseQty - assignedTotal;
+
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowRoomPopup(false)}>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-gray-900">Assign In-Use ke Kamar</h3>
+                    <p className="text-sm text-gray-500">{popupItem?.code} - {popupItem?.name}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm">Total In-Use: <strong className="text-blue-600">{inUseQty}</strong></div>
+                    <div className={`text-xs ${remaining === 0 ? 'text-green-600' : remaining < 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                      {remaining === 0 ? '✓ Semua terassign' : remaining > 0 ? `Sisa belum diassign: ${remaining}` : `Melebihi: ${Math.abs(remaining)}`}
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-y-auto max-h-[55vh] p-4">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                        <th className="px-3 py-2 text-left">Room</th>
+                        <th className="px-3 py-2 text-left">Type</th>
+                        <th className="px-3 py-2 text-left">Floor</th>
+                        <th className="px-3 py-2 text-center w-24">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {rooms.map(room => (
+                        <tr key={room.id} className={`hover:bg-gray-50 ${(parseFloat(assignments[room.id]) || 0) > 0 ? 'bg-green-50/50' : ''}`}>
+                          <td className="px-3 py-2 text-sm font-medium">{room.room_number}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{room.room_types?.name || '-'}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{room.floor || '-'}</td>
+                          <td className="px-3 py-2">
+                            <input type="number" min="0" step="1"
+                              value={assignments[room.id] || ''}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setRoomAssignments(prev => ({
+                                  ...prev,
+                                  [roomPopupItemId]: { ...(prev[roomPopupItemId] || {}), [room.id]: val }
+                                }));
+                              }}
+                              placeholder="0"
+                              className="w-full text-center text-sm border border-gray-200 rounded-lg px-2 py-1 focus:ring-2 focus:ring-primary-500"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="p-4 border-t border-gray-200 flex justify-between items-center">
+                  <div className="text-sm text-gray-500">
+                    Assigned: <strong>{assignedTotal}</strong> / {inUseQty}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setShowRoomPopup(false)}>Tutup</Button>
+                    <Button onClick={() => setShowRoomPopup(false)} disabled={remaining !== 0}>
+                      Simpan Assignment
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -9408,13 +9945,13 @@ function RoomMakeUpPage() {
     setLoading(true);
     const [muRes, roomRes, whRes, itemRes, atRes] = await Promise.all([
       supabase.from('room_makeups')
-        .select('*, rooms!left(room_number, floor), room_makeup_items(*, items(code, name, brand, units:unit_id(abbreviation)))')
+        .select('*, rooms!left(room_number, floor), room_makeup_items(*, items(code, name, brand, category_id, item_categories(code), units:unit_id(abbreviation)))')
         .eq('organization_id', selectedOrg.id)
         .order('created_at', { ascending: false }),
       supabase.from('rooms').select('id, room_number, floor, warehouse_id, room_types(name)')
         .eq('organization_id', selectedOrg.id).order('room_number'),
       supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
-      supabase.from('items').select('id, code, name, brand').eq('is_active', true).order('name'),
+      supabase.from('items').select('id, code, name, brand, category_id, item_categories(code)').eq('is_active', true).order('name'),
       supabase.from('makeup_activity_templates').select('*')
         .eq('organization_id', selectedOrg.id).eq('is_active', true).order('sort_order'),
     ]);
@@ -9651,20 +10188,33 @@ function RoomMakeUpPage() {
       const roomWarehouseId = room?.warehouse_id || null;
       const damageWarehouse = warehouses.find(w => w.warehouse_type === 'damage' && w.code?.includes(selectedOrg.code));
 
+      // Find dirty warehouse for linen lifecycle
+      const dirtyWarehouse = warehouses.find(w => w.warehouse_type === 'dirty');
+      // Helper to check if an item is linen category
+      function isLinenItem(itemId) {
+        const itm = (allItems || []).find(i => i.id === itemId);
+        return itm?.item_categories?.code === 'LIN';
+      }
+
       // Process replace & refill items (stock OUT from source warehouse)
       for (const item of muItems.filter(i => i.type === 'replace' || i.type === 'refill')) {
         const qty = parseFloat(item.actual_qty);
         if (qty <= 0) continue;
 
+        // Get stock balance from HK Store (source warehouse)
+        const sourceWhId = item.warehouse_id || null;
         const { data: sb } = await supabase.from('stock_balance')
           .select('id, quantity, avg_cost, total_value')
           .eq('organization_id', selectedOrg.id)
           .eq('item_id', item.item_id)
+          .eq('warehouse_id', sourceWhId)
           .maybeSingle();
 
         const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
         const totalCost = qty * unitCost;
 
+        // 1. OUT from source warehouse (HK Store) - linen bersih keluar dari gudang
+        const muBalAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
         const { error: smErr } = await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
@@ -9672,15 +10222,18 @@ function RoomMakeUpPage() {
           quantity: qty,
           unit_cost: unitCost,
           total_cost: totalCost,
+          balance_after: muBalAfter,
           reference_type: 'MAKEUP',
           reference_number: mu.makeup_number,
-          warehouse_id: item.warehouse_id || null,
+          warehouse_id: sourceWhId,
           notes: item.type === 'replace'
-            ? `Room makeup replace. Dirty: ${item.dirty_qty || 0}`
-            : 'Room makeup refill',
+            ? `Room makeup replace - OUT from HK Store. Dirty: ${item.dirty_qty || 0}`
+            : 'Room makeup refill - OUT from HK Store',
+          created_by: currentUser?.id || null,
         });
         if (smErr) throw new Error('Stock movement: ' + smErr.message);
 
+        // Update stock_balance for source warehouse (HK Store) - decrease
         if (sb) {
           const newQty = Math.max(0, parseFloat(sb.quantity) - qty);
           const newTotalValue = newQty * parseFloat(sb.avg_cost);
@@ -9690,6 +10243,148 @@ function RoomMakeUpPage() {
             last_movement_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }).eq('id', sb.id);
+        }
+
+        // === LINEN LIFECYCLE MOVEMENTS ===
+        if (isLinenItem(item.item_id) && roomWarehouseId) {
+          // 2. IN to room warehouse (linen bersih masuk ke kamar)
+          const roomInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
+          await supabase.from('stock_movements').insert({
+            organization_id: selectedOrg.id,
+            item_id: item.item_id,
+            movement_type: 'IN',
+            quantity: qty,
+            unit_cost: unitCost,
+            total_cost: totalCost,
+            balance_after: roomInBal,
+            reference_type: 'MAKEUP',
+            reference_number: mu.makeup_number,
+            warehouse_id: roomWarehouseId,
+            notes: `Room makeup ${item.type} - linen bersih IN to room`,
+            created_by: currentUser?.id || null,
+          });
+
+          // Update/upsert stock_balance for room warehouse - increase
+          const { data: roomSb } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id)
+            .eq('item_id', item.item_id)
+            .eq('warehouse_id', roomWarehouseId)
+            .maybeSingle();
+          if (roomSb) {
+            const newRoomQty = parseFloat(roomSb.quantity) + qty;
+            await supabase.from('stock_balance').update({
+              quantity: newRoomQty,
+              avg_cost: unitCost,
+              total_value: newRoomQty * unitCost,
+              last_movement_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq('id', roomSb.id);
+          } else {
+            const { data: dept } = await supabase.from('departments')
+              .select('id').eq('organization_id', selectedOrg.id).limit(1).single();
+            await supabase.from('stock_balance').insert({
+              organization_id: selectedOrg.id,
+              department_id: dept?.id || null,
+              item_id: item.item_id,
+              warehouse_id: roomWarehouseId,
+              quantity: qty,
+              avg_cost: unitCost,
+              total_value: qty * unitCost,
+              last_movement_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+          }
+
+          // 3. For REPLACE: dirty linen OUT from room → IN to dirty warehouse
+          if (item.type === 'replace') {
+            const dirtyQty = parseFloat(item.dirty_qty) || qty;
+
+            // OUT from room warehouse (linen kotor keluar)
+            const dirtyOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', dirtyQty);
+            await supabase.from('stock_movements').insert({
+              organization_id: selectedOrg.id,
+              item_id: item.item_id,
+              movement_type: 'OUT',
+              quantity: dirtyQty,
+              unit_cost: unitCost,
+              total_cost: dirtyQty * unitCost,
+              balance_after: dirtyOutBal,
+              reference_type: 'MAKEUP',
+              reference_number: mu.makeup_number,
+              warehouse_id: roomWarehouseId,
+              notes: 'Room makeup replace - linen kotor OUT from room',
+              created_by: currentUser?.id || null,
+            });
+
+            // Update stock_balance room - decrease by dirty qty
+            const { data: roomSb2 } = await supabase.from('stock_balance')
+              .select('id, quantity, avg_cost')
+              .eq('organization_id', selectedOrg.id)
+              .eq('item_id', item.item_id)
+              .eq('warehouse_id', roomWarehouseId)
+              .maybeSingle();
+            if (roomSb2) {
+              const newRoomQty2 = Math.max(0, parseFloat(roomSb2.quantity) - dirtyQty);
+              await supabase.from('stock_balance').update({
+                quantity: newRoomQty2,
+                total_value: newRoomQty2 * (parseFloat(roomSb2.avg_cost) || unitCost),
+                last_movement_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }).eq('id', roomSb2.id);
+            }
+
+            // IN to dirty warehouse (linen kotor masuk)
+            if (dirtyWarehouse) {
+              const dirtyInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', dirtyQty);
+              await supabase.from('stock_movements').insert({
+                organization_id: selectedOrg.id,
+                item_id: item.item_id,
+                movement_type: 'IN',
+                quantity: dirtyQty,
+                unit_cost: unitCost,
+                total_cost: dirtyQty * unitCost,
+                balance_after: dirtyInBal,
+                reference_type: 'MAKEUP',
+                reference_number: mu.makeup_number,
+                warehouse_id: dirtyWarehouse.id,
+                notes: 'Room makeup replace - linen kotor IN to dirty staging',
+                created_by: currentUser?.id || null,
+              });
+
+              // Update/upsert stock_balance for dirty warehouse - increase
+              const { data: dirtySb } = await supabase.from('stock_balance')
+                .select('id, quantity, avg_cost, total_value')
+                .eq('organization_id', selectedOrg.id)
+                .eq('item_id', item.item_id)
+                .eq('warehouse_id', dirtyWarehouse.id)
+                .maybeSingle();
+              if (dirtySb) {
+                const newDirtyQty = parseFloat(dirtySb.quantity) + dirtyQty;
+                await supabase.from('stock_balance').update({
+                  quantity: newDirtyQty,
+                  avg_cost: unitCost,
+                  total_value: newDirtyQty * unitCost,
+                  last_movement_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                }).eq('id', dirtySb.id);
+              } else {
+                const { data: dept } = await supabase.from('departments')
+                  .select('id').eq('organization_id', selectedOrg.id).limit(1).single();
+                await supabase.from('stock_balance').insert({
+                  organization_id: selectedOrg.id,
+                  department_id: dept?.id || null,
+                  item_id: item.item_id,
+                  warehouse_id: dirtyWarehouse.id,
+                  quantity: dirtyQty,
+                  avg_cost: unitCost,
+                  total_value: dirtyQty * unitCost,
+                  last_movement_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                });
+              }
+            }
+          }
         }
       }
 
@@ -9708,6 +10403,7 @@ function RoomMakeUpPage() {
         const totalCost = qty * unitCost;
 
         // 1. OUT from room warehouse (item lost/damaged leaves the room)
+        const lbOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
         await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
@@ -9715,14 +10411,17 @@ function RoomMakeUpPage() {
           quantity: qty,
           unit_cost: unitCost,
           total_cost: totalCost,
+          balance_after: lbOutBal,
           reference_type: 'LOST_BREAKAGE',
           reference_number: mu.makeup_number,
           warehouse_id: roomWarehouseId,
           notes: `${item.notes || 'Lost/Damaged'} - OUT from room`,
+          created_by: currentUser?.id || null,
         });
 
         // 2. IN to Damaged warehouse
         if (damageWarehouse) {
+          const dmgInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
           await supabase.from('stock_movements').insert({
             organization_id: selectedOrg.id,
             item_id: item.item_id,
@@ -9730,15 +10429,18 @@ function RoomMakeUpPage() {
             quantity: qty,
             unit_cost: unitCost,
             total_cost: totalCost,
+            balance_after: dmgInBal,
             reference_type: 'LOST_BREAKAGE',
             reference_number: mu.makeup_number,
             warehouse_id: damageWarehouse.id,
             notes: `${item.notes || 'Lost/Damaged'} - IN to damaged warehouse`,
+            created_by: currentUser?.id || null,
           });
         }
 
         // 3. Replacement: OUT from source warehouse → IN to room warehouse
         if (item.warehouse_id) {
+          const replOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
           await supabase.from('stock_movements').insert({
             organization_id: selectedOrg.id,
             item_id: item.item_id,
@@ -9746,12 +10448,15 @@ function RoomMakeUpPage() {
             quantity: qty,
             unit_cost: unitCost,
             total_cost: totalCost,
+            balance_after: replOutBal,
             reference_type: 'REPLACEMENT',
             reference_number: mu.makeup_number,
             warehouse_id: item.warehouse_id,
             notes: `Replacement for ${item.notes || 'lost/damaged'} - OUT from warehouse`,
+            created_by: currentUser?.id || null,
           });
 
+          const replInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
           await supabase.from('stock_movements').insert({
             organization_id: selectedOrg.id,
             item_id: item.item_id,
@@ -9759,10 +10464,12 @@ function RoomMakeUpPage() {
             quantity: qty,
             unit_cost: unitCost,
             total_cost: totalCost,
+            balance_after: replInBal,
             reference_type: 'REPLACEMENT',
             reference_number: mu.makeup_number,
             warehouse_id: roomWarehouseId,
             notes: `Replacement for ${item.notes || 'lost/damaged'} - IN to room`,
+            created_by: currentUser?.id || null,
           });
         }
 
@@ -10400,7 +11107,7 @@ function RoomMakeUpPage() {
 // ============================================================
 function DirectPurchasePage() {
   const { t } = useTranslation();
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, currentUser, showNotification } = useApp();
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
@@ -10570,6 +11277,7 @@ function DirectPurchasePage() {
         const totalCost = qty * unitPrice;
 
         // Create stock movement IN
+        const dpBalAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
         const { error: smErr } = await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
@@ -10577,10 +11285,12 @@ function DirectPurchasePage() {
           quantity: qty,
           unit_cost: unitPrice,
           total_cost: totalCost,
+          balance_after: dpBalAfter,
           reference_type: 'DIRECT_PURCHASE',
           reference_number: dp.purchase_number,
           warehouse_id: item.warehouse_id || null,
           notes: 'Direct purchase from ' + dp.purchase_location,
+          created_by: currentUser?.id || null,
         });
         if (smErr) throw new Error('Stock movement error: ' + smErr.message);
 
@@ -10828,11 +11538,588 @@ function DirectPurchasePage() {
 }
 
 // ============================================================
+// LAUNDRY PAGE
+// ============================================================
+function LaundryPage() {
+  const { t } = useTranslation();
+  const { selectedOrg, currentUser, showNotification } = useApp();
+  const [activeTab, setActiveTab] = useState('send');
+  const [dirtyItems, setDirtyItems] = useState([]);
+  const [laundryItems, setLaundryItems] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [selectedItems, setSelectedItems] = useState({});
+  const [history, setHistory] = useState([]);
+  const [dirtyWarehouse, setDirtyWarehouse] = useState(null);
+  const [laundryWarehouse, setLaundryWarehouse] = useState(null);
+  const [storeWarehouse, setStoreWarehouse] = useState(null);
+
+  useEffect(() => {
+    if (selectedOrg) loadAll();
+  }, [selectedOrg]);
+
+  async function loadAll() {
+    setLoading(true);
+    try {
+      // Load warehouses
+      const { data: whData } = await supabase.from('warehouses')
+        .select('*')
+        .eq('organization_id', selectedOrg.id)
+        .eq('is_active', true);
+
+      setWarehouses(whData || []);
+
+      if (whData && whData.length > 0) {
+        const dirty = whData.find(w => w.warehouse_type === 'dirty');
+        const laundry = whData.find(w => w.warehouse_type === 'laundry');
+        const store = whData.find(w => w.warehouse_type === 'store' && w.code?.startsWith('HK'));
+
+        setDirtyWarehouse(dirty);
+        setLaundryWarehouse(laundry);
+        setStoreWarehouse(store);
+
+        // Load items in dirty warehouse
+        if (dirty) {
+          const { data: dirtyData } = await supabase.from('stock_balance')
+            .select('*, items:item_id(id, code, name, brand, category_id, item_categories:category_id(id, name))')
+            .eq('warehouse_id', dirty.id)
+            .gt('quantity', 0);
+          setDirtyItems(dirtyData || []);
+        }
+
+        // Load items in laundry warehouse
+        if (laundry) {
+          const { data: laundryData } = await supabase.from('stock_balance')
+            .select('*, items:item_id(id, code, name, brand, category_id, item_categories:category_id(id, name))')
+            .eq('warehouse_id', laundry.id)
+            .gt('quantity', 0);
+          setLaundryItems(laundryData || []);
+        }
+      }
+
+      // Load categories
+      const { data: catData } = await supabase.from('item_categories')
+        .select('id, name')
+        .eq('organization_id', selectedOrg.id)
+        .eq('is_active', true)
+        .order('name');
+      setCategories(catData || []);
+
+      // Load history
+      const { data: histData } = await supabase.from('stock_movements')
+        .select('*, items:item_id(code, name), warehouses:warehouse_id(code, name)')
+        .eq('organization_id', selectedOrg.id)
+        .in('reference_type', ['LAUNDRY_SEND', 'LAUNDRY_RECEIVE'])
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setHistory(histData || []);
+    } catch (e) {
+      console.error(e);
+      showNotification('Error loading laundry data: ' + e.message, 'error');
+    }
+    setLoading(false);
+  }
+
+  async function generateSendNumber() {
+    const { count } = await supabase.from('stock_movements')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', selectedOrg.id)
+      .eq('reference_type', 'LAUNDRY_SEND');
+    const seq = String((count || 0) + 1).padStart(4, '0');
+    return `LS-${selectedOrg.code}-${seq}`;
+  }
+
+  async function generateReceiveNumber() {
+    const { count } = await supabase.from('stock_movements')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', selectedOrg.id)
+      .eq('reference_type', 'LAUNDRY_RECEIVE');
+    const seq = String((count || 0) + 1).padStart(4, '0');
+    return `LR-${selectedOrg.code}-${seq}`;
+  }
+
+  async function handleSendToLaundry() {
+    const itemsToSend = Object.entries(selectedItems)
+      .filter(([_, val]) => val && parseFloat(val.qty) > 0)
+      .map(([itemId, val]) => ({ item_id: itemId, qty: parseFloat(val.qty), notes: val.notes || '' }));
+
+    if (itemsToSend.length === 0) {
+      showNotification(t('common.selectAtLeastOne') || 'Please select at least one item', 'error');
+      return;
+    }
+
+    if (!confirm('Confirm sending ' + itemsToSend.length + ' item(s) to laundry?')) return;
+
+    setSaving(true);
+    try {
+      // Get department
+      const { data: dept } = await supabase.from('departments')
+        .select('id')
+        .eq('organization_id', selectedOrg.id)
+        .limit(1)
+        .single();
+
+      const refNumber = await generateSendNumber();
+
+      for (const item of itemsToSend) {
+        const stockItem = dirtyItems.find(di => di.item_id === item.item_id);
+        if (!stockItem) continue;
+
+        const qty = item.qty;
+        const balanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
+
+        // OUT from dirty warehouse
+        await supabase.from('stock_movements').insert({
+          organization_id: selectedOrg.id,
+          department_id: dept?.id || null,
+          item_id: item.item_id,
+          movement_type: 'OUT',
+          quantity: qty,
+          unit_cost: stockItem.avg_cost || 0,
+          total_cost: (qty * (stockItem.avg_cost || 0)),
+          balance_after: balanceAfter,
+          reference_type: 'LAUNDRY_SEND',
+          reference_number: refNumber,
+          reference_id: item.item_id,
+          notes: item.notes,
+          warehouse_id: dirtyWarehouse.id,
+          created_by: currentUser?.id || null,
+          created_at: new Date().toISOString()
+        });
+
+        // IN to laundry warehouse
+        const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
+        await supabase.from('stock_movements').insert({
+          organization_id: selectedOrg.id,
+          department_id: dept?.id || null,
+          item_id: item.item_id,
+          movement_type: 'IN',
+          quantity: qty,
+          unit_cost: stockItem.avg_cost || 0,
+          total_cost: (qty * (stockItem.avg_cost || 0)),
+          balance_after: inBalanceAfter,
+          reference_type: 'LAUNDRY_SEND',
+          reference_number: refNumber,
+          reference_id: item.item_id,
+          notes: item.notes,
+          warehouse_id: laundryWarehouse.id,
+          created_by: currentUser?.id || null,
+          created_at: new Date().toISOString()
+        });
+
+        // Update stock_balance: decrease in dirty, increase in laundry
+        await supabase.from('stock_balance')
+          .update({
+            quantity: stockItem.quantity - qty,
+            updated_at: new Date().toISOString()
+          })
+          .eq('item_id', item.item_id)
+          .eq('warehouse_id', dirtyWarehouse.id);
+
+        const laundryBalance = laundryItems.find(li => li.item_id === item.item_id);
+        await supabase.from('stock_balance').upsert({
+          organization_id: selectedOrg.id,
+          department_id: dept?.id || null,
+          item_id: item.item_id,
+          warehouse_id: laundryWarehouse.id,
+          quantity: (laundryBalance?.quantity || 0) + qty,
+          avg_cost: stockItem.avg_cost || 0,
+          total_value: ((laundryBalance?.quantity || 0) + qty) * (stockItem.avg_cost || 0),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'organization_id,department_id,item_id,warehouse_id'
+        });
+      }
+
+      showNotification('Items sent to laundry successfully (Ref: ' + refNumber + ')', 'success');
+      setSelectedItems({});
+      loadAll();
+    } catch (e) {
+      console.error(e);
+      showNotification('Error sending to laundry: ' + e.message, 'error');
+    }
+    setSaving(false);
+  }
+
+  async function handleReceiveFromLaundry() {
+    const itemsToReceive = Object.entries(selectedItems)
+      .filter(([_, val]) => val && parseFloat(val.qty) > 0)
+      .map(([itemId, val]) => ({ item_id: itemId, qty: parseFloat(val.qty), notes: val.notes || '' }));
+
+    if (itemsToReceive.length === 0) {
+      showNotification(t('common.selectAtLeastOne') || 'Please select at least one item', 'error');
+      return;
+    }
+
+    if (!confirm('Confirm receiving ' + itemsToReceive.length + ' item(s) from laundry?')) return;
+
+    setSaving(true);
+    try {
+      // Get department
+      const { data: dept } = await supabase.from('departments')
+        .select('id')
+        .eq('organization_id', selectedOrg.id)
+        .limit(1)
+        .single();
+
+      const refNumber = await generateReceiveNumber();
+
+      for (const item of itemsToReceive) {
+        const stockItem = laundryItems.find(li => li.item_id === item.item_id);
+        if (!stockItem) continue;
+
+        const qty = item.qty;
+        const balanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
+
+        // OUT from laundry warehouse
+        await supabase.from('stock_movements').insert({
+          organization_id: selectedOrg.id,
+          department_id: dept?.id || null,
+          item_id: item.item_id,
+          movement_type: 'OUT',
+          quantity: qty,
+          unit_cost: stockItem.avg_cost || 0,
+          total_cost: (qty * (stockItem.avg_cost || 0)),
+          balance_after: balanceAfter,
+          reference_type: 'LAUNDRY_RECEIVE',
+          reference_number: refNumber,
+          reference_id: item.item_id,
+          notes: item.notes,
+          warehouse_id: laundryWarehouse.id,
+          created_by: currentUser?.id || null,
+          created_at: new Date().toISOString()
+        });
+
+        // IN to store warehouse
+        const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
+        await supabase.from('stock_movements').insert({
+          organization_id: selectedOrg.id,
+          department_id: dept?.id || null,
+          item_id: item.item_id,
+          movement_type: 'IN',
+          quantity: qty,
+          unit_cost: stockItem.avg_cost || 0,
+          total_cost: (qty * (stockItem.avg_cost || 0)),
+          balance_after: inBalanceAfter,
+          reference_type: 'LAUNDRY_RECEIVE',
+          reference_number: refNumber,
+          reference_id: item.item_id,
+          notes: item.notes,
+          warehouse_id: storeWarehouse.id,
+          created_by: currentUser?.id || null,
+          created_at: new Date().toISOString()
+        });
+
+        // Update stock_balance: decrease in laundry, increase in store
+        await supabase.from('stock_balance')
+          .update({
+            quantity: stockItem.quantity - qty,
+            updated_at: new Date().toISOString()
+          })
+          .eq('item_id', item.item_id)
+          .eq('warehouse_id', laundryWarehouse.id);
+
+        const storeBalance = dirtyItems.find(di => di.item_id === item.item_id);
+        await supabase.from('stock_balance').upsert({
+          organization_id: selectedOrg.id,
+          department_id: dept?.id || null,
+          item_id: item.item_id,
+          warehouse_id: storeWarehouse.id,
+          quantity: (storeBalance?.quantity || 0) + qty,
+          avg_cost: stockItem.avg_cost || 0,
+          total_value: ((storeBalance?.quantity || 0) + qty) * (stockItem.avg_cost || 0),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'organization_id,department_id,item_id,warehouse_id'
+        });
+      }
+
+      showNotification('Items received from laundry successfully (Ref: ' + refNumber + ')', 'success');
+      setSelectedItems({});
+      loadAll();
+    } catch (e) {
+      console.error(e);
+      showNotification('Error receiving from laundry: ' + e.message, 'error');
+    }
+    setSaving(false);
+  }
+
+  const itemsToDisplay = activeTab === 'send' ? dirtyItems : laundryItems;
+  const filtered = itemsToDisplay.filter(item => {
+    const txt = search.toLowerCase();
+    const matchSearch = !txt ||
+      item.items?.name?.toLowerCase().includes(txt) ||
+      item.items?.code?.toLowerCase().includes(txt) ||
+      item.items?.brand?.toLowerCase().includes(txt);
+    const matchCat = !filterCategory || item.items?.category_id === filterCategory;
+    return matchSearch && matchCat;
+  });
+
+  const totalItemsSelected = Object.values(selectedItems).filter(v => v && parseFloat(v.qty) > 0).length;
+
+  return (
+    <div className="fade-in">
+      <PageHeader
+        title={t('laundry.title') || 'Laundry Management'}
+        subtitle={`${t('laundry.subtitle') || 'Manage linen laundry cycle for'} ${selectedOrg?.name || ''}`}
+      />
+
+      {/* Tab Navigation */}
+      <div className="mb-6 flex gap-4 border-b border-gray-200">
+        <button
+          onClick={() => { setActiveTab('send'); setSearch(''); setFilterCategory(''); }}
+          className={`px-4 py-3 font-medium border-b-2 transition-colors ${
+            activeTab === 'send'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          {t('laundry.sendTab') || 'Kirim ke Laundry'}
+        </button>
+        <button
+          onClick={() => { setActiveTab('receive'); setSearch(''); setFilterCategory(''); }}
+          className={`px-4 py-3 font-medium border-b-2 transition-colors ${
+            activeTab === 'receive'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          {t('laundry.receiveTab') || 'Terima dari Laundry'}
+        </button>
+      </div>
+
+      {/* Summary Cards */}
+      {!loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <StatCard
+            icon={Icons.Warehouse}
+            label={t('laundry.itemsInDirty') || 'Items in Dirty'}
+            value={dirtyItems.length}
+            color="orange"
+          />
+          <StatCard
+            icon={Icons.Truck}
+            label={t('laundry.itemsInLaundry') || 'Items in Laundry'}
+            value={laundryItems.length}
+            color="blue"
+          />
+          <StatCard
+            icon={Icons.Package}
+            label={t('laundry.selectedCount') || 'Selected for Transfer'}
+            value={totalItemsSelected}
+            color="green"
+          />
+        </div>
+      )}
+
+      {/* Search and Filter */}
+      <div className="mb-4 flex gap-3">
+        <div className="flex-1">
+          <input
+            type="text"
+            placeholder={t('laundry.searchPlaceholder') || 'Search by item name, code, or brand...'}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+        <select
+          value={filterCategory}
+          onChange={e => setFilterCategory(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="">{t('laundry.allCategories') || 'All Categories'}</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+
+      {/* Items Table */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="spinner"></div>
+        </div>
+      ) : !dirtyWarehouse && activeTab === 'send' ? (
+        <div className="text-center py-12 text-gray-500">
+          {t('laundry.noDirtyWarehouse') || 'No dirty warehouse configured for this hotel.'}
+        </div>
+      ) : !laundryWarehouse && activeTab === 'receive' ? (
+        <div className="text-center py-12 text-gray-500">
+          {t('laundry.noLaundryWarehouse') || 'No laundry warehouse configured for this hotel.'}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          {activeTab === 'send'
+            ? (t('laundry.noDirtyItems') || 'No items in dirty warehouse.')
+            : (t('laundry.noLaundryItems') || 'No items in laundry warehouse.')
+          }
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-hidden mb-6">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-8">
+                  <input
+                    type="checkbox"
+                    checked={filtered.length > 0 && filtered.every(item => selectedItems[item.item_id]?.selected)}
+                    onChange={e => {
+                      const newSel = { ...selectedItems };
+                      filtered.forEach(item => {
+                        if (e.target.checked) {
+                          newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
+                        } else {
+                          if (newSel[item.item_id]) delete newSel[item.item_id].selected;
+                        }
+                      });
+                      setSelectedItems(newSel);
+                    }}
+                  />
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemCode') || 'Item Code'}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemName') || 'Item Name'}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.category') || 'Category'}</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.availableQty') || 'Available Qty'}</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.transferQty') || 'Transfer Qty'}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.notes') || 'Notes'}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {filtered.map(item => (
+                <tr key={item.item_id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={!!selectedItems[item.item_id]?.selected}
+                      onChange={e => {
+                        const newSel = { ...selectedItems };
+                        if (e.target.checked) {
+                          newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
+                        } else {
+                          delete newSel[item.item_id];
+                        }
+                        setSelectedItems(newSel);
+                      }}
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium">{item.items?.code}</td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="font-medium">{item.items?.name}</div>
+                    {item.items?.brand && <div className="text-gray-500 text-xs">{item.items.brand}</div>}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{item.items?.item_categories?.name || '-'}</td>
+                  <td className="px-4 py-3 text-center text-sm font-medium">{item.quantity}</td>
+                  <td className="px-4 py-3 text-center">
+                    <input
+                      type="number"
+                      min="0"
+                      max={item.quantity}
+                      placeholder="0"
+                      value={selectedItems[item.item_id]?.qty || ''}
+                      onChange={e => {
+                        const newSel = { ...selectedItems };
+                        newSel[item.item_id] = {
+                          ...newSel[item.item_id],
+                          qty: e.target.value,
+                          selected: !!e.target.value
+                        };
+                        setSelectedItems(newSel);
+                      }}
+                      className="w-20 px-2 py-1 text-center border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="text"
+                      placeholder={t('laundry.notesPlaceholder') || 'Optional notes...'}
+                      value={selectedItems[item.item_id]?.notes || ''}
+                      onChange={e => {
+                        const newSel = { ...selectedItems };
+                        newSel[item.item_id] = { ...newSel[item.item_id], notes: e.target.value };
+                        setSelectedItems(newSel);
+                      }}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Submit Button */}
+      {!loading && filtered.length > 0 && (
+        <div className="mb-6 flex justify-end">
+          <Button
+            onClick={activeTab === 'send' ? handleSendToLaundry : handleReceiveFromLaundry}
+            disabled={saving || totalItemsSelected === 0}
+            variant="primary"
+          >
+            {saving ? (t('common.saving') || 'Saving...') : (activeTab === 'send' ? (t('laundry.sendButton') || 'Send to Laundry') : (t('laundry.receiveButton') || 'Receive from Laundry'))}
+          </Button>
+        </div>
+      )}
+
+      {/* History Section */}
+      <div className="mt-8">
+        <h3 className="text-lg font-semibold mb-4">{t('laundry.history') || 'Recent Transactions'}</h3>
+        {history.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+            {t('laundry.noHistory') || 'No laundry transactions yet.'}
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.refNumber') || 'Reference'}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.type') || 'Type'}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemCode') || 'Item Code'}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemName') || 'Item Name'}</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.qty') || 'Qty'}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.date') || 'Date'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {history.map((rec, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium">{rec.reference_number}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        rec.reference_type === 'LAUNDRY_SEND'
+                          ? 'bg-orange-100 text-orange-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {rec.reference_type === 'LAUNDRY_SEND' ? (t('laundry.typeSend') || 'Send') : (t('laundry.typeReceive') || 'Receive')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium">{rec.items?.code || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{rec.items?.name || '-'}</td>
+                    <td className="px-4 py-3 text-center text-sm">{rec.quantity}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {rec.created_at ? new Date(rec.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // IN-USE WAREHOUSE PAGE
 // ============================================================
 function InUseWarehousePage() {
   const { t } = useTranslation();
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, currentUser, showNotification } = useApp();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -10867,16 +12154,18 @@ function InUseWarehousePage() {
     if (!confirm(t('iu.depletedConfirm'))) return;
     try {
       // Stock movement OUT - DEPLETED
+      const deplBalAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', item.quantity);
       await supabase.from('stock_movements').insert({
         organization_id: selectedOrg.id,
         item_id: item.item_id,
         warehouse_id: inUseWarehouse.id,
         movement_type: 'OUT',
         quantity: item.quantity,
+        balance_after: deplBalAfter,
         reference_type: 'DEPLETED',
         reference_id: item.item_id,
         notes: `Depleted from In-Use Warehouse: ${item.items?.name || ''}`,
-        created_by: 'system',
+        created_by: currentUser?.id || null,
       });
 
       // Update stock balance to 0
@@ -10965,7 +12254,7 @@ function InUseWarehousePage() {
 // ============================================================
 function SingleItemUsagePage() {
   const { t } = useTranslation();
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, currentUser, showNotification } = useApp();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
@@ -10983,7 +12272,7 @@ function SingleItemUsagePage() {
     try {
       const [recRes, itemRes, whRes, deptRes] = await Promise.all([
         supabase.from('single_item_usage').select('*, items:item_id(code, name, brand), warehouses:warehouse_id(code, name), departments:department_id(code, name)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
-        supabase.from('items').select('id, code, name, brand').eq('is_active', true).order('name'),
+        supabase.from('items').select('id, code, name, brand, allow_single_usage').eq('is_active', true).eq('allow_single_usage', true).order('name'),
         supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
         supabase.from('departments').select('id, code, name').eq('is_active', true).order('name'),
       ]);
@@ -11068,16 +12357,18 @@ function SingleItemUsagePage() {
       if (usageErr) throw usageErr;
 
       // Stock movement OUT
+      const siuBalAfter = await getBalanceAfter(selectedOrg.id, form.item_id, 'OUT', qty);
       await supabase.from('stock_movements').insert({
         organization_id: selectedOrg.id,
         item_id: form.item_id,
         warehouse_id: form.warehouse_id,
         movement_type: 'OUT',
         quantity: qty,
+        balance_after: siuBalAfter,
         reference_type: 'USAGE',
         reference_id: usage.id,
         notes: `Single usage: ${usageNumber} - Dept: ${departments.find(d => d.id === form.department_id)?.name || ''}`,
-        created_by: 'system',
+        created_by: currentUser?.id || null,
       });
 
       // Update stock balance
@@ -11185,7 +12476,7 @@ function SingleItemUsagePage() {
 // ============================================================
 function TransferPage() {
   const { t } = useTranslation();
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, currentUser, showNotification } = useApp();
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [warehouses, setWarehouses] = useState([]);
@@ -11368,6 +12659,7 @@ function TransferPage() {
         const totalCost = qty * unitCost;
 
         // OUT from source warehouse
+        const trOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
         const { error: outErr } = await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
@@ -11375,14 +12667,17 @@ function TransferPage() {
           quantity: qty,
           unit_cost: unitCost,
           total_cost: totalCost,
+          balance_after: trOutBal,
           reference_type: 'TRANSFER',
           reference_number: tr.transfer_number,
           warehouse_id: tr.from_warehouse_id,
           notes: `Transfer to ${warehouses.find(w => w.id === tr.to_warehouse_id)?.code || 'warehouse'}`,
+          created_by: currentUser?.id || null,
         });
         if (outErr) throw new Error('OUT movement: ' + outErr.message);
 
         // IN to destination warehouse
+        const trInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
         const { error: inErr } = await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
@@ -11390,10 +12685,12 @@ function TransferPage() {
           quantity: qty,
           unit_cost: unitCost,
           total_cost: totalCost,
+          balance_after: trInBal,
           reference_type: 'TRANSFER',
           reference_number: tr.transfer_number,
           warehouse_id: tr.to_warehouse_id,
           notes: `Transfer from ${warehouses.find(w => w.id === tr.from_warehouse_id)?.code || 'warehouse'}`,
+          created_by: currentUser?.id || null,
         });
         if (inErr) throw new Error('IN movement: ' + inErr.message);
 
