@@ -791,10 +791,10 @@ const translations = {
     'dp.selectWarehouse': 'Select Warehouse',
     'dp.notes': 'Notes',
     'dp.saveDraft': 'Save as Draft',
-    'dp.confirm': 'Received',
-    'dp.confirmMsg': 'Mark as received? Stock will be updated.',
+    'dp.confirm': 'Confirm',
+    'dp.confirmMsg': 'Confirm this direct purchase? Stock will be updated.',
     'dp.successSave': 'Direct purchase saved',
-    'dp.successConfirm': 'Direct purchase received & stock updated',
+    'dp.successConfirm': 'Direct purchase confirmed & stock updated',
     'dp.errorSave': 'Error saving direct purchase',
     'dp.empty': 'No direct purchases yet',
     'dp.confirmDelete': 'Delete this direct purchase?',
@@ -2024,7 +2024,7 @@ function App() {
   const [organizations, setOrganizations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
-  const [expandedGroups, setExpandedGroups] = useState([]);
+  const [expandedGroups, setExpandedGroups] = useState(['Master', 'Rooms', 'Purchase Management', 'Stock Management', 'Settings', '主数据', '客房', '采购管理', '库存管理', '设置']);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
 
   // Auth state
@@ -2135,15 +2135,14 @@ function App() {
     const userRole = currentUser?.role?.code;
     if (!['superadmin','gm','findir'].includes(userRole)) { setPendingApprovalCount(0); return; }
     try {
-      const [prRes, poRes, piRes, woRes, opnRes, dpRes] = await Promise.all([
+      const [prRes, poRes, piRes, woRes, opnRes] = await Promise.all([
         supabase.from('purchase_requests').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
         supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
         supabase.from('purchase_invoices').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
         supabase.from('write_offs').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
         supabase.from('stock_opname').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'SUBMITTED'),
-        supabase.from('direct_purchases').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
       ]);
-      setPendingApprovalCount((prRes.count||0) + (poRes.count||0) + (piRes.count||0) + (woRes.count||0) + (opnRes.count||0) + (dpRes.count||0));
+      setPendingApprovalCount((prRes.count||0) + (poRes.count||0) + (piRes.count||0) + (woRes.count||0) + (opnRes.count||0));
     } catch(e) { console.error('Error counting pending approvals:', e); }
   }
 
@@ -2230,32 +2229,30 @@ function App() {
       { id: 'warehouses', label: t('menu.warehouses'), icon: Icons.Warehouse },
       { id: 'rooms', label: t('menu.rooms'), icon: Icons.Door },
     ]},
+    { type: 'item', id: 'room-makeup', label: t('menu.roomMakeup'), icon: Icons.ClipboardList },
     { type: 'group', label: t('menu.group.purchase'), icon: Icons.ShoppingCart, children: [
       { id: 'pr', label: t('menu.pr'), icon: Icons.ShoppingCart },
       { id: 'po', label: t('menu.po'), icon: Icons.ShoppingCart },
       { id: 'pi', label: t('menu.pi'), icon: Icons.ClipboardList },
-      { id: 'gr', label: t('menu.gr'), icon: Icons.Truck },
-      { id: 'direct-purchase', label: t('menu.directPurchase'), icon: Icons.ShoppingCart },
-      { id: 'approval', label: t('menu.approval'), icon: Icons.Shield, badge: pendingApprovalCount },
-    ]},
-    { type: 'group', label: 'HOUSEKEEPING', icon: Icons.ClipboardList, children: [
-      { id: 'room-makeup', label: t('menu.roomMakeup'), icon: Icons.ClipboardList },
-      { id: 'laundry', label: 'Laundry', icon: Icons.Truck },
-    ]},
-    { type: 'group', label: t('menu.group.stock'), icon: Icons.Database, children: [
-      { id: 'stock', label: t('menu.stock'), icon: Icons.Database },
-      { id: 'movements', label: t('menu.movements'), icon: Icons.ClipboardList },
-      { id: 'transfer', label: t('menu.transfer'), icon: Icons.Truck },
-      { id: 'opname', label: t('menu.opname'), icon: Icons.ClipboardList },
-      { id: 'in-use-warehouse', label: t('menu.inUseWarehouse'), icon: Icons.Warehouse },
     ]},
     { type: 'group', label: t('menu.group.stockIn'), icon: Icons.Truck, children: [
-      { id: 'opening-balance', label: t('ob.menu'), icon: Icons.Scale },
+      { id: 'gr', label: t('menu.gr'), icon: Icons.Truck },
+      { id: 'direct-purchase', label: t('menu.directPurchase'), icon: Icons.ShoppingCart },
     ]},
     { type: 'group', label: t('menu.group.stockOut'), icon: Icons.Package, children: [
       { id: 'single-usage', label: t('menu.singleUsage'), icon: Icons.Package },
-      { id: 'writeoff', label: t('menu.writeoff'), icon: Icons.Trash },
     ]},
+    { type: 'group', label: t('menu.group.stock'), icon: Icons.Database, children: [
+      { id: 'opening-balance', label: t('ob.menu'), icon: Icons.Scale },
+      { id: 'stock', label: t('menu.stock'), icon: Icons.Database },
+      { id: 'movements', label: t('menu.movements'), icon: Icons.ClipboardList },
+      { id: 'opname', label: t('menu.opname'), icon: Icons.ClipboardList },
+      { id: 'transfer', label: t('menu.transfer'), icon: Icons.Truck },
+      { id: 'writeoff', label: t('menu.writeoff'), icon: Icons.Trash },
+      { id: 'in-use-warehouse', label: t('menu.inUseWarehouse'), icon: Icons.Warehouse },
+      { id: 'laundry', label: 'Laundry', icon: Icons.Truck },
+    ]},
+    { type: 'item', id: 'approval', label: t('menu.approval'), icon: Icons.Shield, badge: pendingApprovalCount },
     { type: 'item', id: 'reports', label: t('menu.reports'), icon: Icons.BarChart },
     { type: 'group', label: t('menu.group.settings'), icon: Icons.Settings, children: [
       { id: 'user-mgmt', label: t('menu.userMgmt'), icon: Icons.Users },
@@ -2412,13 +2409,13 @@ function App() {
               <button onClick={() => setMobileSidebar(true)} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg flex-shrink-0">
                 <Icons.Menu />
               </button>
+              <h2 className="text-sm sm:text-lg font-semibold text-gray-800 truncate">
+                {allMenuItems.find(m => m.id === currentPage)?.label || t('menu.dashboard')}
+              </h2>
               {selectedOrg && (
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm sm:text-lg font-semibold text-gray-800 truncate">{selectedOrg.name}</h2>
-                  <span className="text-xs sm:text-sm bg-hotel-100 text-hotel-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
-                    {selectedOrg.code}
-                  </span>
-                </div>
+                <span className="hidden sm:inline-block text-xs sm:text-sm bg-hotel-100 text-hotel-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
+                  {selectedOrg.code}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
@@ -2445,7 +2442,7 @@ function App() {
 
           {/* Notification Toast */}
           {notification && (
-            <div className={`fixed top-4 right-4 z-[9999] max-w-md p-4 rounded-lg text-sm font-medium shadow-lg fade-in ${
+            <div className={`mx-4 mt-2 p-3 rounded-lg text-sm font-medium fade-in ${
               notification.type === 'error' ? 'bg-red-50 text-red-800 border border-red-200' :
               notification.type === 'warning' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' :
               'bg-green-50 text-green-800 border border-green-200'
@@ -3462,11 +3459,10 @@ function ItemsPage() {
   const [editItem, setEditItem] = useState(null);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [filterSubCategory, setFilterSubCategory] = useState('all');
   const [filterWarehouse, setFilterWarehouse] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false });
+  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false });
 
   useEffect(() => { loadData(); }, [selectedOrg]);
 
@@ -3526,13 +3522,13 @@ function ItemsPage() {
 
   function openCreate() {
     setEditItem(null);
-    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false });
+    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false });
     setShowModal(true);
   }
 
   function openEdit(item) {
     setEditItem(item);
-    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false, allow_direct_purchase: item.allow_direct_purchase || false });
+    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false });
     setShowModal(true);
   }
 
@@ -3555,27 +3551,11 @@ function ItemsPage() {
     }
   }
 
-  // Sub-category tabs: detect children of selected parent
-  const childCatsOfFilter = filterCategory ? categories.filter(c => c.parent_id === filterCategory) : [];
-  const hasSubCategoryTabs = childCatsOfFilter.length > 0;
-
-  // Reset sub-category tab when parent category changes
-  useEffect(() => { setFilterSubCategory('all'); }, [filterCategory]);
-
   const filtered = items.filter(i => {
     const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase()) ||
       i.code.toLowerCase().includes(search.toLowerCase()) ||
       (i.brand && i.brand.toLowerCase().includes(search.toLowerCase()));
-    let matchCategory = true;
-    if (filterCategory) {
-      if (hasSubCategoryTabs && filterSubCategory !== 'all') {
-        // Specific sub-category selected
-        matchCategory = i.category_id === filterSubCategory;
-      } else {
-        // Parent selected (show all: parent + children)
-        matchCategory = i.category_id === filterCategory || categories.some(c => c.id === i.category_id && c.parent_id === filterCategory);
-      }
-    }
+    const matchCategory = !filterCategory || i.category_id === filterCategory;
     const matchWarehouse = !filterWarehouse || i.default_warehouse_id === filterWarehouse;
     return matchSearch && matchCategory && matchWarehouse;
   });
@@ -3585,77 +3565,38 @@ function ItemsPage() {
   const paginatedItems = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   // Reset to page 1 when filters change
-  useEffect(() => { setCurrentPage(1); }, [search, filterCategory, filterSubCategory, filterWarehouse, pageSize]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterCategory, filterWarehouse, pageSize]);
 
   return (
     <div>
       <PageHeader title={t('items.title')} subtitle={`${items.length} ${t('items.registered')}`}
         actions={<Button onClick={openCreate}><Icons.Plus /> {t('items.addItem')}</Button>} />
 
-      {/* Filter Bar */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4 p-4">
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-shrink-0">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <input type="text" placeholder={t('items.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
-          </div>
-          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
-            <option value="">All Categories</option>
-            {categories.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <select value={filterWarehouse} onChange={e => setFilterWarehouse(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
-            <option value="">All Warehouses</option>
-            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
-          {(filterCategory || filterWarehouse) && (
-            <button onClick={() => { setFilterCategory(''); setFilterSubCategory('all'); setFilterWarehouse(''); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
-              Clear Filters
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Sub-category Tabs */}
-      {hasSubCategoryTabs && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4">
-          <div className="flex flex-wrap gap-0 px-3 pt-2 border-b border-gray-100 overflow-x-auto">
-            <button onClick={() => setFilterSubCategory('all')}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
-                filterSubCategory === 'all' ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}>
-              Semua ({items.filter(i => i.category_id === filterCategory || categories.some(c => c.id === i.category_id && c.parent_id === filterCategory)).length})
-            </button>
-            {childCatsOfFilter.map(sub => {
-              const count = items.filter(i => i.category_id === sub.id).length;
-              return (
-                <button key={sub.id} onClick={() => setFilterSubCategory(sub.id)}
-                  className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
-                    filterSubCategory === sub.id ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}>
-                  {sub.name} ({count})
-                </button>
-              );
-            })}
-            {(() => {
-              const directCount = items.filter(i => i.category_id === filterCategory).length;
-              return directCount > 0 ? (
-                <button onClick={() => setFilterSubCategory(filterCategory)}
-                  className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
-                    filterSubCategory === filterCategory ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}>
-                  Lainnya ({directCount})
-                </button>
-              ) : null;
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* Data Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative">
+              <Icons.Search />
+              <input type="text" placeholder={t('items.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" style={{paddingLeft: '2.5rem'}} />
+            </div>
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
+              <option value="">All Categories</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select value={filterWarehouse} onChange={e => setFilterWarehouse(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
+              <option value="">All Warehouses</option>
+              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+            {(filterCategory || filterWarehouse) && (
+              <button onClick={() => { setFilterCategory(''); setFilterWarehouse(''); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </div>
         <DataTable
           loading={loading}
           columns={[
@@ -3672,7 +3613,6 @@ function ItemsPage() {
             { header: t('items.maxStock'), render: r => formatNumber(r.max_stock) },
             { header: 'ROP', render: r => formatNumber(r.reorder_point) },
             { header: 'SIU', render: r => r.allow_single_usage ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
-            { header: 'DP', render: r => r.allow_direct_purchase ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
             { header: t('common.status'), render: r => <Badge color={r.is_active ? 'green' : 'red'}>{r.is_active ? t('common.active') : t('common.inactive')}</Badge> },
           ]}
           data={paginatedItems}
@@ -3779,18 +3719,6 @@ function ItemsPage() {
               <span className="text-xs text-gray-400">Item ini boleh di-move out via Single Item Usage</span>
             </div>
           </FormField>
-          <FormField label="Allow Direct Purchase">
-            <div className="flex items-center gap-3 mt-1">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" checked={form.allow_direct_purchase || false}
-                  onChange={e => setForm({...form, allow_direct_purchase: e.target.checked})}
-                  className="sr-only peer" />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                <span className="ml-2 text-sm text-gray-600">{form.allow_direct_purchase ? 'Yes' : 'No'}</span>
-              </label>
-              <span className="text-xs text-gray-400">Item ini boleh diinput via Direct Purchase</span>
-            </div>
-          </FormField>
         </div>
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
           <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
@@ -3814,11 +3742,6 @@ function CategoriesPage() {
   const [saving, setSaving] = useState(false);
   const [itemCounts, setItemCounts] = useState({});
   const [form, setForm] = useState({ code: '', name: '', description: '', parent_id: '', is_active: true });
-  const [collapsedParents, setCollapsedParents] = useState({});
-
-  const toggleCollapse = (parentId) => {
-    setCollapsedParents(prev => ({ ...prev, [parentId]: !prev[parentId] }));
-  };
 
   useEffect(() => { loadCategories(); }, []);
 
@@ -3880,131 +3803,49 @@ function CategoriesPage() {
     return p ? p.name : '-';
   };
 
-  // Default collapse all parents that have children (on first load)
-  useEffect(() => {
-    if (categories.length > 0) {
-      const childCats = categories.filter(c => c.parent_id);
-      const parentsWithChildren = {};
-      childCats.forEach(c => { parentsWithChildren[c.parent_id] = true; });
-      setCollapsedParents(prev => {
-        // Only set defaults if collapsedParents is empty (first load)
-        if (Object.keys(prev).length === 0 && Object.keys(parentsWithChildren).length > 0) {
-          return parentsWithChildren;
-        }
-        return prev;
-      });
-    }
-  }, [categories]);
-
-  // Build hierarchical list: parents first, then children indented
-  const parentCategories = categories.filter(c => !c.parent_id);
-  const childCategories = categories.filter(c => c.parent_id);
-  const hierarchicalData = [];
-  parentCategories.forEach(parent => {
-    hierarchicalData.push({ ...parent, _isParent: true });
-    const children = childCategories.filter(c => c.parent_id === parent.id);
-    children.forEach(child => {
-      hierarchicalData.push({ ...child, _isChild: true, _parentCode: parent.code });
-    });
-  });
-  // Add orphan children (parent deleted)
-  const assignedChildIds = new Set(hierarchicalData.filter(c => c._isChild).map(c => c.id));
-  childCategories.filter(c => !assignedChildIds.has(c.id)).forEach(c => hierarchicalData.push({ ...c, _isChild: true }));
-
-  // Count children per parent for display
-  const childCountMap = {};
-  childCategories.forEach(c => { childCountMap[c.parent_id] = (childCountMap[c.parent_id] || 0) + 1; });
-
-  // Filter out children of collapsed parents
-  const displayData = hierarchicalData.filter(r => {
-    if (r._isChild && r.parent_id && collapsedParents[r.parent_id]) return false;
-    return true;
-  });
-
   return (
     <div>
       <PageHeader title={t('cat.title')} subtitle={t('cat.subtitle')}
         actions={<Button onClick={openAdd}><Icons.Plus /> {t('cat.addNew')}</Button>} />
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-        {loading ? (
-          <div className="flex justify-center py-12"><div className="spinner"></div></div>
-        ) : displayData.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">{t('common.noData')}</div>
-        ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-3 py-2 font-medium text-gray-600">{t('cat.code')}</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">{t('cat.name')}</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">{t('cat.description')}</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Level</th>
-                <th className="text-center px-3 py-2 font-medium text-gray-600">{t('cat.itemCount')}</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">{t('cat.status')}</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">{t('common.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayData.map((r, i) => (
-                <tr key={r.id || i} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${r._isParent && childCountMap[r.id] > 0 ? 'bg-blue-50/30' : ''}`}>
-                  <td className="px-3 py-1.5">
-                    <div className={r._isChild ? 'pl-5' : ''}>
-                      <span className={`font-mono text-xs px-1.5 py-0.5 rounded ${r._isParent ? 'bg-blue-100 text-blue-800 font-semibold' : 'bg-gray-100 text-gray-600'}`}>{r.code}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <div className={r._isChild ? 'pl-5 flex items-center gap-1' : 'flex items-center gap-1'}>
-                      {r._isParent && childCountMap[r.id] > 0 && (
-                        <button onClick={() => toggleCollapse(r.id)} className="p-0.5 rounded hover:bg-blue-100 flex-shrink-0" title={collapsedParents[r.id] ? 'Expand' : 'Collapse'}>
-                          <svg className={`w-3.5 h-3.5 text-blue-500 transition-transform ${collapsedParents[r.id] ? '' : 'rotate-90'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-                        </button>
-                      )}
-                      {r._isChild && <span className="text-gray-300 text-xs">└</span>}
-                      <span className={r._isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}>{r.name}</span>
-                      {r._isParent && childCountMap[r.id] > 0 && (
-                        <span className="ml-1 text-xs bg-blue-50 text-blue-500 px-1.5 rounded-full cursor-pointer" onClick={() => toggleCollapse(r.id)}>{childCountMap[r.id]} sub</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5 text-gray-500">{r.description || '-'}</td>
-                  <td className="px-3 py-1.5">
-                    {r._isParent ? <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">Parent</span> : <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Child</span>}
-                  </td>
-                  <td className="px-3 py-1.5 text-center font-medium">{itemCounts[r.id] || 0}</td>
-                  <td className="px-3 py-1.5">
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${r.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{r.is_active ? t('common.active') : t('common.inactive')}</span>
-                  </td>
-                  <td className="px-3 py-1.5 text-right">
-                    <div className="flex justify-end gap-0.5">
-                      <button onClick={() => openEdit(r)} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Icons.Edit /></button>
-                      {!(itemCounts[r.id] > 0) && !childCountMap[r.id] && <button onClick={() => handleDelete(r)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Icons.Trash /></button>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <DataTable loading={loading}
+          columns={[
+            { header: t('cat.code'), render: r => <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{r.code}</span> },
+            { header: t('cat.name'), render: r => <span className="font-medium">{r.name}</span> },
+            { header: t('cat.description'), key: 'description' },
+            { header: t('cat.parent'), render: r => r.parent_id ? getParentName(r.parent_id) : <span className="text-gray-400">-</span> },
+            { header: t('cat.itemCount'), render: r => <span className="font-semibold">{itemCounts[r.id] || 0}</span> },
+            { header: t('cat.status'), render: r => <Badge color={r.is_active ? 'green' : 'red'}>{r.is_active ? t('common.active') : t('common.inactive')}</Badge> },
+            { header: t('common.actions'), render: r => (
+              <div className="flex gap-1">
+                <button onClick={() => openEdit(r)} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Icons.Edit /></button>
+                {!(itemCounts[r.id] > 0) && <button onClick={() => handleDelete(r)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Icons.Trash /></button>}
+              </div>
+            )},
+          ]}
+          data={categories}
+        />
       </div>
 
       {showModal && (
         <Modal open={true} title={editing ? t('cat.editTitle') : t('cat.addNew')} onClose={() => setShowModal(false)}>
           <div className="space-y-4">
-            <FormField label={t('cat.parent')}>
-              <Select value={form.parent_id} onChange={e => setForm({...form, parent_id: e.target.value})}>
-                <option value="">— Tidak ada (Parent Category) —</option>
-                {parentCategories.filter(c => !editing || c.id !== editing.id).map(c =>
-                  <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
-                )}
-              </Select>
-            </FormField>
             <FormField label={t('cat.code')}>
-              <Input value={form.code} onChange={e => setForm({...form, code: e.target.value})} placeholder={form.parent_id ? 'e.g. BDS, DVC' : 'e.g. LIN, AMN'} />
+              <Input value={form.code} onChange={e => setForm({...form, code: e.target.value})} placeholder="e.g. LIN, BEV" />
             </FormField>
             <FormField label={t('cat.name')}>
-              <Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder={form.parent_id ? 'e.g. Bed Sheet, Duvet Cover' : 'e.g. Linen & Uniform'} />
+              <Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Linen & Uniform" />
             </FormField>
             <FormField label={t('cat.description')}>
               <Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
+            </FormField>
+            <FormField label={t('cat.parent')}>
+              <Select value={form.parent_id} onChange={e => setForm({...form, parent_id: e.target.value})}>
+                <option value="">{t('cat.noParent')}</option>
+                {categories.filter(c => !editing || c.id !== editing.id).map(c =>
+                  <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
+                )}
+              </Select>
             </FormField>
             <FormField label={t('cat.status')}>
               <Select value={form.is_active ? 'true' : 'false'} onChange={e => setForm({...form, is_active: e.target.value === 'true'})}>
@@ -5294,7 +5135,7 @@ function RoomsPage() {
 // STOCK BALANCE PAGE
 // ============================================================
 function StockBalancePage() {
-  const { selectedOrg, showNotification, currentUser } = useApp();
+  const { selectedOrg } = useApp();
   const { t } = useTranslation();
   const [stock, setStock] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -5303,7 +5144,6 @@ function StockBalancePage() {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterWarehouse, setFilterWarehouse] = useState('');
-  const [reconciling, setReconciling] = useState(false);
 
   useEffect(() => { if(selectedOrg) loadStock(); }, [selectedOrg]);
 
@@ -5321,33 +5161,6 @@ function StockBalancePage() {
     setCategories(catRes.data || []);
     setWarehouses(whRes.data || []);
     setLoading(false);
-  }
-
-  async function handleReconcile() {
-    if (!window.confirm('Reconcile akan menghitung ulang semua saldo stok dari data mutasi (stock movements). Lanjutkan?')) return;
-    setReconciling(true);
-    try {
-      const { data, error } = await supabase.rpc('reconcile_stock_balance', { p_org_id: selectedOrg.id });
-      if (error) throw error;
-      if (data && data.length > 0) {
-        const details = data.map(d => {
-          let line = `Item: ${d.item_id.substring(0,8)}... | Qty: ${d.old_qty} → ${d.new_qty} (${d.diff > 0 ? '+' : ''}${d.diff})`;
-          if (d.old_avg_cost !== undefined && d.new_avg_cost !== undefined) {
-            line += ` | Avg Cost: ${Number(d.old_avg_cost).toLocaleString('id-ID')} → ${Number(d.new_avg_cost).toLocaleString('id-ID')}`;
-          }
-          return line;
-        }).join('\n');
-        showNotification(`Reconcile selesai! ${data.length} item dikoreksi.\n${details}`, 'success');
-      } else {
-        showNotification('Semua saldo sudah sinkron, tidak ada koreksi diperlukan.', 'info');
-      }
-      await loadStock();
-    } catch (err) {
-      console.error('Reconcile error:', err);
-      showNotification('Gagal reconcile: ' + (err.message || err), 'error');
-    } finally {
-      setReconciling(false);
-    }
   }
 
   const filtered = stock.filter(s => {
@@ -5401,17 +5214,6 @@ function StockBalancePage() {
               {t('common.clearFilters')}
             </button>
           )}
-          <div className="ml-auto">
-            <button onClick={handleReconcile} disabled={reconciling}
-              className="px-3 py-2 text-sm font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 disabled:opacity-50 flex items-center gap-1.5"
-              title="Hitung ulang saldo stok dari data mutasi untuk memastikan akurasi">
-              {reconciling ? (
-                <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Reconciling...</>
-              ) : (
-                <><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Reconcile</>
-              )}
-            </button>
-          </div>
         </div>
         <DataTable loading={loading}
           columns={[
@@ -5452,9 +5254,6 @@ function BinCardPage() {
   const [periodPreset, setPeriodPreset] = useState('mtd');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [itemDropOpen, setItemDropOpen] = useState(false);
-  const [itemSearch, setItemSearch] = useState('');
-  const itemDropRef = React.useRef(null);
 
   function getDateRange(preset) {
     const today = new Date();
@@ -5499,63 +5298,32 @@ function BinCardPage() {
     setDateTo(range.to);
   }, []);
 
-  // Close item dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (itemDropRef.current && !itemDropRef.current.contains(e.target)) {
-        setItemDropOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  useEffect(() => { if(selectedOrg) loadData(); }, [selectedOrg]);
 
-  useEffect(() => { if(selectedOrg) loadMasterData(); }, [selectedOrg]);
-
-  // Load master data (items, warehouses, categories) - once
-  async function loadMasterData() {
-    const [itemRes, whRes, catRes] = await Promise.all([
+  async function loadData() {
+    setLoading(true);
+    const [movRes, itemRes, whRes, catRes] = await Promise.all([
+      supabase.from('stock_movements')
+        .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
+        .eq('organization_id', selectedOrg.id)
+        .order('created_at', { ascending: true })
+        .limit(1000),
       supabase.from('items').select('id, code, name, category_id, default_warehouse_id').eq('is_active', true).order('code'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
       supabase.from('item_categories').select('id, code, name').eq('is_active', true).order('name'),
     ]);
+    setMovements(movRes.data || []);
     setAllItems(itemRes.data || []);
     setWarehouses(whRes.data || []);
+    // Deduplicate categories by name
     const uniqueCats = [];
     const seenNames = new Set();
     (catRes.data || []).forEach(c => {
       if (!seenNames.has(c.name)) { seenNames.add(c.name); uniqueCats.push(c); }
     });
     setCategories(uniqueCats);
-  }
-
-  // Load movements - filtered at DB level for efficiency
-  async function loadMovements(itemId, warehouseId) {
-    setLoading(true);
-    let query = supabase.from('stock_movements')
-      .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
-      .eq('organization_id', selectedOrg.id);
-    // Filter by item at DB level if selected — much more efficient
-    if (itemId) query = query.eq('item_id', itemId);
-    // Filter by warehouse at DB level if selected
-    if (warehouseId) query = query.eq('warehouse_id', warehouseId);
-    query = query.order('created_at', { ascending: true });
-    // No limit — we need ALL movements for accurate running balance
-    // For safety, cap at 10000 (still very fast)
-    query = query.limit(10000);
-    const { data } = await query;
-    setMovements(data || []);
     setLoading(false);
   }
-
-  // Re-fetch movements when item or warehouse filter changes — only if item is selected
-  useEffect(() => {
-    if (selectedOrg && filterItem) {
-      loadMovements(filterItem, filterWarehouse || null);
-    } else {
-      setMovements([]);
-    }
-  }, [filterItem, filterWarehouse]);
 
   // Cascading: filter items by selected category
   const filteredItems = allItems.filter(i => {
@@ -5573,46 +5341,15 @@ function BinCardPage() {
 
   const dateRange = periodPreset === 'custom' ? { from: dateFrom, to: dateTo } : getDateRange(periodPreset);
 
-  // Step 1: Calculate running balance AND running avg_cost from ALL movements (sorted ascending)
-  // Single-item Bin Card: key = item_id only, running balance is cumulative across all warehouses
-  // OB should have earliest created_at so it sorts first, then all other movements accumulate on top
-  const movementsWithBalance = React.useMemo(() => {
-    const balanceMap = {}; // key → { qty, avg_cost, total_value }
-    return movements.map(m => {
-      const key = (m.item_id || '');
-      if (!(key in balanceMap)) balanceMap[key] = { qty: 0, avg_cost: 0, total_value: 0 };
-      const b = balanceMap[key];
-      const qty = m.quantity || 0;
-      const unitCost = m.unit_cost || 0;
-      if (m.movement_type === 'IN') {
-        const newTotal = b.qty * b.avg_cost + qty * unitCost;
-        b.qty += qty;
-        b.avg_cost = b.qty > 0 ? newTotal / b.qty : 0;
-        b.total_value = b.qty * b.avg_cost;
-      } else if (m.movement_type === 'OUT') {
-        b.qty -= qty;
-        if (b.qty > 0) {
-          b.total_value = b.qty * b.avg_cost;
-        } else {
-          b.qty = 0;
-          b.total_value = 0;
-        }
-      }
-      return { ...m, _running_balance: b.qty, _running_avg_cost: b.avg_cost, _running_total_value: b.total_value };
-    });
-  }, [movements]);
-
-  // Step 2: Apply display filters (period, type, category) — balance already calculated
-  const filtered = movementsWithBalance.filter(m => {
+  const filtered = movements.filter(m => {
+    if (filterWarehouse && m.warehouse_id !== filterWarehouse) return false;
     if (filterCategory && m.items?.category_id !== filterCategory) return false;
+    if (filterItem && m.item_id !== filterItem) return false;
     if (filterType && m.movement_type !== filterType) return false;
     if (dateRange.from && m.created_at < dateRange.from) return false;
     if (dateRange.to && m.created_at > dateRange.to + 'T23:59:59') return false;
     return true;
   });
-
-  // Display oldest to newest (chronological order, same as running balance)
-  const filteredWithBalance = filtered;
 
   const totalIn = filtered.filter(m => m.movement_type === 'IN').reduce((s, m) => s + (m.quantity || 0), 0);
   const totalOut = filtered.filter(m => m.movement_type === 'OUT').reduce((s, m) => s + (m.quantity || 0), 0);
@@ -5649,7 +5386,6 @@ function BinCardPage() {
     <div>
       <PageHeader title={t('bincard.title')} subtitle={t('bincard.subtitle')} />
 
-      {filterItem && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <p className="text-xs text-gray-500 uppercase">{t('bincard.totalMovements')}</p>
@@ -5664,126 +5400,85 @@ function BinCardPage() {
           <p className="text-2xl font-bold text-red-600 mt-1">-{formatNumber(totalOut)}</p>
         </div>
       </div>
-      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-4 border-b border-gray-100">
-          {/* Filters: Item, Warehouse, Category, Type, Period */}
-          <div className="flex flex-wrap gap-3 items-center">
-            {/* Searchable item dropdown */}
-            <div className="relative" ref={itemDropRef} style={{minWidth:'220px', maxWidth:'300px'}}>
-              <input
-                type="text"
-                placeholder={filterItem ? (filteredItems.find(i=>i.id===filterItem)?.code + ' - ' + filteredItems.find(i=>i.id===filterItem)?.name) : t('bincard.allItems')}
-                value={itemSearch}
-                onFocus={() => { setItemDropOpen(true); setItemSearch(''); }}
-                onChange={e => { setItemSearch(e.target.value); setItemDropOpen(true); }}
-                className={'px-2 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-primary-500 bg-white w-full ' + (filterItem ? 'border-primary-400 text-primary-700 font-medium' : 'border-gray-300')}
-              />
-              {filterItem && (
-                <button onClick={() => { setFilterItem(''); setItemSearch(''); setItemDropOpen(false); }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 text-xs">✕</button>
-              )}
-              {itemDropOpen && (
-                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  <div onClick={() => { setFilterItem(''); setItemSearch(''); setItemDropOpen(false); }}
-                    className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 cursor-pointer">{t('bincard.allItems')}</div>
-                  {filteredItems.filter(i => {
-                    const s = itemSearch.toLowerCase();
-                    return !s || (i.code + ' ' + i.name).toLowerCase().includes(s);
-                  }).map(i => (
-                    <div key={i.id} onClick={() => { setFilterItem(i.id); setItemSearch(''); setItemDropOpen(false); }}
-                      className={'px-3 py-1.5 text-xs hover:bg-primary-50 cursor-pointer ' + (filterItem === i.id ? 'bg-primary-50 text-primary-700 font-medium' : 'text-gray-700')}>
-                      {i.code} - {i.name}
-                    </div>
-                  ))}
-                </div>
-              )}
+          {/* Row 1: Period filter */}
+          <div className="flex flex-wrap gap-3 items-center mb-3">
+            <label className="text-xs font-semibold text-gray-500 uppercase w-16">Period</label>
+            <div className="flex flex-wrap gap-1">
+              {periodOptions.map(opt => (
+                <button key={opt.value} onClick={() => handlePeriodChange(opt.value)}
+                  className={'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ' +
+                    (periodPreset === opt.value
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200')}>
+                  {opt.label}
+                </button>
+              ))}
             </div>
+            {periodPreset === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+                <span className="text-gray-400">—</span>
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+              </div>
+            )}
+          </div>
+          {/* Row 2: Warehouse, Category, Item, Type filters */}
+          <div className="flex flex-wrap gap-3 items-center">
             <select value={filterWarehouse} onChange={e => { setFilterWarehouse(e.target.value); }}
-              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-primary-500 bg-white">
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
               <option value="">All Warehouses</option>
               {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
             </select>
             <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); }}
-              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-primary-500 bg-white">
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
               <option value="">All Categories</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            <select value={filterItem} onChange={e=>setFilterItem(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white" style={{maxWidth: '280px'}}>
+              <option value="">{t('bincard.allItems')}</option>
+              {filteredItems.map(i => <option key={i.id} value={i.id}>{i.code} - {i.name}</option>)}
+            </select>
             <select value={filterType} onChange={e=>setFilterType(e.target.value)}
-              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-primary-500 bg-white">
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
               <option value="">{t('bincard.allTypes')}</option>
               <option value="IN">IN</option>
               <option value="OUT">OUT</option>
               <option value="ADJ">ADJ</option>
             </select>
-            <select value={periodPreset} onChange={e => handlePeriodChange(e.target.value)}
-              className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-primary-500 bg-white">
-              {periodOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
-            {periodPreset === 'custom' && (
-              <div className="flex items-center gap-2">
-                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-primary-500" />
-                <span className="text-gray-400">—</span>
-                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-primary-500" />
-              </div>
-            )}
             {hasActiveFilters && (
               <button onClick={handleClearFilters}
-                className="px-2 py-1.5 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg">{t('common.clearFilters')}</button>
+                className="px-3 py-2 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg">{t('common.clearFilters')}</button>
             )}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Date</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Warehouse</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Item</th>
-                <th className="px-2 py-1.5 text-center font-semibold text-gray-600 uppercase whitespace-nowrap">Type</th>
-                <th className="px-2 py-1.5 text-center font-semibold text-gray-600 uppercase whitespace-nowrap">Unit</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Qty</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Cost</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Balance</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Avg Cost</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Total Value</th>
-                <th className="px-2 py-1.5 text-center font-semibold text-gray-600 uppercase whitespace-nowrap">Dept</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">User</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Reference</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!filterItem ? (
-                <tr><td colSpan="14" className="px-2 py-8 text-center text-gray-400">Pilih item terlebih dahulu untuk melihat Bin Card</td></tr>
-              ) : loading ? (
-                <tr><td colSpan="14" className="px-2 py-8 text-center text-gray-400">Loading...</td></tr>
-              ) : filteredWithBalance.length === 0 ? (
-                <tr><td colSpan="14" className="px-2 py-8 text-center text-gray-400">{t('bincard.empty')}</td></tr>
-              ) : filteredWithBalance.map((r, idx) => (
-                <tr key={r.id || idx} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-2 py-1 whitespace-nowrap text-gray-600">{new Date(r.created_at).toLocaleString('id-ID', {dateStyle:'short',timeStyle:'short'})}</td>
-                  <td className="px-2 py-1 whitespace-nowrap text-gray-600">{getWarehouseName(r.warehouse_id) || '-'}</td>
-                  <td className="px-2 py-1 max-w-[180px]"><span className="font-medium text-gray-800 text-xs block truncate" title={r.items?.name}>{r.items?.name}</span><span className="text-gray-400" style={{fontSize:'10px'}}>{r.items?.code}</span></td>
-                  <td className="px-2 py-1 text-center"><Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'blue'}>{r.movement_type}</Badge></td>
-                  <td className="px-2 py-1 text-center text-gray-500">{r.items?.units?.abbreviation || '-'}</td>
-                  <td className={'px-2 py-1 text-right font-semibold ' + (r.movement_type==='IN'?'text-green-600':'text-red-600')}>{r.movement_type==='IN'?'+':'-'}{formatNumber(r.quantity)}</td>
-                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r.unit_cost)}</td>
-                  <td className="px-2 py-1 text-right font-semibold text-gray-800">{formatNumber(r._running_balance)}</td>
-                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_avg_cost)}</td>
-                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_total_value)}</td>
-                  <td className="px-2 py-1 text-center">{r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : <span className="text-gray-300">-</span>}</td>
-                  <td className="px-2 py-1 text-gray-500 whitespace-nowrap">{r.users?.full_name || r.users?.username || '-'}</td>
-                  <td className="px-2 py-1 whitespace-nowrap">{r.reference_number || '-'} <span className="text-gray-400">{r.reference_type || ''}</span></td>
-                  <td className="px-2 py-1 text-gray-500 max-w-[200px] truncate" title={r.notes || ''}>{r.notes || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable loading={loading}
+          columns={[
+            { header: t('common.date'), render: r => new Date(r.created_at).toLocaleString('id-ID', {dateStyle:'short',timeStyle:'short'}) },
+            { header: 'Warehouse', render: r => <span className="text-xs">{getWarehouseName(r.warehouse_id) || '-'}</span> },
+            { header: t('dashboard.item'), render: r => <div><span className="font-medium">{r.items?.name}</span><br/><span className="text-xs text-gray-400">{r.items?.code}</span></div> },
+            { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
+            { header: t('dashboard.type'), render: r => <Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'blue'}>{r.movement_type}</Badge> },
+            { header: t('dashboard.qty'), render: r => <span className={r.movement_type==='IN'?'text-green-600 font-semibold':'text-red-600 font-semibold'}>{r.movement_type==='IN'?'+':'-'}{formatNumber(r.quantity)} {r.items?.units?.abbreviation || ''}</span> },
+            { header: t('bincard.cost'), render: r => formatCurrency(r.unit_cost) },
+            { header: t('dashboard.balance'), render: r => <span className="font-semibold">{formatNumber(r.balance_after)}</span> },
+            { header: t('bincard.ref'), render: r => <span className="text-xs">{r.reference_number || '-'}<br/><span className="text-gray-400">{r.reference_type || ''}</span></span> },
+            { header: 'User', render: r => <span className="text-xs text-gray-600">{r.users?.full_name || r.users?.username || '-'}</span> },
+            { header: t('bincard.notes'), render: r => <span className="text-xs text-gray-500">{r.notes || '-'}</span> },
+          ]}
+          data={filtered}
+        />
+        {filtered.length === 0 && !loading && (
+          <div className="p-8 text-center text-gray-500">
+            <Icons.ClipboardList />
+            <p className="mt-2">{t('bincard.empty')}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -7296,7 +6991,7 @@ function StockOpnamePage() {
 // WRITE-OFF PAGE
 // ============================================================
 function WriteOffPage() {
-  const { selectedOrg, showNotification, currentUser } = useApp();
+  const { selectedOrg, showNotification } = useApp();
   const { t } = useTranslation();
   const [writeoffs, setWriteoffs] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -7305,51 +7000,41 @@ function WriteOffPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ department_id: '', write_off_date: new Date().toISOString().split('T')[0], notes: '' });
+  const [form, setForm] = useState({ department_id: '', write_off_date: new Date().toISOString().split('T')[0], reason: 'DAMAGED', notes: '' });
   const [lineItems, setLineItems] = useState([]);
-  const [stockItems, setStockItems] = useState([]);
-  const [itemSearch, setItemSearch] = useState({});
 
   useEffect(() => { if(selectedOrg) loadAll(); }, [selectedOrg]);
 
   async function loadAll() {
     setLoading(true);
-    const [woRes, deptRes, itemRes, sbRes] = await Promise.all([
+    const [woRes, deptRes, itemRes] = await Promise.all([
       supabase.from('write_offs').select('*, departments(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
-      supabase.from('departments').select('*').eq('is_active', true).order('name'),
+      supabase.from('departments').select('*').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
       supabase.from('items').select('id, code, name').eq('is_active', true).order('code'),
-      supabase.from('stock_balance').select('item_id, quantity').eq('organization_id', selectedOrg.id).gt('quantity', 0),
     ]);
     setWriteoffs(woRes.data || []);
     setDepartments(deptRes.data || []);
-    // Filter items that have stock > 0
-    const stockMap = {};
-    (sbRes.data || []).forEach(s => { stockMap[s.item_id] = (stockMap[s.item_id] || 0) + parseFloat(s.quantity); });
-    const itemsWithStock = (itemRes.data || []).filter(i => stockMap[i.id] && stockMap[i.id] > 0);
-    setItems(itemsWithStock);
-    setStockItems(stockMap);
+    setItems(itemRes.data || []);
     setLoading(false);
   }
 
   function openCreate() {
     setEditing(null);
-    setForm({ department_id: departments[0]?.id || '', write_off_date: new Date().toISOString().split('T')[0], notes: '' });
-    setLineItems([{ item_id: '', quantity: 1, reason: 'DAMAGED', notes: '' }]);
-    setItemSearch({});
+    setForm({ department_id: departments[0]?.id || '', write_off_date: new Date().toISOString().split('T')[0], reason: 'DAMAGED', notes: '' });
+    setLineItems([{ item_id: '', quantity: 1, unit_cost: 0, notes: '' }]);
     setShowModal(true);
   }
 
   async function openEdit(wo) {
     setEditing(wo);
-    setForm({ department_id: wo.department_id || '', write_off_date: wo.write_off_date, notes: wo.notes || '' });
+    setForm({ department_id: wo.department_id || '', write_off_date: wo.write_off_date, reason: wo.reason, notes: wo.notes || '' });
     const { data: woItems } = await supabase.from('write_off_items').select('*').eq('wo_id', wo.id);
-    setLineItems((woItems || []).map(i => ({ item_id: i.item_id, quantity: i.quantity, reason: i.reason || wo.reason || 'DAMAGED', notes: i.notes || '' })));
-    if (!woItems || woItems.length === 0) setLineItems([{ item_id: '', quantity: 1, reason: 'DAMAGED', notes: '' }]);
-    setItemSearch({});
+    setLineItems((woItems || []).map(i => ({ item_id: i.item_id, quantity: i.quantity, unit_cost: i.unit_cost || 0, notes: i.notes || '' })));
+    if (!woItems || woItems.length === 0) setLineItems([{ item_id: '', quantity: 1, unit_cost: 0, notes: '' }]);
     setShowModal(true);
   }
 
-  function addLine() { setLineItems([...lineItems, { item_id: '', quantity: 1, reason: 'DAMAGED', notes: '' }]); }
+  function addLine() { setLineItems([...lineItems, { item_id: '', quantity: 1, unit_cost: 0, notes: '' }]); }
   function removeLine(idx) { setLineItems(lineItems.filter((_, i) => i !== idx)); }
   function updateLine(idx, field, val) { const nl = [...lineItems]; nl[idx] = { ...nl[idx], [field]: val }; setLineItems(nl); }
 
@@ -7396,29 +7081,30 @@ function WriteOffPage() {
       }
 
       const validLines = lineItems.filter(l => l.item_id);
+      const totalValue = validLines.reduce((s, l) => s + (l.quantity * l.unit_cost), 0);
       if (editing) {
         const { error } = await supabase.from('write_offs').update({
           department_id: form.department_id, write_off_date: form.write_off_date,
-          reason: validLines[0]?.reason || 'DAMAGED', notes: form.notes || null,
+          reason: form.reason, notes: form.notes || null, total_value: totalValue
         }).eq('id', editing.id);
         if (error) throw error;
         await supabase.from('write_off_items').delete().eq('wo_id', editing.id);
         const itemsPayload = validLines.map(l => ({
           wo_id: editing.id, item_id: l.item_id, quantity: l.quantity,
-          notes: l.reason || 'DAMAGED'
+          unit_cost: l.unit_cost, total_value: l.quantity * l.unit_cost, notes: l.notes || null
         }));
         await supabase.from('write_off_items').insert(itemsPayload);
       } else {
         const woNumber = await generateWONumber();
         const { data: newWO, error } = await supabase.from('write_offs').insert({
           wo_number: woNumber, organization_id: selectedOrg.id, department_id: form.department_id,
-          write_off_date: form.write_off_date, reason: validLines[0]?.reason || 'DAMAGED', status: 'DRAFT',
-          notes: form.notes || null, requested_by: currentUser?.id
+          write_off_date: form.write_off_date, reason: form.reason, status: 'DRAFT',
+          total_value: totalValue, notes: form.notes || null
         }).select().single();
         if (error) throw error;
         const itemsPayload = validLines.map(l => ({
           wo_id: newWO.id, item_id: l.item_id, quantity: l.quantity,
-          notes: l.reason || 'DAMAGED'
+          unit_cost: l.unit_cost, total_value: l.quantity * l.unit_cost, notes: l.notes || null
         }));
         await supabase.from('write_off_items').insert(itemsPayload);
       }
@@ -7443,9 +7129,8 @@ function WriteOffPage() {
 
   async function submitForApproval(wo) {
     if (!confirm('Submit for approval?')) return;
-    const upd = { status: 'PENDING', submitted_by: currentUser?.id, submitted_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-    const { error } = await supabase.from('write_offs').update(upd).eq('id', wo.id);
-    if (error) { showNotification('Error: ' + error.message, 'error'); return; }
+    const upd = { status: 'PENDING', submitted_by: currentUser?.id, submitted_at: new Date().toISOString() };
+    await supabase.from('write_offs').update(upd).eq('id', wo.id);
     await supabase.from('approval_logs').insert({
       organization_id: selectedOrg.id, document_type: 'WRITEOFF', document_id: wo.id,
       document_number: wo.wo_number, action: 'SUBMITTED', action_by: currentUser?.id,
@@ -7453,6 +7138,8 @@ function WriteOffPage() {
     showNotification(t('writeoff.title') + ' submitted for approval', 'success');
     loadAll();
   }
+
+  const grandTotal = lineItems.reduce((s, l) => s + (l.quantity * l.unit_cost), 0);
 
   return (
     <div>
@@ -7464,14 +7151,16 @@ function WriteOffPage() {
             { header: t('writeoff.number'), render: r => <span className="font-mono text-xs font-semibold text-primary-700">{r.wo_number}</span> },
             { header: t('writeoff.date'), render: r => new Date(r.write_off_date).toLocaleDateString('id-ID') },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
+            { header: t('writeoff.reason'), render: r => <Badge color="orange">{r.reason}</Badge> },
+            { header: t('writeoff.totalValue'), render: r => formatCurrency(r.total_value) },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
           ]}
           data={writeoffs}
           actions={(row) => (
             <div className="flex items-center gap-1">
-              {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();submitForApproval(row)}} className="p-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100">Submit</button>}
-              {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();openEdit(row)}} className="p-1 text-xs bg-yellow-50 text-yellow-700 rounded hover:bg-yellow-100 flex items-center gap-0.5"><Icons.Edit /> Edit</button>}
-              {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();handleDelete(row)}} className="p-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 flex items-center gap-0.5"><Icons.Trash /> Hapus</button>}
+              {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();submitForApproval(row)}} className="p-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100">{t('writeoff.submit')}</button>}
+              {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();openEdit(row)}} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><Icons.Edit /></button>}
+              {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();handleDelete(row)}} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400"><Icons.Trash /></button>}
             </div>
           )}
         />
@@ -7481,7 +7170,7 @@ function WriteOffPage() {
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit Write-Off' : t('writeoff.create')} size="xl">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <FormField label={t('writeoff.department')} required>
             <Select value={form.department_id} onChange={e => setForm({...form, department_id: e.target.value})}>
               <option value="">Select</option>
@@ -7491,7 +7180,16 @@ function WriteOffPage() {
           <FormField label={t('writeoff.date')} required>
             <Input type="date" value={form.write_off_date} onChange={e => setForm({...form, write_off_date: e.target.value})} />
           </FormField>
-          <div className="sm:col-span-2">
+          <FormField label={t('writeoff.reason')}>
+            <Select value={form.reason} onChange={e => setForm({...form, reason: e.target.value})}>
+              <option value="EXPIRED">{t('writeoff.reasonExpired')}</option>
+              <option value="DAMAGED">{t('writeoff.reasonDamaged')}</option>
+              <option value="LOST">{t('writeoff.reasonLost')}</option>
+              <option value="OBSOLETE">{t('writeoff.reasonObsolete')}</option>
+              <option value="OTHER">{t('writeoff.reasonOther')}</option>
+            </Select>
+          </FormField>
+          <div className="sm:col-span-3">
             <FormField label={t('writeoff.notes')}>
               <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
             </FormField>
@@ -7507,63 +7205,37 @@ function WriteOffPage() {
             <thead><tr className="bg-gray-50">
               <th className="p-2 text-left">{t('dashboard.item')}</th>
               <th className="p-2 text-right w-20">{t('writeoff.qty')}</th>
-              <th className="p-2 text-left w-32">{t('writeoff.reason')}</th>
+              <th className="p-2 text-right w-28">{t('writeoff.unitCost')}</th>
+              <th className="p-2 text-right w-28">{t('writeoff.lineTotal')}</th>
               <th className="p-2 text-left w-32">{t('writeoff.notes')}</th>
               <th className="p-2 w-10"></th>
             </tr></thead>
             <tbody>
-              {lineItems.map((line, idx) => {
-                const searchKey = itemSearch[idx] || '';
-                const filteredItems = searchKey
-                  ? items.filter(i => (i.code + ' ' + i.name).toLowerCase().includes(searchKey.toLowerCase()))
-                  : items;
-                return (
+              {lineItems.map((line, idx) => (
                 <tr key={idx} className="border-b">
                   <td className="p-2">
-                    <div className="relative">
-                      {line.item_id ? (
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs bg-gray-100 px-2 py-1 rounded flex-1 truncate">{items.find(i=>i.id===line.item_id)?.code} - {items.find(i=>i.id===line.item_id)?.name}</span>
-                          <button onClick={() => { updateLine(idx, 'item_id', ''); setItemSearch({...itemSearch, [idx]: ''}); }} className="text-gray-400 hover:text-red-500 text-xs">&times;</button>
-                        </div>
-                      ) : (
-                        <div>
-                          <input type="text" placeholder="Cari item..." value={searchKey}
-                            onChange={e => setItemSearch({...itemSearch, [idx]: e.target.value})}
-                            className="w-full px-2 py-1 border rounded text-sm" />
-                          {filteredItems.length > 0 && (
-                            <div className="absolute z-10 mt-1 w-full bg-white border rounded shadow-lg max-h-40 overflow-y-auto">
-                              {filteredItems.slice(0, 20).map(i => (
-                                <div key={i.id} onClick={() => { updateLine(idx, 'item_id', i.id); setItemSearch({...itemSearch, [idx]: ''}); }}
-                                  className="px-2 py-1.5 text-xs hover:bg-blue-50 cursor-pointer border-b border-gray-50">
-                                  <span className="font-medium">{i.code}</span> - {i.name}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <select value={line.item_id} onChange={e => updateLine(idx, 'item_id', e.target.value)}
+                      className="w-full px-2 py-1 border rounded text-sm">
+                      <option value="">{t('pr.selectItem')}</option>
+                      {items.map(i => <option key={i.id} value={i.id}>{i.code} - {i.name}</option>)}
+                    </select>
                   </td>
                   <td className="p-2"><input type="number" value={line.quantity} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value)||0)}
                     className="w-full px-2 py-1 border rounded text-sm text-right" min="1" /></td>
-                  <td className="p-2">
-                    <select value={line.reason} onChange={e => updateLine(idx, 'reason', e.target.value)}
-                      className="w-full px-2 py-1 border rounded text-sm">
-                      <option value="EXPIRED">{t('writeoff.reasonExpired')}</option>
-                      <option value="DAMAGED">{t('writeoff.reasonDamaged')}</option>
-                      <option value="LOST">{t('writeoff.reasonLost')}</option>
-                      <option value="OBSOLETE">{t('writeoff.reasonObsolete')}</option>
-                      <option value="OTHER">{t('writeoff.reasonOther')}</option>
-                    </select>
-                  </td>
+                  <td className="p-2"><input type="number" value={line.unit_cost} onChange={e => updateLine(idx, 'unit_cost', parseFloat(e.target.value)||0)}
+                    className="w-full px-2 py-1 border rounded text-sm text-right" min="0" /></td>
+                  <td className="p-2 text-right font-medium">{formatCurrency(line.quantity * line.unit_cost)}</td>
                   <td className="p-2"><input value={line.notes} onChange={e => updateLine(idx, 'notes', e.target.value)}
                     className="w-full px-2 py-1 border rounded text-sm" /></td>
                   <td className="p-2">{lineItems.length > 1 && <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-600"><Icons.Trash /></button>}</td>
                 </tr>
-                );
-              })}
+              ))}
             </tbody>
+            <tfoot><tr className="bg-gray-50 font-semibold">
+              <td colSpan="3" className="p-2 text-right">{t('writeoff.totalValue')}:</td>
+              <td className="p-2 text-right">{formatCurrency(grandTotal)}</td>
+              <td colSpan="2"></td>
+            </tr></tfoot>
           </table>
         </div>
 
@@ -8002,11 +7674,10 @@ function PurchaseReceivedPage() {
   const [invoices, setInvoices] = useState([]);
   const [allItems, setAllItems] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
-  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ pi_id: '', received_date: new Date().toISOString().split('T')[0], notes: '', department_id: '' });
+  const [form, setForm] = useState({ pi_id: '', received_date: new Date().toISOString().split('T')[0], notes: '' });
   const [lineItems, setLineItems] = useState([]);
   const [selectedPI, setSelectedPI] = useState(null);
   const [viewDoc, setViewDoc] = useState(null);
@@ -8016,18 +7687,16 @@ function PurchaseReceivedPage() {
 
   async function loadAll() {
     setLoading(true);
-    const [grRes, piRes, itemRes, whRes, deptRes] = await Promise.all([
-      supabase.from('purchase_received').select('*, vendors(name, code), purchase_invoices(pi_number, invoice_number), departments(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
+    const [grRes, piRes, itemRes, whRes] = await Promise.all([
+      supabase.from('purchase_received').select('*, vendors(name, code), purchase_invoices(pi_number, invoice_number)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('purchase_invoices').select('*, vendors(name, code)').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED').order('pi_number'),
       supabase.from('items').select('id, code, name, default_warehouse_id').eq('is_active', true).order('code'),
       supabase.from('warehouses').select('*').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
-      supabase.from('departments').select('id, code, name').eq('is_active', true).order('name'),
     ]);
     setReceipts(grRes.data || []);
     setInvoices(piRes.data || []);
     setAllItems(itemRes.data || []);
     setWarehouses(whRes.data || []);
-    setDepartments(deptRes.data || []);
     setLoading(false);
   }
 
@@ -8047,18 +7716,6 @@ function PurchaseReceivedPage() {
     const pi = invoices.find(p => p.id === piId);
     setSelectedPI(pi);
     setForm(f => ({ ...f, pi_id: piId }));
-
-    // Auto-populate department from chain PI → PO → PR
-    try {
-      if (pi?.po_id) {
-        const { data: poData } = await supabase.from('purchase_orders').select('pr_id, pr_reference_id').eq('id', pi.po_id).single();
-        const prId = poData?.pr_reference_id || poData?.pr_id;
-        if (prId) {
-          const { data: prData } = await supabase.from('purchase_requests').select('department_id').eq('id', prId).single();
-          if (prData?.department_id) setForm(f => ({ ...f, department_id: prData.department_id }));
-        }
-      }
-    } catch (e) { /* ignore lookup errors */ }
 
     // Load PI line items
     const { data: piItems } = await supabase.from('purchase_invoice_items').select('*').eq('pi_id', piId);
@@ -8100,7 +7757,7 @@ function PurchaseReceivedPage() {
   }
 
   function openCreate() {
-    setForm({ pi_id: '', received_date: new Date().toISOString().split('T')[0], notes: '', department_id: '' });
+    setForm({ pi_id: '', received_date: new Date().toISOString().split('T')[0], notes: '' });
     setLineItems([]);
     setSelectedPI(null);
     setShowModal(true);
@@ -8139,7 +7796,6 @@ function PurchaseReceivedPage() {
         received_date: form.received_date,
         notes: form.notes || null,
         status: 'DRAFT',
-        department_id: form.department_id || null,
       }).select().single();
       if (error) throw error;
 
@@ -8169,20 +7825,6 @@ function PurchaseReceivedPage() {
       if (grErr) throw new Error('Failed to load GR items: ' + grErr.message);
       if (!grItems || grItems.length === 0) throw new Error('No items in this receipt');
 
-      // Use department_id from GR record (set during creation), fallback to chain lookup
-      let grDepartmentId = gr.department_id || null;
-      if (!grDepartmentId && gr.pi_id) {
-        const { data: piData } = await supabase.from('purchase_invoices').select('po_id').eq('id', gr.pi_id).single();
-        if (piData?.po_id) {
-          const { data: poData } = await supabase.from('purchase_orders').select('pr_id, pr_reference_id').eq('id', piData.po_id).single();
-          const prId = poData?.pr_reference_id || poData?.pr_id;
-          if (prId) {
-            const { data: prData } = await supabase.from('purchase_requests').select('department_id').eq('id', prId).single();
-            if (prData?.department_id) grDepartmentId = prData.department_id;
-          }
-        }
-      }
-
       // Create stock movements and update stock balance for each item
       for (const item of grItems) {
         const qty = parseFloat(item.received_qty);
@@ -8194,7 +7836,6 @@ function PurchaseReceivedPage() {
         const { error: smErr } = await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
-          department_id: grDepartmentId,
           movement_type: 'IN',
           quantity: qty,
           unit_cost: unitPrice,
@@ -8363,7 +8004,6 @@ function PurchaseReceivedPage() {
             { header: t('gr.receivedDate'), render: r => new Date(r.received_date).toLocaleDateString('id-ID') },
             { header: t('pi.vendor'), render: r => r.vendors?.name || '-' },
             { header: t('gr.fromPI'), render: r => r.purchase_invoices?.pi_number ? <Badge color="blue">{r.purchase_invoices.pi_number}</Badge> : '-' },
-            { header: t('writeoff.department'), render: r => r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : '-' },
             { header: t('gr.status'), render: r => <Badge color={r.status === 'CONFIRMED' ? 'green' : 'yellow'}>{r.status}</Badge> },
             { header: t('gr.notes'), render: r => r.notes || '-' },
           ]}
@@ -8385,7 +8025,7 @@ function PurchaseReceivedPage() {
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={t('gr.create')} size="xl">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <FormField label={t('gr.selectPI')} required>
             <Select value={form.pi_id} onChange={e => loadPIItems(e.target.value)}>
               <option value="">{t('gr.selectPI')}</option>
@@ -8394,12 +8034,6 @@ function PurchaseReceivedPage() {
           </FormField>
           <FormField label={t('gr.receivedDate')} required>
             <Input type="date" value={form.received_date} onChange={e => setForm({...form, received_date: e.target.value})} />
-          </FormField>
-          <FormField label={t('writeoff.department')}>
-            <Select value={form.department_id} onChange={e => setForm({...form, department_id: e.target.value})}>
-              <option value="">-- Select Department --</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
-            </Select>
           </FormField>
           <FormField label={t('gr.notes')}>
             <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder={t('gr.notes')} />
@@ -8971,19 +8605,16 @@ function ApprovalPage() {
   async function loadAll() {
     if (!selectedOrg) return;
     setLoading(true);
-    const [prRes, poRes, piRes, woRes, opnRes, dpRes, prAppRes, poAppRes, piAppRes, dpAppRes, woAppRes, usersRes, logRes] = await Promise.all([
+    const [prRes, poRes, piRes, woRes, opnRes, prAppRes, poAppRes, piAppRes, usersRes, logRes] = await Promise.all([
       supabase.from('purchase_requests').select('*').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
       supabase.from('purchase_orders').select('*, created_by, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
       supabase.from('purchase_invoices').select('*, created_by, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
-      supabase.from('write_offs').select('*, requested_by, departments(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
+      supabase.from('write_offs').select('*, created_by, departments(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
       supabase.from('stock_opname').select('*, created_by').eq('organization_id', selectedOrg.id).eq('status', 'SUBMITTED'),
-      supabase.from('direct_purchases').select('*, created_by').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
       // Query APPROVED documents for revoke
       supabase.from('purchase_requests').select('*').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED'),
       supabase.from('purchase_orders').select('*, created_by, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED'),
       supabase.from('purchase_invoices').select('*, created_by, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED'),
-      supabase.from('direct_purchases').select('*, created_by').eq('organization_id', selectedOrg.id).in('status', ['APPROVED', 'CONFIRMED']),
-      supabase.from('write_offs').select('*, requested_by, departments(name)').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED'),
       supabase.from('users').select('id, username, full_name, role_id, roles:role_id(code)').eq('is_active', true),
       supabase.from('approval_logs').select('*, users:action_by(full_name)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }).limit(100),
     ]);
@@ -8993,7 +8624,6 @@ function ApprovalPage() {
     (piRes.data || []).forEach(r => pending.push({ ...r, _type: 'PI', _number: r.pi_number, _date: r.invoice_date, _desc: r.vendors?.name || '-' }));
     (woRes.data || []).forEach(r => pending.push({ ...r, _type: 'WRITEOFF', _number: r.wo_number, _date: r.write_off_date, _desc: r.departments?.name || r.reason || '-' }));
     (opnRes.data || []).forEach(r => pending.push({ ...r, _type: 'STOCK_OPNAME', _number: r.opname_number, _date: r.opname_date, _desc: 'Stock Opname' }));
-    (dpRes.data || []).forEach(r => pending.push({ ...r, _type: 'DIRECT_PURCHASE', _number: r.purchase_number, _date: r.purchase_date, _desc: r.purchase_location || '-' }));
     pending.sort((a, b) => new Date(b._date) - new Date(a._date));
     setPendingItems(pending);
     // Approved items for revoke
@@ -9003,8 +8633,6 @@ function ApprovalPage() {
     (prAppRes.data || []).forEach(r => approved.push({ ...r, created_by: r.requested_by, _type: 'PR', _number: r.pr_number, _date: r.request_date, _desc: r.notes || '-', _approver: getApproverName(r.approved_by) }));
     (poAppRes.data || []).forEach(r => approved.push({ ...r, _type: 'PO', _number: r.po_number, _date: r.order_date, _desc: r.vendors?.name || '-', _approver: getApproverName(r.approved_by) }));
     (piAppRes.data || []).forEach(r => approved.push({ ...r, _type: 'PI', _number: r.pi_number, _date: r.invoice_date, _desc: r.vendors?.name || '-', _approver: getApproverName(r.approved_by) }));
-    (dpAppRes.data || []).forEach(r => approved.push({ ...r, _type: 'DIRECT_PURCHASE', _number: r.purchase_number, _date: r.purchase_date, _desc: r.purchase_location || '-', _approver: getApproverName(r.approved_by) }));
-    (woAppRes.data || []).forEach(r => approved.push({ ...r, _type: 'WRITEOFF', _number: r.wo_number, _date: r.write_off_date, _desc: r.departments?.name || '-', _approver: getApproverName(r.approved_by) }));
     approved.sort((a, b) => new Date(b.approved_at || b._date) - new Date(a.approved_at || a._date));
     setApprovedItems(approved);
     setUsers(usersRes.data || []);
@@ -9024,8 +8652,8 @@ function ApprovalPage() {
     // Only GM and Superadmin can revoke
     if (userRole !== 'superadmin' && userRole !== 'gm') return false;
     // Superadmin dan GM boleh revoke dokumen sendiri
-    // Can revoke PR, PO, PI, DIRECT_PURCHASE, Write-Off, and Stock Opname
-    if (['PR', 'PO', 'PI', 'DIRECT_PURCHASE', 'WRITEOFF', 'STOCK_OPNAME'].includes(item._type)) return true;
+    // Can revoke PR, PO, PI, Write-Off, and Stock Opname
+    if (['PR', 'PO', 'PI', 'WRITEOFF', 'STOCK_OPNAME'].includes(item._type)) return true;
     return false;
   }
 
@@ -9034,80 +8662,41 @@ function ApprovalPage() {
     const now = new Date().toISOString();
     let tableName, upd;
 
-    if (item._type === 'STOCK_OPNAME') {
-      // Dual approval for stock opname only
-      tableName = 'stock_opname';
+    if (item._type === 'WRITEOFF' || item._type === 'STOCK_OPNAME') {
+      // Dual approval for write-off and stock opname
+      tableName = item._type === 'WRITEOFF' ? 'write_offs' : 'stock_opname';
       if (userRole === 'superadmin') {
+        // Superadmin can do both approvals
         if (!item.gm_approved_by && !item.findir_approved_by) {
+          // First approval as GM
           upd = { gm_approved_by: currentUser?.id, gm_approved_at: now };
         } else if (item.gm_approved_by && !item.findir_approved_by) {
+          // GM done, complete as FinDir = fully approved
           upd = { status: 'APPROVED', findir_approved_by: currentUser?.id, findir_approved_at: now };
         } else if (!item.gm_approved_by && item.findir_approved_by) {
+          // FinDir done, complete as GM = fully approved
           upd = { status: 'APPROVED', gm_approved_by: currentUser?.id, gm_approved_at: now };
         }
       } else if (userRole === 'gm') {
         if (item.findir_approved_by) {
+          // FinDir already approved, GM completing = fully approved
           upd = { status: 'APPROVED', gm_approved_by: currentUser?.id, gm_approved_at: now };
         } else {
+          // GM approving first, still waiting for FinDir
           upd = { gm_approved_by: currentUser?.id, gm_approved_at: now };
         }
       } else if (userRole === 'findir') {
         if (item.gm_approved_by) {
+          // GM already approved, FinDir completing = fully approved
           upd = { status: 'APPROVED', findir_approved_by: currentUser?.id, findir_approved_at: now };
         } else {
+          // FinDir approving first, still waiting for GM
           upd = { findir_approved_by: currentUser?.id, findir_approved_at: now };
         }
       }
-    } else if (item._type === 'WRITEOFF') {
-      // Single approval for write-off — approve & deduct stock
-      tableName = 'write_offs';
-      upd = { status: 'APPROVED', approved_by: currentUser?.id, approved_at: now };
-      const { error: woErr } = await supabase.from(tableName).update(upd).eq('id', item.id);
-      if (woErr) { showNotification('Error: ' + woErr.message, 'error'); return; }
-      // Deduct stock
-      try {
-        const { data: woItems } = await supabase.from('write_off_items').select('*').eq('wo_id', item.id);
-        for (const wi of (woItems || [])) {
-          const qty = parseFloat(wi.quantity);
-          if (qty <= 0) continue;
-          // Find stock balance for this item (any warehouse with stock)
-          const { data: sbData } = await supabase.from('stock_balance')
-            .select('id, quantity, total_value, warehouse_id')
-            .eq('item_id', wi.item_id).eq('organization_id', selectedOrg.id)
-            .gt('quantity', 0).order('quantity', { ascending: false }).limit(1);
-          if (sbData && sbData.length > 0) {
-            const sb = sbData[0];
-            const newQty = parseFloat(sb.quantity) - qty;
-            const avgCost = parseFloat(sb.total_value) / parseFloat(sb.quantity) || 0;
-            const newTotalValue = newQty > 0 ? newQty * avgCost : 0;
-            await supabase.from('stock_balance').update({
-              quantity: newQty, total_value: newTotalValue,
-              avg_cost: newQty > 0 ? avgCost : 0,
-              updated_at: now,
-            }).eq('id', sb.id);
-            // Create stock movement
-            await supabase.from('stock_movements').insert({
-              organization_id: selectedOrg.id, item_id: wi.item_id,
-              warehouse_id: sb.warehouse_id, movement_type: 'OUT',
-              quantity: qty, unit_cost: avgCost, total_cost: qty * avgCost,
-              reference_type: 'WRITEOFF', reference_number: item._number,
-              department_id: item.department_id || null,
-              notes: wi.notes || 'Write-off',
-              created_by: currentUser?.id,
-            });
-          }
-        }
-      } catch (e) { console.error('WO stock deduction error:', e); }
-      await supabase.from('approval_logs').insert({
-        organization_id: selectedOrg.id, document_type: item._type, document_id: item.id,
-        document_number: item._number, action: 'APPROVED', action_by: currentUser?.id,
-      });
-      showNotification(item._number + ' approved — stock dikurangi', 'success');
-      loadAll();
-      return;
     } else {
-      // Single approval for PR, PO, PI, DIRECT_PURCHASE (GM only)
-      tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : item._type === 'DIRECT_PURCHASE' ? 'direct_purchases' : 'purchase_invoices';
+      // Single approval for PR, PO, PI (GM only)
+      tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : 'purchase_invoices';
       upd = { status: 'APPROVED', approved_by: currentUser?.id, approved_at: now };
     }
 
@@ -9132,7 +8721,7 @@ function ApprovalPage() {
     const item = rejectModal;
     if (!item) return;
     const now = new Date().toISOString();
-    const tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : item._type === 'PI' ? 'purchase_invoices' : item._type === 'DIRECT_PURCHASE' ? 'direct_purchases' : item._type === 'STOCK_OPNAME' ? 'stock_opname' : 'write_offs';
+    const tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : item._type === 'PI' ? 'purchase_invoices' : item._type === 'STOCK_OPNAME' ? 'stock_opname' : 'write_offs';
     const upd = { status: 'REJECTED', rejected_by: currentUser?.id, rejected_at: now, rejection_notes: rejectNotes || null };
     const { error } = await supabase.from(tableName).update(upd).eq('id', item.id);
     if (error) { showNotification('Error: ' + error.message, 'error'); return; }
@@ -9164,7 +8753,7 @@ function ApprovalPage() {
 
     if (!confirm(`Revert ${item._number} to draft?`)) return;
     const now = new Date().toISOString();
-    const tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : item._type === 'PI' ? 'purchase_invoices' : item._type === 'DIRECT_PURCHASE' ? 'direct_purchases' : item._type === 'STOCK_OPNAME' ? 'stock_opname' : 'write_offs';
+    const tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : item._type === 'PI' ? 'purchase_invoices' : item._type === 'STOCK_OPNAME' ? 'stock_opname' : 'write_offs';
     const upd = { status: 'DRAFT' };
 
     const { error } = await supabase.from(tableName).update(upd).eq('id', item.id);
@@ -9193,111 +8782,6 @@ function ApprovalPage() {
       }
     }
 
-    // DIRECT_PURCHASE CONFIRMED → reverse stock then revert to APPROVED
-    if (item._type === 'DIRECT_PURCHASE' && item.status === 'CONFIRMED') {
-      if (!confirm(`Revoke ${item._number}? Stok akan dikembalikan.`)) return;
-      try {
-        // Load DP items
-        const { data: dpItems } = await supabase.from('direct_purchase_items').select('*').eq('direct_purchase_id', item.id);
-        for (const di of (dpItems || [])) {
-          const qty = parseFloat(di.quantity);
-          if (qty <= 0) continue;
-          const { data: stockData } = await supabase.from('stock_balance')
-            .select('id, quantity, total_value')
-            .eq('item_id', di.item_id).eq('warehouse_id', di.warehouse_id).single();
-          if (stockData) {
-            const newQty = parseFloat(stockData.quantity) - qty;
-            const unitPrice = parseFloat(di.unit_price) || 0;
-            const newTotalValue = parseFloat(stockData.total_value) - (qty * unitPrice);
-            await supabase.from('stock_balance').update({
-              quantity: newQty, total_value: newTotalValue,
-              avg_cost: newQty > 0 ? newTotalValue / newQty : 0,
-              updated_at: new Date().toISOString(),
-            }).eq('id', stockData.id);
-          }
-          await supabase.from('stock_movements').delete()
-            .eq('reference_type', 'DIRECT_PURCHASE')
-            .eq('reference_number', item._number)
-            .eq('item_id', di.item_id);
-        }
-        await supabase.from('direct_purchases').update({
-          status: 'APPROVED', confirmed_by: null, confirmed_at: null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', item.id);
-        await supabase.from('approval_logs').insert({
-          organization_id: selectedOrg.id, document_type: item._type, document_id: item.id,
-          document_number: item._number, action: 'REVOKE_CONFIRMED', action_by: currentUser?.id,
-        });
-        showNotification(item._number + ' revoked — stok dikembalikan', 'success');
-        loadAll();
-        return;
-      } catch (e) { showNotification('Error: ' + e.message, 'error'); return; }
-    }
-
-    // DIRECT_PURCHASE APPROVED → revert to PENDING
-    if (item._type === 'DIRECT_PURCHASE' && item.status === 'APPROVED') {
-      if (!confirm(`Revoke approval for ${item._number}? Dokumen kembali ke PENDING.`)) return;
-      const { error } = await supabase.from('direct_purchases').update({
-        status: 'PENDING', approved_by: null, approved_at: null, updated_at: new Date().toISOString(),
-      }).eq('id', item.id);
-      if (error) { showNotification('Error: ' + error.message, 'error'); return; }
-      await supabase.from('approval_logs').insert({
-        organization_id: selectedOrg.id, document_type: item._type, document_id: item.id,
-        document_number: item._number, action: 'REVOKE_APPROVAL', action_by: currentUser?.id,
-      });
-      showNotification(item._number + ' approval revoked', 'success');
-      loadAll();
-      return;
-    }
-
-    // WRITEOFF APPROVED → reverse stock & revert to PENDING
-    if (item._type === 'WRITEOFF' && item.status === 'APPROVED') {
-      if (!confirm(`Revoke ${item._number}? Stok akan dikembalikan.`)) return;
-      try {
-        const { data: woItems } = await supabase.from('write_off_items').select('*').eq('wo_id', item.id);
-        for (const wi of (woItems || [])) {
-          const qty = parseFloat(wi.quantity);
-          if (qty <= 0) continue;
-          // Find stock movement to get warehouse_id
-          const { data: mvData } = await supabase.from('stock_movements')
-            .select('warehouse_id, unit_cost')
-            .eq('reference_type', 'WRITEOFF').eq('reference_number', item._number)
-            .eq('item_id', wi.item_id).limit(1);
-          const warehouseId = mvData?.[0]?.warehouse_id;
-          const unitCost = mvData?.[0]?.unit_cost || 0;
-          if (warehouseId) {
-            const { data: sbData } = await supabase.from('stock_balance')
-              .select('id, quantity, total_value')
-              .eq('item_id', wi.item_id).eq('warehouse_id', warehouseId).single();
-            if (sbData) {
-              const newQty = parseFloat(sbData.quantity) + qty;
-              const newTotalValue = parseFloat(sbData.total_value) + (qty * unitCost);
-              await supabase.from('stock_balance').update({
-                quantity: newQty, total_value: newTotalValue,
-                avg_cost: newQty > 0 ? newTotalValue / newQty : 0,
-                updated_at: new Date().toISOString(),
-              }).eq('id', sbData.id);
-            }
-          }
-          await supabase.from('stock_movements').delete()
-            .eq('reference_type', 'WRITEOFF').eq('reference_number', item._number)
-            .eq('item_id', wi.item_id);
-        }
-        await supabase.from('write_offs').update({
-          status: 'PENDING', approved_by: null, approved_at: null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', item.id);
-        await supabase.from('approval_logs').insert({
-          organization_id: selectedOrg.id, document_type: item._type, document_id: item.id,
-          document_number: item._number, action: 'REVOKE_APPROVAL', action_by: currentUser?.id,
-        });
-        showNotification(item._number + ' revoked — stok dikembalikan', 'success');
-        loadAll();
-        return;
-      } catch (e) { showNotification('Error: ' + e.message, 'error'); return; }
-    }
-
-    // PR, PO, PI standard revoke
     if (!confirm(`Revoke approval for ${item._number}? Document will return to pending status.`)) return;
     const now = new Date().toISOString();
     const tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : 'purchase_invoices';
@@ -9317,33 +8801,25 @@ function ApprovalPage() {
   async function handleViewDetail(item) {
     setDetailModal(item);
     // Load detail items based on type
-    const typeMap = {
-      'PR': { table: 'purchase_request_items', fk: 'pr_id' },
-      'PO': { table: 'purchase_order_items', fk: 'po_id' },
-      'PI': { table: 'purchase_invoice_items', fk: 'pi_id' },
-      'DIRECT_PURCHASE': { table: 'direct_purchase_items', fk: 'direct_purchase_id' },
-      'WRITEOFF': { table: 'write_off_items', fk: 'wo_id' },
-      'STOCK_OPNAME': { table: 'stock_opname_items', fk: 'opname_id' },
-    };
-    const cfg = typeMap[item._type];
-    if (!cfg) { setDetailItems([]); return; }
-    const { data, error } = await supabase.from(cfg.table).select('*').eq(cfg.fk, item.id);
+    const tableName = item._type === 'PR' ? 'purchase_request_items' : item._type === 'PO' ? 'purchase_order_items' : 'purchase_invoice_items';
+    const fkCol = item._type === 'PR' ? 'pr_id' : item._type === 'PO' ? 'po_id' : 'pi_id';
+    const { data, error } = await supabase.from(tableName).select('*').eq(fkCol, item.id);
     if (error) { console.error('Detail items error:', error); setDetailItems([]); return; }
     // Enrich with master_items data
     const items = data || [];
     if (items.length > 0) {
       const itemIds = items.map(i => i.item_id).filter(Boolean);
       if (itemIds.length > 0) {
-        const { data: masterData } = await supabase.from('items').select('id, code, name, unit_id, units:units!items_unit_id_fkey(abbreviation)').in('id', itemIds);
+        const { data: masterData } = await supabase.from('master_items').select('id, name, sku, unit').in('id', itemIds);
         const masterMap = {};
-        (masterData || []).forEach(m => { masterMap[m.id] = { ...m, sku: m.code, unit: m.units?.abbreviation || '-' }; });
+        (masterData || []).forEach(m => { masterMap[m.id] = m; });
         items.forEach(i => { i.master_items = masterMap[i.item_id] || null; });
       }
     }
     setDetailItems(items);
   }
 
-  const typeColors = { PR: 'blue', PO: 'purple', PI: 'orange', DIRECT_PURCHASE: 'green', WRITEOFF: 'red', STOCK_OPNAME: 'green' };
+  const typeColors = { PR: 'blue', PO: 'purple', PI: 'orange', WRITEOFF: 'red', STOCK_OPNAME: 'green' };
 
   return (
     <div>
@@ -9388,9 +8864,11 @@ function ApprovalPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {item.submitted_by && <span className="text-xs text-gray-400">{t('approval.submittedBy')}: {getUserName(item.submitted_by)}</span>}
-                      <button onClick={() => handleViewDetail(item)} className="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
+                      {['PR','PO','PI'].includes(item._type) && (
+                        <button onClick={() => handleViewDetail(item)} className="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
                           <Icons.Eye /> Detail
                         </button>
+                      )}
                       {canRevoke(item) && (
                         <button onClick={() => handleRevertToDraft(item)} className="px-3 py-1.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors">
                           <Icons.RotateCcw /> Revert to Draft
@@ -9429,7 +8907,7 @@ function ApprovalPage() {
                       <span className="font-mono text-sm font-semibold text-gray-900">{item._number}</span>
                       <span className="text-sm text-gray-500">{new Date(item._date).toLocaleDateString('id-ID')}</span>
                       <span className="text-sm text-gray-400">{item._desc}</span>
-                      <Badge color={item.status === 'CONFIRMED' ? 'blue' : 'green'}>{item.status === 'CONFIRMED' ? (item._type === 'DIRECT_PURCHASE' ? 'Received' : 'Confirmed') : 'Approved'}</Badge>
+                      <Badge color="green">Approved</Badge>
                       {item._approver && <span className="text-xs text-gray-400">by {item._approver}</span>}
                       {item.approved_at && <span className="text-xs text-gray-400">{new Date(item.approved_at).toLocaleDateString('id-ID')}</span>}
                     </div>
@@ -9438,8 +8916,8 @@ function ApprovalPage() {
                         <Icons.Eye /> Detail
                       </button>
                       {canRevoke(item) && (
-                        <button onClick={() => handleRevokeApproval(item)} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (item.status === 'CONFIRMED' ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-orange-50 text-orange-700 hover:bg-orange-100')}>
-                          <Icons.RotateCcw /> {item.status === 'CONFIRMED' ? (item._type === 'DIRECT_PURCHASE' ? 'Revoke Received' : 'Revoke Confirm') : 'Revoke Approval'}
+                        <button onClick={() => handleRevokeApproval(item)} className="px-3 py-1.5 text-xs font-medium bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors">
+                          <Icons.RotateCcw /> Revoke Approval
                         </button>
                       )}
                     </div>
@@ -9495,10 +8973,6 @@ function ApprovalPage() {
               {detailModal._type === 'PO' && detailModal.vendors && <div><span className="text-xs text-gray-500">Vendor:</span><div>{detailModal.vendors?.name || detailModal._desc}</div></div>}
               {detailModal._type === 'PI' && detailModal.vendors && <div><span className="text-xs text-gray-500">Vendor:</span><div>{detailModal.vendors?.name || detailModal._desc}</div></div>}
               {detailModal._type === 'PR' && <div><span className="text-xs text-gray-500">Notes:</span><div>{detailModal.notes || '-'}</div></div>}
-              {detailModal._type === 'DIRECT_PURCHASE' && <div><span className="text-xs text-gray-500">Purchase Location:</span><div>{detailModal.purchase_location || '-'}</div></div>}
-              {detailModal._type === 'DIRECT_PURCHASE' && <div><span className="text-xs text-gray-500">Grand Total:</span><div className="font-semibold">Rp {(detailModal.total_amount || 0).toLocaleString('id-ID')}</div></div>}
-              {detailModal._type === 'WRITEOFF' && <div><span className="text-xs text-gray-500">Reason:</span><div>{detailModal.reason || detailModal.notes || '-'}</div></div>}
-              {detailModal._type === 'STOCK_OPNAME' && <div><span className="text-xs text-gray-500">Warehouse:</span><div>{detailModal._desc || '-'}</div></div>}
               {detailModal.approved_by && <div><span className="text-xs text-gray-500">Approved by:</span><div>{getUserName(detailModal.approved_by)}</div></div>}
             </div>
             <div className="border-t pt-4">
@@ -9510,42 +8984,20 @@ function ApprovalPage() {
                   <thead><tr className="bg-gray-50">
                     <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Item</th>
                     <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">SKU</th>
-                    {detailModal._type === 'STOCK_OPNAME' ? (
-                      <>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">System Qty</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Actual Qty</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Difference</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Qty</th>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Unit</th>
-                        {!['PR','WRITEOFF'].includes(detailModal._type) && <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Price</th>}
-                        {!['PR','WRITEOFF'].includes(detailModal._type) && <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Total</th>}
-                        {detailModal._type === 'WRITEOFF' && <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Notes</th>}
-                      </>
-                    )}
+                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Qty</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Unit</th>
+                    {detailModal._type !== 'PR' && <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Price</th>}
+                    {detailModal._type !== 'PR' && <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Total</th>}
                   </tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {detailItems.map((di, idx) => (
                       <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-3 py-2">{di.master_items?.name || di.item_name || '-'}</td>
+                        <td className="px-3 py-2">{di.master_items?.name || '-'}</td>
                         <td className="px-3 py-2 text-gray-400">{di.master_items?.sku || '-'}</td>
-                        {detailModal._type === 'STOCK_OPNAME' ? (
-                          <>
-                            <td className="px-3 py-2 text-right">{di.system_qty ?? '-'}</td>
-                            <td className="px-3 py-2 text-right">{di.actual_qty ?? '-'}</td>
-                            <td className="px-3 py-2 text-right font-medium">{di.difference ?? ((di.actual_qty || 0) - (di.system_qty || 0))}</td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="px-3 py-2 text-right">{di.quantity}</td>
-                            <td className="px-3 py-2">{di.unit || di.master_items?.unit || '-'}</td>
-                            {!['PR','WRITEOFF'].includes(detailModal._type) && <td className="px-3 py-2 text-right">{(di.unit_price || 0).toLocaleString('id-ID')}</td>}
-                            {!['PR','WRITEOFF'].includes(detailModal._type) && <td className="px-3 py-2 text-right font-medium">{((di.quantity || 0) * (di.unit_price || 0)).toLocaleString('id-ID')}</td>}
-                            {detailModal._type === 'WRITEOFF' && <td className="px-3 py-2 text-gray-400">{di.notes || '-'}</td>}
-                          </>
-                        )}
+                        <td className="px-3 py-2 text-right">{di.quantity}</td>
+                        <td className="px-3 py-2">{di.unit || di.master_items?.unit || '-'}</td>
+                        {detailModal._type !== 'PR' && <td className="px-3 py-2 text-right">{(di.unit_price || 0).toLocaleString('id-ID')}</td>}
+                        {detailModal._type !== 'PR' && <td className="px-3 py-2 text-right font-medium">{((di.quantity || 0) * (di.unit_price || 0)).toLocaleString('id-ID')}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -10178,9 +9630,6 @@ function OpeningBalancePage() {
   const [showRoomPopup, setShowRoomPopup] = useState(false);
   const [roomPopupItemId, setRoomPopupItemId] = useState(null);
   const [rooms, setRooms] = useState([]);
-  const [obDate, setObDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedSubTab, setSelectedSubTab] = useState('all');
-  const [showPrintMenu, setShowPrintMenu] = useState(false);
 
   // Helper to get warehouse by type for linen auto-mapping
   function getWarehouseByType(type) {
@@ -10238,9 +9687,6 @@ function OpeningBalancePage() {
         }
       });
       setDetails(detMap);
-
-      // Room assignments always start fresh (default 0) — user must assign manually each time
-      setRoomAssignments({});
     } catch (err) {
       console.error('Error loading opening balance:', err);
     }
@@ -10248,10 +9694,7 @@ function OpeningBalancePage() {
   }
 
   function getItemsForCategory(catId) {
-    // Include items from child categories too
-    const childCatIds = categories.filter(c => c.parent_id === catId).map(c => c.id);
-    const allIds = [catId, ...childCatIds];
-    return items.filter(i => allIds.includes(i.category_id));
+    return items.filter(i => i.category_id === catId);
   }
 
   function getCategoryStats(cat) {
@@ -10303,27 +9746,6 @@ function OpeningBalancePage() {
     if (!isLinen && !selectedWarehouse) {
       showNotification('Pilih gudang terlebih dahulu sebelum menyimpan!', 'error');
       return;
-    }
-
-    // For linen: validate all in-use qty is fully assigned to rooms
-    if (isLinen) {
-      const catItemsCheck = getItemsForCategory(selectedCategory.id);
-      const unassigned = [];
-      for (const item of catItemsCheck) {
-        const itemD = details[item.id] || {};
-        const inUseQty = parseFloat(itemD.in_use?.quantity) || 0;
-        if (inUseQty > 0) {
-          const assignments = roomAssignments[item.id] || {};
-          const assignedTotal = Object.values(assignments).reduce((s, q) => s + (parseFloat(q) || 0), 0);
-          if (assignedTotal !== inUseQty) {
-            unassigned.push(`${item.code} - ${item.name}: In-Use ${inUseQty}, Assigned ${assignedTotal}`);
-          }
-        }
-      }
-      if (unassigned.length > 0) {
-        showNotification(`Qty In-Use belum di-assign semua ke room! (${unassigned.length} item: ${unassigned.map(u => u.split(':')[0]).join(', ')})`, 'error');
-        return;
-      }
     }
 
     setSaving(true);
@@ -10451,10 +9873,16 @@ function OpeningBalancePage() {
           return rest;
         });
 
-        // Use org+item+warehouse as the unique constraint for all items
-        const { error } = await supabase.from('stock_balance')
-          .upsert(cleanUpserts, { onConflict: 'organization_id,item_id,warehouse_id' });
-        if (error) throw error;
+        if (isLinen) {
+          // For linen: upsert per warehouse (use org,item,warehouse constraint)
+          const { error } = await supabase.from('stock_balance')
+            .upsert(cleanUpserts, { onConflict: 'organization_id,item_id,warehouse_id' });
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('stock_balance')
+            .upsert(cleanUpserts, { onConflict: 'organization_id,department_id,item_id' });
+          if (error) throw error;
+        }
       }
 
       // Insert/replace stock_movements for opening balance
@@ -10466,8 +9894,6 @@ function OpeningBalancePage() {
           .eq('reference_type', 'OPENING_BALANCE')
           .in('item_id', movItemIds);
 
-        // Use obDate as created_at so OB always sorts first chronologically
-        const obTimestamp = obDate ? new Date(obDate + 'T00:00:00').toISOString() : new Date().toISOString();
         const movementInserts = balanceUpserts.map(b => ({
           organization_id: b.organization_id,
           item_id: b.item_id,
@@ -10482,7 +9908,6 @@ function OpeningBalancePage() {
           warehouse_id: b.warehouse_id || null,
           department_id: b.department_id || null,
           created_by: currentUser?.id || null,
-          created_at: obTimestamp,
         }));
         const { error: smErr } = await supabase.from('stock_movements').insert(movementInserts);
         if (smErr) console.warn('Stock movements warning:', smErr.message);
@@ -10566,181 +9991,19 @@ function OpeningBalancePage() {
     }
   }
 
-  // Print Counting Form handler
-  async function handlePrintForm(format) {
-    if (!selectedCategory) return;
-    showNotification('Generating counting form...', 'info');
-
-    const isLinen = selectedCategory.code === 'LIN';
-    const childCats = categories.filter(c => c.parent_id === selectedCategory.id);
-    const allCatIds = [selectedCategory.id, ...childCats.map(c => c.id)];
-    const catItems = items.filter(i => allCatIds.includes(i.category_id));
-    const config = getCategoryConfig(selectedCategory.code);
-
-    if (isLinen) {
-      // Linen form: rows = rooms, columns = item names (grouped by sub-category)
-      const sortedRooms = [...rooms].sort((a, b) => (a.room_number || '').localeCompare(b.room_number || '', undefined, {numeric: true}));
-
-      // Build sub-groups: child categories + items directly under parent
-      const buildLinenSubGroups = () => {
-        const groups = [];
-        if (childCats.length > 0) {
-          childCats.forEach(sub => {
-            const subItems = catItems.filter(i => i.category_id === sub.id);
-            if (subItems.length > 0) groups.push({ name: sub.name, items: subItems });
-          });
-          // Items directly under parent (not yet assigned to sub-category)
-          const directItems = catItems.filter(i => i.category_id === selectedCategory.id);
-          if (directItems.length > 0) groups.push({ name: 'Lainnya', items: directItems });
-        }
-        // If no groups from children, put all items in one group
-        if (groups.length === 0) groups.push({ name: selectedCategory.name, items: catItems });
-        return groups;
-      };
-      const subGroups = buildLinenSubGroups();
-
-      if (format === 'excel') {
-        // Build Excel using SheetJS
-        const XLSX = window.XLSX || await loadSheetJS();
-        const wb = XLSX.utils.book_new();
-
-        subGroups.forEach(group => {
-          // Header row: Room No | Item1 | Item2 | ...
-          const headers = ['No', 'Room Number', ...group.items.map(i => i.name)];
-          const data = [headers];
-          sortedRooms.forEach((room, idx) => {
-            const row = [idx + 1, room.room_number, ...group.items.map(() => '')];
-            data.push(row);
-          });
-
-          const ws = XLSX.utils.aoa_to_sheet(data);
-          // Set column widths
-          ws['!cols'] = [{ wch: 4 }, { wch: 12 }, ...group.items.map(() => ({ wch: 10 }))];
-          XLSX.utils.book_append_sheet(wb, ws, group.name.substring(0, 31));
-        });
-
-        XLSX.writeFile(wb, `Counting_Form_${selectedCategory.code}_Linen.xlsx`);
-        showNotification('Excel counting form downloaded!');
-      } else {
-        // PDF: generate via hidden HTML -> print
-        let html = `<!DOCTYPE html><html><head><title>Counting Form - ${selectedCategory.name}</title>
-        <style>
-          @page { size: landscape; margin: 10mm; }
-          body { font-family: Arial, sans-serif; font-size: 9px; }
-          table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-          th, td { border: 1px solid #333; padding: 3px 5px; text-align: center; }
-          th { background: #e8e8e8; font-weight: bold; font-size: 8px; }
-          td { height: 20px; }
-          .room-col { text-align: left; font-weight: bold; }
-          h2 { margin: 10px 0 5px; font-size: 14px; }
-          h3 { margin: 8px 0 4px; font-size: 11px; color: #333; }
-          .header-info { margin-bottom: 10px; font-size: 10px; }
-          .page-break { page-break-before: always; }
-        </style></head><body>`;
-
-        subGroups.forEach((group, gIdx) => {
-          if (gIdx > 0) html += '<div class="page-break"></div>';
-          html += `<h2>Counting Form: ${selectedCategory.name}</h2>`;
-          html += `<h3>Sub-kategori: ${group.name}</h3>`;
-          html += `<div class="header-info">Hotel: ${selectedOrg?.name || '-'} | Tanggal: ${obDate} | Petugas: _______________</div>`;
-          html += '<table><thead><tr><th style="width:30px">No</th><th style="width:80px">Room</th>';
-          group.items.forEach(i => { html += `<th>${i.name}</th>`; });
-          html += '</tr></thead><tbody>';
-          sortedRooms.forEach((room, idx) => {
-            html += `<tr><td>${idx+1}</td><td class="room-col">${room.room_number}</td>`;
-            group.items.forEach(() => { html += '<td></td>'; });
-            html += '</tr>';
-          });
-          html += '</tbody></table>';
-        });
-
-        html += '</body></html>';
-        const printWin = window.open('', '_blank');
-        printWin.document.write(html);
-        printWin.document.close();
-        printWin.focus();
-        setTimeout(() => printWin.print(), 500);
-        showNotification('Print form opened!');
-      }
-    } else {
-      // Non-linen form: rows = items, columns = Code, Name, Unit, Qty (empty for filling)
-      if (format === 'excel') {
-        const XLSX = window.XLSX || await loadSheetJS();
-        const wb = XLSX.utils.book_new();
-
-        const headers = ['No', 'Item Code', 'Item Name', 'Unit', 'Qty', 'Notes'];
-        const data = [headers];
-        catItems.forEach((item, idx) => {
-          data.push([idx + 1, item.code, item.name, getUnitName(item.usage_unit_id || item.unit_id), '', '']);
-        });
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        ws['!cols'] = [{ wch: 4 }, { wch: 12 }, { wch: 35 }, { wch: 8 }, { wch: 10 }, { wch: 20 }];
-        XLSX.utils.book_append_sheet(wb, ws, selectedCategory.name.substring(0, 31));
-        XLSX.writeFile(wb, `Counting_Form_${selectedCategory.code}.xlsx`);
-        showNotification('Excel counting form downloaded!');
-      } else {
-        let html = `<!DOCTYPE html><html><head><title>Counting Form - ${selectedCategory.name}</title>
-        <style>
-          @page { size: portrait; margin: 15mm; }
-          body { font-family: Arial, sans-serif; font-size: 11px; }
-          table { border-collapse: collapse; width: 100%; }
-          th, td { border: 1px solid #333; padding: 4px 8px; }
-          th { background: #e8e8e8; font-weight: bold; text-align: center; }
-          td { height: 24px; }
-          h2 { margin: 10px 0 5px; font-size: 16px; }
-          .header-info { margin-bottom: 15px; font-size: 11px; }
-        </style></head><body>`;
-        html += `<h2>Counting Form: ${selectedCategory.name}</h2>`;
-        html += `<div class="header-info">Hotel: ${selectedOrg?.name || '-'} | Tanggal: ${obDate} | Petugas: _______________</div>`;
-        html += '<table><thead><tr><th style="width:30px">No</th><th style="width:80px">Code</th><th>Item Name</th><th style="width:50px">Unit</th><th style="width:60px">Qty</th><th style="width:120px">Notes</th></tr></thead><tbody>';
-        catItems.forEach((item, idx) => {
-          html += `<tr><td style="text-align:center">${idx+1}</td><td>${item.code}</td><td>${item.name}</td><td style="text-align:center">${getUnitName(item.usage_unit_id || item.unit_id)}</td><td></td><td></td></tr>`;
-        });
-        html += '</tbody></table></body></html>';
-        const printWin = window.open('', '_blank');
-        printWin.document.write(html);
-        printWin.document.close();
-        printWin.focus();
-        setTimeout(() => printWin.print(), 500);
-        showNotification('Print form opened!');
-      }
-    }
-  }
-
-  // Load SheetJS dynamically for Excel export
-  async function loadSheetJS() {
-    if (window.XLSX) return window.XLSX;
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      script.onload = () => resolve(window.XLSX);
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-  }
-
   // ---- RENDER ----
   if (loading) return <div className="p-12 flex justify-center"><div className="spinner"></div></div>;
 
   // LEVEL 2: Category detail (opname form)
   if (selectedCategory) {
-    // For parent categories with children, include all child category items
-    const childCatsOfSelected = categories.filter(c => c.parent_id === selectedCategory.id);
-    const hasSubTabs = childCatsOfSelected.length > 0;
-    const allCatIds = [selectedCategory.id, ...childCatsOfSelected.map(c => c.id)];
-    const catItems = items.filter(i => allCatIds.includes(i.category_id));
-
+    const catItems = getItemsForCategory(selectedCategory.id);
     const config = getCategoryConfig(selectedCategory.code);
     const isMultiStatus = config.statuses.length > 1;
     const lock = locks[selectedCategory.id];
     const isLocked = lock?.is_locked || false;
     const isLinenCategory = selectedCategory?.code === 'LIN';
 
-    // Filter by sub-tab and search
-    const tabFilteredItems = hasSubTabs && selectedSubTab !== 'all'
-      ? catItems.filter(i => i.category_id === selectedSubTab)
-      : catItems;
-    const filteredItems = tabFilteredItems.filter(item =>
+    const filteredItems = catItems.filter(item =>
       !search || item.name.toLowerCase().includes(search.toLowerCase()) || item.code.toLowerCase().includes(search.toLowerCase())
     );
 
@@ -10764,30 +10027,9 @@ function OpeningBalancePage() {
           subtitle={`${t('ob.title')} — ${catItems.length} ${t('ob.items')}`}
           actions={
             <div className="flex items-center gap-2">
-              <Button variant="secondary" onClick={() => { setSelectedCategory(null); setSearch(''); setSelectedSubTab('all'); setShowPrintMenu(false); }}>
+              <Button variant="secondary" onClick={() => { setSelectedCategory(null); setSearch(''); }}>
                 <Icons.ArrowLeft /> {t('ob.backToCategories')}
               </Button>
-              {/* Print Counting Form dropdown */}
-              <div className="relative">
-                <Button variant="secondary" onClick={() => setShowPrintMenu(!showPrintMenu)}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                  Print Form
-                </Button>
-                {showPrintMenu && (
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[180px]">
-                    <button onClick={() => { handlePrintForm('pdf'); setShowPrintMenu(false); }}
-                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2 rounded-t-lg">
-                      <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zm-3 9.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5.67-1.5 1.5-1.5 1.5.67 1.5 1.5zm4 0c0 .83-.67 1.5-1.5 1.5S11 14.33 11 13.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5z"/></svg>
-                      Export PDF
-                    </button>
-                    <button onClick={() => { handlePrintForm('excel'); setShowPrintMenu(false); }}
-                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2 rounded-b-lg border-t border-gray-100">
-                      <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zM7 17v-2h2v2H7zm0-4v-2h2v2H7zm4 4v-2h2v2h-2zm0-4v-2h2v2h-2zm4 4v-2h2v2h-2zm0-4v-2h2v2h-2z"/></svg>
-                      Export Excel
-                    </button>
-                  </div>
-                )}
-              </div>
               {isLocked ? (
                 <div className="flex items-center gap-2">
                   <span className="flex items-center gap-1 px-3 py-2 bg-red-50 text-red-700 rounded-lg text-sm font-medium">
@@ -10828,18 +10070,6 @@ function OpeningBalancePage() {
           </div>
         )}
 
-        {/* Opening Balance Date */}
-        {!isLocked && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-3">
-            <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}/><line x1="16" y1="2" x2="16" y2="6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}/><line x1="8" y1="2" x2="8" y2="6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}/><line x1="3" y1="10" x2="21" y2="10" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}/></svg>
-            <label className="text-sm font-medium text-blue-800 whitespace-nowrap">Tanggal Opening Balance:</label>
-            <input type="date" value={obDate} onChange={e => setObDate(e.target.value)}
-              className="px-3 py-1.5 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
-            />
-            <span className="text-xs text-blue-600">Tanggal ini akan digunakan sebagai timestamp mutasi opening balance</span>
-          </div>
-        )}
-
         {/* Warehouse & Search */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4">
           <div className="p-4 flex flex-col md:flex-row gap-3">
@@ -10875,47 +10105,6 @@ function OpeningBalancePage() {
             </div>
           )}
         </div>
-
-        {/* Sub-category Tabs (for parents with children like Linen, Amenities) */}
-        {hasSubTabs && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4">
-            <div className="flex flex-wrap gap-0 border-b border-gray-100 px-2 pt-2">
-              <button
-                onClick={() => setSelectedSubTab('all')}
-                className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-                  selectedSubTab === 'all' ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}>
-                Semua ({catItems.length})
-              </button>
-              {childCatsOfSelected.map(sub => {
-                const subItems = items.filter(i => i.category_id === sub.id);
-                return (
-                  <button key={sub.id}
-                    onClick={() => setSelectedSubTab(sub.id)}
-                    className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-                      selectedSubTab === sub.id ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}>
-                    {sub.name} ({subItems.length})
-                  </button>
-                );
-              })}
-              {/* Items directly under parent (no sub-category) */}
-              {(() => {
-                const directItems = items.filter(i => i.category_id === selectedCategory.id);
-                if (directItems.length === 0) return null;
-                return (
-                  <button
-                    onClick={() => setSelectedSubTab(selectedCategory.id)}
-                    className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-                      selectedSubTab === selectedCategory.id ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}>
-                    Lainnya ({directItems.length})
-                  </button>
-                );
-              })()}
-            </div>
-          </div>
-        )}
 
         {/* Items Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -11057,6 +10246,35 @@ function OpeningBalancePage() {
           )}
         </div>
 
+        {/* Sticky bottom bar */}
+        {!isLocked && catItems.length > 0 && (
+          <div className="sticky bottom-0 mt-4 p-4 bg-white border-t border-gray-200 shadow-lg rounded-xl flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {catCounted} / {catItems.length} {t('ob.itemsCounted').toLowerCase()}
+              <span className="mx-2">|</span>
+              <span className="font-semibold text-green-700">Rp {catTotalValue.toLocaleString('id-ID')}</span>
+              {(isLinenCategory || selectedWarehouse) && (
+                <span className="mx-2">|</span>
+              )}
+              {isLinenCategory ? (
+                <span className="text-blue-600">
+                  <Icons.Warehouse className="inline w-4 h-4 mr-1" />
+                  Auto
+                </span>
+              ) : (
+                selectedWarehouse && (
+                  <span className="text-blue-600">
+                    <Icons.Warehouse className="inline w-4 h-4 mr-1" />
+                    {warehouses.find(w => w.id === selectedWarehouse)?.code || ''}
+                  </span>
+                )
+              )}
+            </div>
+            <Button onClick={handleSaveCategory} disabled={saving || (!isLinenCategory && !selectedWarehouse)}>
+              {saving ? t('ob.saving') : t('ob.save')}
+            </Button>
+          </div>
+        )}
 
         {/* Room Assignment Popup for Linen In-Use */}
         {showRoomPopup && roomPopupItemId && (() => {
@@ -11136,38 +10354,8 @@ function OpeningBalancePage() {
     );
   }
 
-  // LEVEL 1: Category overview — only show parent (level 1) categories
-  const parentCats = categories.filter(c => !c.parent_id);
-
-  // For parent categories with children, aggregate items from all children too
-  function getItemsForParentCategory(parentCat) {
-    const childCats = categories.filter(c => c.parent_id === parentCat.id);
-    const catIds = [parentCat.id, ...childCats.map(c => c.id)];
-    return items.filter(i => catIds.includes(i.category_id));
-  }
-
-  function getParentCategoryStats(cat) {
-    const catItems = getItemsForParentCategory(cat);
-    const lock = locks[cat.id];
-    const counted = catItems.filter(i => {
-      const d = details[i.id];
-      if (!d) return false;
-      return Object.values(d).some(v => v.quantity > 0);
-    }).length;
-    const totalValue = catItems.reduce((sum, i) => {
-      const d = details[i.id];
-      if (!d) return sum;
-      const convRate = parseFloat(i.conversion_rate) || 1;
-      const purchaseCost = parseFloat(d._purchase_cost) || 0;
-      const costPerUsage = convRate > 0 ? purchaseCost / convRate : 0;
-      const qty = Object.entries(d).filter(([k]) => k !== '_purchase_cost').reduce((s, [, v]) => s + (parseFloat(v.quantity) || 0), 0);
-      return sum + (qty * costPerUsage);
-    }, 0);
-    const status = lock?.is_locked ? 'locked' : counted > 0 ? 'in_progress' : 'draft';
-    return { total: catItems.length, counted, totalValue, status, lock };
-  }
-
-  const totalCats = parentCats.filter(c => getItemsForParentCategory(c).length > 0).length;
+  // LEVEL 1: Category overview
+  const totalCats = categories.filter(c => getItemsForCategory(c.id).length > 0).length;
   const lockedCats = Object.values(locks).filter(l => l.is_locked).length;
   const grandTotal = items.reduce((sum, i) => {
     const d = details[i.id] || {};
@@ -11187,14 +10375,13 @@ function OpeningBalancePage() {
 
       <p className="text-sm text-gray-500 mb-4">{t('ob.selectCategory')}</p>
 
-      {/* Category Cards — only parent (level 1) categories */}
+      {/* Category Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {parentCats.map(cat => {
-          const stats = getParentCategoryStats(cat);
+        {categories.map(cat => {
+          const stats = getCategoryStats(cat);
           if (stats.total === 0) return null; // Skip empty categories
           const config = getCategoryConfig(cat.code);
           const isMulti = config.statuses.length > 1;
-          const childCats = categories.filter(c => c.parent_id === cat.id);
 
           const statusColor = stats.status === 'locked' ? 'bg-green-100 text-green-800' :
             stats.status === 'in_progress' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600';
@@ -11210,9 +10397,6 @@ function OpeningBalancePage() {
                 <div>
                   <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">{cat.name}</h3>
                   <p className="text-xs text-gray-500 mt-0.5">{cat.code} — {stats.total} {t('ob.items')}</p>
-                  {childCats.length > 0 && (
-                    <p className="text-xs text-blue-500 mt-0.5">{childCats.length} sub-kategori</p>
-                  )}
                 </div>
                 <span className={`text-xs font-medium px-2 py-1 rounded-full ${statusColor}`}>
                   {stats.status === 'locked' && <span className="mr-1">&#x1f512;</span>}
@@ -12440,18 +11624,15 @@ function DirectPurchasePage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
-  const [departments, setDepartments] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [editingDp, setEditingDp] = useState(null);
 
   // Form state
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [purchaseLocation, setPurchaseLocation] = useState('');
-  const [departmentId, setDepartmentId] = useState('');
   const [purchaseItems, setPurchaseItems] = useState([]);
   const [notes, setNotes] = useState('');
   const [viewDoc, setViewDoc] = useState(null);
@@ -12461,19 +11642,17 @@ function DirectPurchasePage() {
 
   async function loadAll() {
     setLoading(true);
-    const [dpRes, itemRes, whRes, deptRes] = await Promise.all([
+    const [dpRes, itemRes, whRes] = await Promise.all([
       supabase.from('direct_purchases')
-        .select('*, departments(name, code), direct_purchase_items(*, items(code, name, brand, units:unit_id(abbreviation)))')
+        .select('*, direct_purchase_items(*, items(code, name, brand, units:unit_id(abbreviation)))')
         .eq('organization_id', selectedOrg.id)
         .order('created_at', { ascending: false }),
-      supabase.from('items').select('id, code, name, brand, default_warehouse_id, allow_direct_purchase').eq('is_active', true).order('name'),
+      supabase.from('items').select('id, code, name, brand, default_warehouse_id').eq('is_active', true).order('name'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
-      supabase.from('departments').select('id, code, name').eq('is_active', true).order('name'),
     ]);
     setPurchases(dpRes.data || []);
     setItems(itemRes.data || []);
     setWarehouses(whRes.data || []);
-    setDepartments(deptRes.data || []);
     setLoading(false);
   }
 
@@ -12504,10 +11683,8 @@ function DirectPurchasePage() {
 
   function openNew() {
     setViewing(null);
-    setEditingDp(null);
     setPurchaseDate(new Date().toISOString().split('T')[0]);
     setPurchaseLocation('');
-    setDepartmentId('');
     setPurchaseItems([{ item_id: '', quantity: 0, unit_price: 0, warehouse_id: '', notes: '' }]);
     setNotes('');
     setShowModal(true);
@@ -12517,21 +11694,6 @@ function DirectPurchasePage() {
     setViewing(dp);
     setViewDoc(dp);
     setViewItems(dp.direct_purchase_items || []);
-    setShowModal(true);
-  }
-
-  function openEdit(dp) {
-    setViewing(null);
-    setPurchaseDate(dp.purchase_date || new Date().toISOString().split('T')[0]);
-    setPurchaseLocation(dp.purchase_location || '');
-    setDepartmentId(dp.department_id || '');
-    setNotes(dp.notes || '');
-    const dpItems = (dp.direct_purchase_items || []).map(di => ({
-      item_id: di.item_id, quantity: di.quantity, unit_price: di.unit_price,
-      warehouse_id: di.warehouse_id || '', notes: di.notes || '',
-    }));
-    setPurchaseItems(dpItems.length > 0 ? dpItems : [{ item_id: '', quantity: 0, unit_price: 0, warehouse_id: '', notes: '' }]);
-    setEditingDp(dp);
     setShowModal(true);
   }
 
@@ -12580,42 +11742,22 @@ function DirectPurchasePage() {
         return;
       }
 
+      const dpNumber = await generateNumber();
       const totalAmount = validItems.reduce((sum, i) => sum + (parseFloat(i.quantity) * parseFloat(i.unit_price)), 0);
 
-      let dpId;
-      if (editingDp) {
-        // Update existing draft
-        const { error: dpErr } = await supabase.from('direct_purchases').update({
-          purchase_date: purchaseDate,
-          purchase_location: purchaseLocation.trim(),
-          department_id: departmentId || null,
-          total_amount: totalAmount,
-          notes: notes || null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', editingDp.id);
-        if (dpErr) throw dpErr;
-        dpId = editingDp.id;
-        // Delete old items and re-insert
-        await supabase.from('direct_purchase_items').delete().eq('direct_purchase_id', dpId);
-      } else {
-        // Create new
-        const dpNumber = await generateNumber();
-        const { data: dp, error: dpErr } = await supabase.from('direct_purchases').insert({
-          organization_id: selectedOrg.id,
-          purchase_number: dpNumber,
-          purchase_date: purchaseDate,
-          purchase_location: purchaseLocation.trim(),
-          department_id: departmentId || null,
-          status: 'DRAFT',
-          total_amount: totalAmount,
-          notes: notes || null,
-        }).select().single();
-        if (dpErr) throw dpErr;
-        dpId = dp.id;
-      }
+      const { data: dp, error: dpErr } = await supabase.from('direct_purchases').insert({
+        organization_id: selectedOrg.id,
+        purchase_number: dpNumber,
+        purchase_date: purchaseDate,
+        purchase_location: purchaseLocation.trim(),
+        status: 'DRAFT',
+        total_amount: totalAmount,
+        notes: notes || null,
+      }).select().single();
+      if (dpErr) throw dpErr;
 
       const payload = validItems.map(i => ({
-        direct_purchase_id: dpId,
+        direct_purchase_id: dp.id,
         item_id: i.item_id,
         quantity: parseFloat(i.quantity),
         unit_price: parseFloat(i.unit_price),
@@ -12626,7 +11768,7 @@ function DirectPurchasePage() {
       const { error: iErr } = await supabase.from('direct_purchase_items').insert(payload);
       if (iErr) throw iErr;
 
-      showNotification(editingDp ? 'Draft updated' : t('dp.successSave'));
+      showNotification(t('dp.successSave'));
       setShowModal(false);
       loadAll();
     } catch (err) { showNotification(t('dp.errorSave') + ': ' + err.message, 'error'); }
@@ -12659,7 +11801,6 @@ function DirectPurchasePage() {
           reference_type: 'DIRECT_PURCHASE',
           reference_number: dp.purchase_number,
           warehouse_id: item.warehouse_id || null,
-          department_id: dp.department_id || null,
           notes: 'Direct purchase from ' + dp.purchase_location,
           created_by: currentUser?.id || null,
         });
@@ -12698,8 +11839,6 @@ function DirectPurchasePage() {
 
       await supabase.from('direct_purchases').update({
         status: 'CONFIRMED',
-        confirmed_by: currentUser?.id || null,
-        confirmed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', dp.id);
 
@@ -12707,73 +11846,6 @@ function DirectPurchasePage() {
       setShowModal(false);
       loadAll();
     } catch (err) { showNotification('Error: ' + err.message, 'error'); }
-    setSaving(false);
-  }
-
-  async function submitForApproval(dp) {
-    if (!confirm('Submit for approval?')) return;
-    const upd = { status: 'PENDING', submitted_by: currentUser?.id, submitted_at: new Date().toISOString() };
-    await supabase.from('direct_purchases').update(upd).eq('id', dp.id);
-    await supabase.from('approval_logs').insert({
-      organization_id: selectedOrg.id, document_type: 'DIRECT_PURCHASE', document_id: dp.id,
-      document_number: dp.purchase_number, action: 'SUBMITTED', action_by: currentUser?.id,
-    });
-    showNotification(dp.purchase_number + ' submitted for approval', 'success');
-    setShowModal(false);
-    loadAll();
-  }
-
-  async function handleRevokeDPConfirmed(dp) {
-    const userRole = currentUser?.role?.code || '';
-    if (userRole !== 'superadmin' && userRole !== 'gm') {
-      showNotification('Hanya GM atau Superadmin yang bisa revoke', 'error'); return;
-    }
-    if (!confirm(`Revoke ${dp.purchase_number}? Stok akan dikembalikan.`)) return;
-    setSaving(true);
-    try {
-      const dpItems = dp.direct_purchase_items || [];
-      for (const item of dpItems) {
-        const qty = parseFloat(item.quantity);
-        if (qty <= 0) continue;
-        // Reverse stock: subtract qty
-        const { data: stockData } = await supabase.from('stock_balance')
-          .select('id, quantity, total_value')
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', item.warehouse_id)
-          .single();
-        if (stockData) {
-          const newQty = parseFloat(stockData.quantity) - qty;
-          const unitPrice = parseFloat(item.unit_price) || 0;
-          const newTotalValue = parseFloat(stockData.total_value) - (qty * unitPrice);
-          await supabase.from('stock_balance').update({
-            quantity: newQty,
-            total_value: newTotalValue,
-            avg_cost: newQty > 0 ? newTotalValue / newQty : 0,
-            updated_at: new Date().toISOString(),
-          }).eq('id', stockData.id);
-        }
-        // Delete stock movement
-        await supabase.from('stock_movements').delete()
-          .eq('reference_type', 'DIRECT_PURCHASE')
-          .eq('reference_number', dp.purchase_number)
-          .eq('item_id', item.item_id);
-      }
-      // Update status back to APPROVED
-      await supabase.from('direct_purchases').update({
-        status: 'APPROVED', confirmed_by: null, confirmed_at: null,
-        updated_at: new Date().toISOString(),
-      }).eq('id', dp.id);
-      await supabase.from('approval_logs').insert({
-        organization_id: selectedOrg.id, document_type: 'DIRECT_PURCHASE', document_id: dp.id,
-        document_number: dp.purchase_number, action: 'REVOKE_CONFIRM', action_by: currentUser?.id,
-      });
-      showNotification(`${dp.purchase_number} berhasil di-revoke. Stok dikembalikan.`, 'success');
-      setShowModal(false);
-      loadAll();
-    } catch (e) {
-      console.error(e);
-      showNotification('Error revoke: ' + e.message, 'error');
-    }
     setSaving(false);
   }
 
@@ -12824,9 +11896,6 @@ function DirectPurchasePage() {
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">{t('common.all')}</option>
             <option value="DRAFT">{t('status.draft')}</option>
-            <option value="PENDING">Pending Approval</option>
-            <option value="APPROVED">Approved</option>
-            <option value="REJECTED">Rejected</option>
             <option value="CONFIRMED">{t('status.confirmed')}</option>
           </select>
         </div>
@@ -12834,18 +11903,14 @@ function DirectPurchasePage() {
           { header: t('dp.number'), render: r => <span className="font-medium text-primary-700">{r.purchase_number}</span> },
           { header: t('dp.date'), render: r => new Date(r.purchase_date).toLocaleDateString('id-ID') },
           { header: t('dp.location'), render: r => r.purchase_location || '-' },
-          { header: 'Dept', render: r => r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : '-' },
           { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
           { header: t('dp.grandTotal'), render: r => 'Rp ' + formatNumber(r.total_amount) },
           { header: t('dp.items'), render: r => r.direct_purchase_items?.length || 0 },
           { header: t('common.actions'), render: r => (
-            <div className="flex gap-1 items-center">
+            <div className="flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => openView(r)}>{t('common.view')}</Button>
-              {r.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();submitForApproval(r)}} className="p-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100">Submit</button>}
-              {r.status === 'APPROVED' && <Button size="sm" variant="primary" onClick={() => confirmPurchase(r)} disabled={saving}>{t('dp.confirm')}</Button>}
-
-              {r.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();openEdit(r)}} className="p-1 text-xs bg-yellow-50 text-yellow-700 rounded hover:bg-yellow-100 flex items-center gap-0.5"><Icons.Edit /> Edit</button>}
-              {r.status === 'DRAFT' && <button onClick={e => { e.stopPropagation(); handleDelete(r); }} className="p-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 flex items-center gap-0.5"><Icons.Trash /> Hapus</button>}
+              {r.status === 'DRAFT' && <Button size="sm" variant="primary" onClick={() => confirmPurchase(r)} disabled={saving}>{t('dp.confirm')}</Button>}
+              {r.status === 'DRAFT' && <button onClick={e => { e.stopPropagation(); handleDelete(r); }} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400"><Icons.Trash /></button>}
             </div>
           )},
         ]} data={filtered} />
@@ -12854,21 +11919,15 @@ function DirectPurchasePage() {
         )}
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={isView ? viewing.purchase_number : (editingDp ? 'Edit ' + editingDp.purchase_number : t('dp.create'))} size="xl">
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={isView ? viewing.purchase_number : t('dp.create')} size="xl">
         {!isView ? (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               <FormField label={t('dp.date')} required>
                 <Input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
               </FormField>
               <FormField label={t('dp.location')} required>
                 <Input value={purchaseLocation} onChange={e => setPurchaseLocation(e.target.value)} placeholder={t('dp.locationPlaceholder')} />
-              </FormField>
-              <FormField label="Department">
-                <Select value={departmentId} onChange={e => setDepartmentId(e.target.value)}>
-                  <option value="">Select Department</option>
-                  {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
-                </Select>
               </FormField>
               <FormField label={t('dp.notes')}>
                 <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('dp.notes')} />
@@ -12900,7 +11959,7 @@ function DirectPurchasePage() {
                           <select value={pi.item_id} onChange={e => handleItemSelect(idx, e.target.value)}
                             className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
                             <option value="">{t('dp.selectItem')}</option>
-                            {items.filter(it => it.allow_direct_purchase).map(it => <option key={it.id} value={it.id}>{it.code} - {it.name}{it.brand ? ` (${it.brand})` : ''}</option>)}
+                            {items.map(it => <option key={it.id} value={it.id}>{it.code} - {it.name}{it.brand ? ` (${it.brand})` : ''}</option>)}
                           </select>
                         </td>
                         <td className="px-3 py-2 text-center">
@@ -12945,7 +12004,6 @@ function DirectPurchasePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 bg-gray-50 rounded-lg p-4">
               <div><p className="text-xs text-gray-500">{t('dp.date')}</p><p className="font-medium">{new Date(viewing.purchase_date).toLocaleDateString('id-ID')}</p></div>
               <div><p className="text-xs text-gray-500">{t('dp.location')}</p><p className="font-medium">{viewing.purchase_location}</p></div>
-              <div><p className="text-xs text-gray-500">Department</p><p className="font-medium">{viewing.departments ? `${viewing.departments.code} - ${viewing.departments.name}` : '-'}</p></div>
               <div><p className="text-xs text-gray-500">{t('common.status')}</p><StatusBadge status={viewing.status} /></div>
               <div><p className="text-xs text-gray-500">{t('dp.grandTotal')}</p><p className="font-bold text-primary-700">Rp {formatNumber(viewing.total_amount)}</p></div>
             </div>
@@ -12984,8 +12042,7 @@ function DirectPurchasePage() {
         <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200">
           <Button variant="secondary" onClick={() => setShowModal(false)}>{isView ? t('common.close') : t('common.cancel')}</Button>
           {!isView && <Button onClick={handleSave} disabled={saving}>{saving ? t('common.saving') : t('dp.saveDraft')}</Button>}
-          {isDraft && <button onClick={() => submitForApproval(viewing)} className="px-4 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium">Submit for Approval</button>}
-          {isView && viewing.status === 'APPROVED' && <Button variant="primary" onClick={() => confirmPurchase(viewing)} disabled={saving}>{t('dp.confirm')}</Button>}
+          {isDraft && <Button variant="primary" onClick={() => confirmPurchase(viewing)} disabled={saving}>{t('dp.confirm')}</Button>}
         </div>
       </Modal>
     </div>
@@ -13610,15 +12667,12 @@ function InUseWarehousePage() {
     try {
       // Stock movement OUT - DEPLETED
       const deplBalAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', item.quantity);
-      const deplAvgCost = parseFloat(item.avg_cost) || 0;
       await supabase.from('stock_movements').insert({
         organization_id: selectedOrg.id,
         item_id: item.item_id,
         warehouse_id: inUseWarehouse.id,
         movement_type: 'OUT',
         quantity: item.quantity,
-        unit_cost: deplAvgCost,
-        total_cost: item.quantity * deplAvgCost,
         balance_after: deplBalAfter,
         reference_type: 'DEPLETED',
         reference_id: item.item_id,
@@ -13627,7 +12681,7 @@ function InUseWarehousePage() {
       });
 
       // Update stock balance to 0
-      await supabase.from('stock_balance').update({ quantity: 0, total_value: 0, avg_cost: 0, updated_at: new Date().toISOString() }).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id);
+      await supabase.from('stock_balance').update({ quantity: 0, updated_at: new Date().toISOString() }).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id);
 
       showNotification(t('iu.depletedSuccess'), 'success');
       loadAll();
@@ -13719,14 +12773,9 @@ function SingleItemUsagePage() {
   const [warehouses, setWarehouses] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [viewRecord, setViewRecord] = useState(null);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
   const [form, setForm] = useState({ usage_date: new Date().toISOString().split('T')[0], item_id: '', warehouse_id: '', department_id: '', quantity: 1, notes: '' });
   const [saving, setSaving] = useState(false);
-
-  const userRole = currentUser?.role?.code || '';
 
   useEffect(() => { if (selectedOrg) loadAll(); }, [selectedOrg]);
 
@@ -13754,31 +12803,17 @@ function SingleItemUsagePage() {
   }
 
   function openCreate() {
-    setEditingId(null);
     setForm({ usage_date: new Date().toISOString().split('T')[0], item_id: '', warehouse_id: '', department_id: '', quantity: 1, notes: '' });
     setShowModal(true);
   }
 
-  function openEdit(record) {
-    setEditingId(record.id);
-    setForm({
-      usage_date: record.usage_date,
-      item_id: record.item_id,
-      warehouse_id: record.warehouse_id,
-      department_id: record.department_id,
-      quantity: record.quantity,
-      notes: record.notes || '',
-    });
-    setShowModal(true);
-  }
-
-  // Save as DRAFT (no stock deduction)
-  async function handleSaveDraft() {
+  async function handleConfirm() {
     if (!form.item_id) return showNotification(t('siu.itemRequired'), 'error');
     if (!form.warehouse_id) return showNotification(t('siu.warehouseRequired'), 'error');
     if (!form.department_id) return showNotification(t('siu.departmentRequired'), 'error');
     if (parseFloat(form.quantity) <= 0 || parseFloat(form.quantity) > 1) return showNotification(t('siu.qtyMax1'), 'error');
 
+    if (!confirm(t('siu.confirmMsg'))) return;
     setSaving(true);
     try {
       // Validate usage date
@@ -13787,184 +12822,85 @@ function SingleItemUsagePage() {
       const maxBackdateDays = selectedOrg.max_backdate_days || 3;
       const daysDiff = Math.floor((today - inputDate) / (1000 * 60 * 60 * 24));
       if (daysDiff > maxBackdateDays) {
-        showNotification('Tanggal melebihi batas backdate (' + maxBackdateDays + ' hari)', 'error');
+        showNotification('Usage date exceeds maximum backdate limit (' + maxBackdateDays + ' days)', 'error');
         setSaving(false);
         return;
       }
 
-      const qty = parseFloat(form.quantity);
-
-      if (editingId) {
-        // Update existing DRAFT
-        const { error } = await supabase.from('single_item_usage').update({
-          usage_date: form.usage_date,
-          item_id: form.item_id,
-          quantity: qty,
-          warehouse_id: form.warehouse_id,
-          department_id: form.department_id,
-          notes: form.notes || null,
-        }).eq('id', editingId);
-        if (error) throw error;
-        showNotification('SIU berhasil diupdate', 'success');
-      } else {
-        // Create new DRAFT
-        const usageNumber = await generateNumber();
-        const { error } = await supabase.from('single_item_usage').insert({
-          organization_id: selectedOrg.id,
-          usage_number: usageNumber,
-          usage_date: form.usage_date,
-          item_id: form.item_id,
-          quantity: qty,
-          warehouse_id: form.warehouse_id,
-          department_id: form.department_id,
-          notes: form.notes || null,
-          created_by: currentUser?.id || null,
-          status: 'DRAFT',
-        });
-        if (error) throw error;
-        showNotification('SIU berhasil disimpan sebagai DRAFT', 'success');
-      }
-
-      setShowModal(false);
-      setEditingId(null);
-      loadAll();
-    } catch (e) {
-      console.error(e);
-      showNotification('Error: ' + e.message, 'error');
-    }
-    setSaving(false);
-  }
-
-  // Confirm DRAFT → CONFIRMED (deduct stock)
-  async function handleConfirmSIU(record) {
-    if (!confirm(`Konfirmasi ${record.usage_number}? Stok akan dikurangi.`)) return;
-    setSaving(true);
-    try {
       // Check if period is locked
-      const inputDate = new Date(record.usage_date);
       const periodMonth = inputDate.getMonth() + 1;
       const periodYear = inputDate.getFullYear();
       const { data: locks } = await supabase.from('period_locks')
-        .select('*').eq('organization_id', selectedOrg.id)
-        .eq('period_month', periodMonth).eq('period_year', periodYear)
-        .eq('is_locked', true).single();
-      if (locks) { showNotification('Periode sudah dikunci', 'error'); setSaving(false); return; }
+        .select('*')
+        .eq('organization_id', selectedOrg.id)
+        .eq('period_month', periodMonth)
+        .eq('period_year', periodYear)
+        .eq('is_locked', true)
+        .single();
+      if (locks) {
+        showNotification('Period is locked', 'error');
+        setSaving(false);
+        return;
+      }
 
       // Check stock
-      const { data: stockData } = await supabase.from('stock_balance').select('quantity, avg_cost, total_value').eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id).single();
-      const qty = parseFloat(record.quantity);
-      if (!stockData || stockData.quantity < qty) {
-        showNotification('Stok tidak mencukupi!', 'error'); setSaving(false); return;
+      const { data: stockData } = await supabase.from('stock_balance').select('quantity').eq('item_id', form.item_id).eq('warehouse_id', form.warehouse_id).single();
+      if (!stockData || stockData.quantity < parseFloat(form.quantity)) {
+        showNotification(t('siu.noStock'), 'error');
+        setSaving(false);
+        return;
       }
-      const avgCost = parseFloat(stockData.avg_cost) || 0;
 
-      // Update status to CONFIRMED
-      const { error: updErr } = await supabase.from('single_item_usage').update({
-        status: 'CONFIRMED',
-        confirmed_by: currentUser?.id || null,
-        confirmed_at: new Date().toISOString(),
-      }).eq('id', record.id);
-      if (updErr) throw updErr;
+      const usageNumber = await generateNumber();
+      const qty = parseFloat(form.quantity);
+
+      // Insert usage record
+      const { data: usage, error: usageErr } = await supabase.from('single_item_usage').insert({
+        organization_id: selectedOrg.id,
+        usage_number: usageNumber,
+        usage_date: form.usage_date,
+        item_id: form.item_id,
+        quantity: qty,
+        warehouse_id: form.warehouse_id,
+        department_id: form.department_id,
+        notes: form.notes || null,
+        created_by: 'system',
+      }).select().single();
+      if (usageErr) throw usageErr;
 
       // Stock movement OUT
-      const deptName = record.departments?.name || '';
-      const siuBalAfter = await getBalanceAfter(selectedOrg.id, record.item_id, 'OUT', qty);
+      const siuBalAfter = await getBalanceAfter(selectedOrg.id, form.item_id, 'OUT', qty);
       await supabase.from('stock_movements').insert({
         organization_id: selectedOrg.id,
-        item_id: record.item_id,
-        warehouse_id: record.warehouse_id,
-        department_id: record.department_id || null,
+        item_id: form.item_id,
+        warehouse_id: form.warehouse_id,
         movement_type: 'OUT',
         quantity: qty,
-        unit_cost: avgCost,
-        total_cost: qty * avgCost,
         balance_after: siuBalAfter,
         reference_type: 'USAGE',
-        reference_id: record.id,
-        notes: `Single usage: ${record.usage_number} - Dept: ${deptName}`,
+        reference_id: usage.id,
+        notes: `Single usage: ${usageNumber} - Dept: ${departments.find(d => d.id === form.department_id)?.name || ''}`,
         created_by: currentUser?.id || null,
       });
 
       // Update stock balance
       const newQty = stockData.quantity - qty;
-      const newTotalValue = newQty > 0 ? newQty * avgCost : 0;
-      await supabase.from('stock_balance').update({ quantity: newQty, total_value: newTotalValue, updated_at: new Date().toISOString() }).eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id);
+      await supabase.from('stock_balance').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('item_id', form.item_id).eq('warehouse_id', form.warehouse_id);
 
-      showNotification(`${record.usage_number} berhasil dikonfirmasi. Stok berkurang ${qty}.`, 'success');
+      showNotification(t('siu.successConfirm'), 'success');
+      setShowModal(false);
       loadAll();
     } catch (e) {
       console.error(e);
-      showNotification('Error konfirmasi: ' + e.message, 'error');
+      showNotification(t('siu.errorSave') + ': ' + e.message, 'error');
     }
     setSaving(false);
-  }
-
-  // Revoke CONFIRMED → DRAFT (reverse stock) - GM/Superadmin only
-  async function handleRevokeSIU(record) {
-    if (userRole !== 'superadmin' && userRole !== 'gm') {
-      showNotification('Hanya GM atau Superadmin yang bisa revoke', 'error'); return;
-    }
-    if (!confirm(`Revoke ${record.usage_number}? Stok akan dikembalikan.`)) return;
-    setSaving(true);
-    try {
-      const qty = parseFloat(record.quantity);
-
-      // Reverse stock: add back
-      const { data: stockData } = await supabase.from('stock_balance').select('quantity').eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id).single();
-      const currentQty = stockData ? stockData.quantity : 0;
-      const newQty = currentQty + qty;
-
-      // Update stock balance
-      if (stockData) {
-        await supabase.from('stock_balance').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id);
-      }
-
-      // Hapus stock movement asli SIU dari bincard (bukan buat entry baru)
-      await supabase.from('stock_movements').delete()
-        .eq('reference_type', 'USAGE')
-        .eq('reference_id', record.id);
-
-      // Update status back to DRAFT
-      const { error: updErr } = await supabase.from('single_item_usage').update({
-        status: 'DRAFT',
-        confirmed_by: null,
-        confirmed_at: null,
-      }).eq('id', record.id);
-      if (updErr) throw updErr;
-
-      showNotification(`${record.usage_number} berhasil di-revoke. Stok dikembalikan +${qty}.`, 'success');
-      loadAll();
-    } catch (e) {
-      console.error(e);
-      showNotification('Error revoke: ' + e.message, 'error');
-    }
-    setSaving(false);
-  }
-
-  // Delete DRAFT
-  async function handleDeleteSIU(record) {
-    if (!confirm(`Hapus ${record.usage_number}?`)) return;
-    try {
-      await supabase.from('single_item_usage').delete().eq('id', record.id);
-      showNotification(`${record.usage_number} dihapus`, 'success');
-      loadAll();
-    } catch (e) {
-      showNotification('Error: ' + e.message, 'error');
-    }
   }
 
   const filtered = records.filter(r => {
     const txt = search.toLowerCase();
-    const matchTxt = !txt || r.usage_number?.toLowerCase().includes(txt) || r.items?.name?.toLowerCase().includes(txt) || r.departments?.name?.toLowerCase().includes(txt);
-    const matchStatus = !filterStatus || r.status === filterStatus;
-    return matchTxt && matchStatus;
+    return !txt || r.usage_number?.toLowerCase().includes(txt) || r.items?.name?.toLowerCase().includes(txt) || r.departments?.name?.toLowerCase().includes(txt);
   });
-
-  const statusCounts = {
-    all: records.length,
-    DRAFT: records.filter(r => r.status === 'DRAFT').length,
-    CONFIRMED: records.filter(r => r.status === 'CONFIRMED').length,
-  };
 
   return (
     <div className="fade-in">
@@ -13972,19 +12908,8 @@ function SingleItemUsagePage() {
         <Button onClick={openCreate}><Icons.Plus /> {t('siu.create')}</Button>
       } />
 
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <Input placeholder={t('siu.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
-        <div className="flex gap-1">
-          <button onClick={() => setFilterStatus('')} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${!filterStatus ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            Semua ({statusCounts.all})
-          </button>
-          <button onClick={() => setFilterStatus('DRAFT')} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filterStatus === 'DRAFT' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            Draft ({statusCounts.DRAFT})
-          </button>
-          <button onClick={() => setFilterStatus('CONFIRMED')} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filterStatus === 'CONFIRMED' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            Confirmed ({statusCounts.CONFIRMED})
-          </button>
-        </div>
+      <div className="mb-4">
+        <Input placeholder={t('siu.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       {loading ? <div className="flex justify-center py-12"><div className="spinner"></div></div> :
@@ -13999,8 +12924,7 @@ function SingleItemUsagePage() {
                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('siu.qty')}</th>
                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('siu.warehouse')}</th>
                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('siu.department')}</th>
-               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('siu.notes')}</th>
              </tr>
            </thead>
            <tbody className="divide-y divide-gray-200">
@@ -14012,36 +12936,7 @@ function SingleItemUsagePage() {
                  <td className="px-4 py-3 text-sm">{r.quantity}</td>
                  <td className="px-4 py-3 text-sm">{r.warehouses?.name || '-'}</td>
                  <td className="px-4 py-3 text-sm">{r.departments?.name || '-'}</td>
-                 <td className="px-4 py-3 text-sm">
-                   <Badge color={r.status === 'CONFIRMED' ? 'green' : 'yellow'}>{r.status || 'DRAFT'}</Badge>
-                 </td>
-                 <td className="px-4 py-3 text-sm">
-                   <div className="flex items-center gap-1">
-                     <button onClick={() => setViewRecord(r)} className="p-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100">
-                       <Icons.Eye /> Detail
-                     </button>
-                     {r.status === 'DRAFT' && r.created_by === currentUser?.id && (
-                       <button onClick={() => openEdit(r)} className="p-1 text-xs bg-yellow-50 text-yellow-600 rounded hover:bg-yellow-100">
-                         <Icons.Edit /> Edit
-                       </button>
-                     )}
-                     {r.status === 'DRAFT' && (
-                       <button onClick={() => handleConfirmSIU(r)} className="p-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100" disabled={saving}>
-                         <Icons.Check /> Confirm
-                       </button>
-                     )}
-                     {r.status === 'DRAFT' && r.created_by === currentUser?.id && (
-                       <button onClick={() => handleDeleteSIU(r)} className="p-1 text-xs bg-red-50 text-red-400 rounded hover:bg-red-100">
-                         <Icons.Trash />
-                       </button>
-                     )}
-                     {r.status === 'CONFIRMED' && (userRole === 'superadmin' || userRole === 'gm') && (
-                       <button onClick={() => handleRevokeSIU(r)} className="p-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100" disabled={saving}>
-                         <Icons.RotateCcw /> Revoke
-                       </button>
-                     )}
-                   </div>
-                 </td>
+                 <td className="px-4 py-3 text-sm text-gray-500">{r.notes || '-'}</td>
                </tr>
              ))}
            </tbody>
@@ -14049,31 +12944,7 @@ function SingleItemUsagePage() {
        </div>
       }
 
-      {/* View Detail Modal */}
-      <Modal open={!!viewRecord} onClose={() => setViewRecord(null)} title={`Detail SIU - ${viewRecord?.usage_number || ''}`} size="md">
-        {viewRecord && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-4">
-              <div><span className="text-xs text-gray-500">Nomor</span><div className="font-medium">{viewRecord.usage_number}</div></div>
-              <div><span className="text-xs text-gray-500">Tanggal</span><div>{viewRecord.usage_date}</div></div>
-              <div><span className="text-xs text-gray-500">Status</span><div><Badge color={viewRecord.status === 'CONFIRMED' ? 'green' : 'yellow'}>{viewRecord.status || 'DRAFT'}</Badge></div></div>
-              <div><span className="text-xs text-gray-500">Item</span><div>{viewRecord.items?.code} - {viewRecord.items?.name}</div></div>
-              <div><span className="text-xs text-gray-500">Qty</span><div>{viewRecord.quantity}</div></div>
-              <div><span className="text-xs text-gray-500">Warehouse</span><div>{viewRecord.warehouses?.code} - {viewRecord.warehouses?.name}</div></div>
-              <div><span className="text-xs text-gray-500">Department</span><div>{viewRecord.departments?.code} - {viewRecord.departments?.name}</div></div>
-              <div><span className="text-xs text-gray-500">Notes</span><div>{viewRecord.notes || '-'}</div></div>
-            </div>
-            {viewRecord.status === 'CONFIRMED' && viewRecord.confirmed_at && (
-              <div className="mt-3 pt-3 border-t text-xs text-gray-500">
-                Dikonfirmasi pada: {new Date(viewRecord.confirmed_at).toLocaleString('id-ID')}
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      {/* Create/Edit Modal */}
-      <Modal open={showModal} onClose={() => { setShowModal(false); setEditingId(null); }} title={editingId ? 'Edit SIU' : t('siu.create')} size="md">
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={t('siu.create')} size="md">
         <div className="space-y-4">
           <FormField label={t('siu.date')} required>
             <Input type="date" value={form.usage_date} onChange={e => setForm({...form, usage_date: e.target.value})} />
@@ -14103,8 +12974,8 @@ function SingleItemUsagePage() {
             <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder={t('siu.notes')} />
           </FormField>
           <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button variant="secondary" onClick={() => { setShowModal(false); setEditingId(null); }}>{t('common.cancel')}</Button>
-            <Button onClick={handleSaveDraft} disabled={saving}>{saving ? t('common.saving') : (editingId ? 'Update Draft' : 'Save as Draft')}</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
+            <Button onClick={handleConfirm} disabled={saving}>{saving ? t('common.saving') : t('siu.confirm')}</Button>
           </div>
         </div>
       </Modal>
