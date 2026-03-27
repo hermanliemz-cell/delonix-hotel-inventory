@@ -1019,6 +1019,33 @@ const translations = {
     'roles.action.export_reports': 'Export Reports',
     'roles.action.manage_users': 'Manage Users',
     'roles.action.manage_roles': 'Manage Roles',
+    'roles.action.unlock_opening_balance': 'Unlock Opening Balance',
+
+    // System Settings
+    'settings.title': 'System Settings',
+    'settings.subtitle': 'Configure system-wide preferences',
+    'settings.timezone': 'Timezone',
+    'settings.timezoneDesc': 'Timezone used for all date/time displays',
+    'settings.currency': 'Currency',
+    'settings.currencyDesc': 'Default currency for financial data',
+    'settings.dateFormat': 'Date Format',
+    'settings.dateFormatDesc': 'Display format for dates throughout the system',
+    'settings.language': 'Default Language',
+    'settings.languageDesc': 'Default interface language for new users',
+    'settings.lowStockThreshold': 'Low Stock Threshold',
+    'settings.lowStockThresholdDesc': 'Default threshold for low stock alerts',
+    'settings.autoGenerateCode': 'Auto Generate Codes',
+    'settings.autoGenerateCodeDesc': 'Automatically generate item/document codes',
+    'settings.fiscalYearStart': 'Fiscal Year Start Month',
+    'settings.fiscalYearStartDesc': 'Starting month of the fiscal year',
+    'settings.saved': 'Settings saved successfully',
+    'settings.saveError': 'Failed to save settings',
+    'settings.save': 'Save Settings',
+    'settings.saving': 'Saving...',
+    'settings.general': 'General',
+    'settings.inventory': 'Inventory',
+    'settings.regional': 'Regional',
+    'menu.systemSettings': 'System Settings',
 
     // Change Password
     'pwd.title': 'Change Password',
@@ -1915,6 +1942,33 @@ const translations = {
     'roles.action.export_reports': '导出报表',
     'roles.action.manage_users': '管理用户',
     'roles.action.manage_roles': '管理角色',
+    'roles.action.unlock_opening_balance': '解锁期初余额',
+
+    // System Settings
+    'settings.title': '系统设置',
+    'settings.subtitle': '配置全系统偏好设置',
+    'settings.timezone': '时区',
+    'settings.timezoneDesc': '所有日期/时间显示使用的时区',
+    'settings.currency': '货币',
+    'settings.currencyDesc': '财务数据的默认货币',
+    'settings.dateFormat': '日期格式',
+    'settings.dateFormatDesc': '系统中日期的显示格式',
+    'settings.language': '默认语言',
+    'settings.languageDesc': '新用户的默认界面语言',
+    'settings.lowStockThreshold': '低库存阈值',
+    'settings.lowStockThresholdDesc': '低库存警报的默认阈值',
+    'settings.autoGenerateCode': '自动生成编码',
+    'settings.autoGenerateCodeDesc': '自动生成物品/文档编码',
+    'settings.fiscalYearStart': '财年起始月份',
+    'settings.fiscalYearStartDesc': '财年的起始月份',
+    'settings.saved': '设置保存成功',
+    'settings.saveError': '保存设置失败',
+    'settings.save': '保存设置',
+    'settings.saving': '保存中...',
+    'settings.general': '常规',
+    'settings.inventory': '库存',
+    'settings.regional': '区域',
+    'menu.systemSettings': '系统设置',
 
     // Change Password
     'pwd.title': '修改密码',
@@ -2188,6 +2242,26 @@ function App() {
     }
   }, [selectedOrg?.id]);
 
+  // Load system settings into global cache when org changes
+  useEffect(() => {
+    if (!selectedOrg) return;
+    (async () => {
+      try {
+        const { data } = await supabase.from('system_settings').select('setting_key, setting_value').eq('organization_id', selectedOrg.id);
+        const map = {};
+        (data || []).forEach(r => { map[r.setting_key] = r.setting_value; });
+        // Apply defaults
+        if (!map.timezone) map.timezone = 'Asia/Bangkok';
+        if (!map.currency) map.currency = 'IDR';
+        if (!map.date_format) map.date_format = 'DD/MM/YYYY';
+        window.__systemSettings = map;
+      } catch (e) {
+        console.error('Error loading system settings:', e);
+        window.__systemSettings = { timezone: 'Asia/Bangkok', currency: 'IDR', date_format: 'DD/MM/YYYY' };
+      }
+    })();
+  }, [selectedOrg?.id]);
+
   const contextValue = { supabase, selectedOrg, setSelectedOrg, organizations, showNotification, currentPage, setCurrentPage, currentUser, handleLogout };
 
   // Show login page if not authenticated
@@ -2260,6 +2334,7 @@ function App() {
     { type: 'group', label: t('menu.group.settings'), icon: Icons.Settings, children: [
       { id: 'user-mgmt', label: t('menu.userMgmt'), icon: Icons.Users },
       { id: 'role-mgmt', label: t('menu.roleMgmt'), icon: Icons.Shield },
+      { id: 'system-settings', label: t('menu.systemSettings'), icon: Icons.Settings },
       { id: 'change-password', label: t('menu.changePassword'), icon: Icons.Lock },
     ]},
   ];
@@ -2412,18 +2487,32 @@ function App() {
               <button onClick={() => setMobileSidebar(true)} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg flex-shrink-0">
                 <Icons.Menu />
               </button>
-              {selectedOrg && (
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm sm:text-lg font-semibold text-gray-800 truncate">{selectedOrg.name}</h2>
-                  <span className="text-xs sm:text-sm bg-hotel-100 text-hotel-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
-                    {selectedOrg.code}
-                  </span>
-                </div>
-              )}
+              {selectedOrg && (() => {
+                const orgColors = [
+                  { bg: 'bg-blue-100', text: 'text-blue-700' },
+                  { bg: 'bg-emerald-100', text: 'text-emerald-700' },
+                  { bg: 'bg-purple-100', text: 'text-purple-700' },
+                  { bg: 'bg-amber-100', text: 'text-amber-700' },
+                  { bg: 'bg-rose-100', text: 'text-rose-700' },
+                  { bg: 'bg-cyan-100', text: 'text-cyan-700' },
+                  { bg: 'bg-orange-100', text: 'text-orange-700' },
+                  { bg: 'bg-indigo-100', text: 'text-indigo-700' },
+                ];
+                const orgIdx = organizations.findIndex(o => o.id === selectedOrg.id);
+                const c = orgColors[orgIdx >= 0 ? orgIdx % orgColors.length : 0];
+                return (
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm sm:text-lg font-semibold text-gray-800 truncate">{selectedOrg.name}</h2>
+                    <span className={`text-xs sm:text-sm ${c.bg} ${c.text} px-2 py-0.5 rounded-full font-medium flex-shrink-0`}>
+                      {selectedOrg.code}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
               <button onClick={toggleLanguage} className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg relative text-xs sm:text-sm font-medium text-gray-700">
-                {lang === 'en' ? 'EN' : '中文'}
+                {lang === 'en' ? '中文' : 'EN'}
               </button>
               <button className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg relative">
                 <Icons.Bell />
@@ -2615,6 +2704,7 @@ function PageRouter({ page }) {
     case 'reports': return <ReportsPage />;
     case 'user-mgmt': return <UserManagementPage />;
     case 'role-mgmt': return <RoleManagementPage />;
+    case 'system-settings': return <SystemSettingsPage />;
     case 'change-password': return <ChangePasswordPage />;
     default: return <DashboardPage />;
   }
@@ -2793,6 +2883,133 @@ function Input({ ...props }) {
 
 function Select({ children, ...props }) {
   return <select {...props} className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent ${props.className || ''}`}>{children}</select>;
+}
+
+function TreeSelect({ value, onChange, categories, placeholder = 'Select Category' }) {
+  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState({});
+  const [search, setSearch] = useState('');
+  const containerRef = useRef(null);
+
+  const parents = categories.filter(c => !c.parent_id);
+  const getChildren = (parentId) => categories.filter(c => c.parent_id === parentId);
+  const selected = categories.find(c => c.id === value);
+
+  useEffect(() => {
+    const handler = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Auto-expand parent of selected item on mount
+  useEffect(() => {
+    if (selected && selected.parent_id) {
+      setExpanded(prev => ({ ...prev, [selected.parent_id]: true }));
+    }
+  }, [value]);
+
+  const toggleExpand = (id, e) => {
+    e.stopPropagation();
+    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const selectCategory = (cat) => {
+    onChange(cat.id);
+    setOpen(false);
+    setSearch('');
+  };
+
+  const matchesSearch = (cat) => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return cat.name.toLowerCase().includes(s) || (cat.code && cat.code.toLowerCase().includes(s));
+  };
+
+  const parentMatchesOrHasChildMatch = (parent) => {
+    if (matchesSearch(parent)) return true;
+    return getChildren(parent.id).some(c => matchesSearch(c));
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button type="button" onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:border-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors">
+        <span className={selected ? 'text-gray-800 truncate' : 'text-gray-400'}>
+          {selected ? (
+            <span className="flex items-center gap-1.5">
+              {selected.parent_id && <span className="text-gray-400 text-xs">{categories.find(c => c.id === selected.parent_id)?.name} /</span>}
+              <span className="font-medium">{selected.name}</span>
+              {selected.code && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{selected.code}</span>}
+            </span>
+          ) : placeholder}
+        </span>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden" style={{ maxHeight: '300px' }}>
+          <div className="p-2 border-b border-gray-100">
+            <div className="relative">
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input type="text" placeholder="Search category..." value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" autoFocus />
+            </div>
+          </div>
+          <div className="overflow-y-auto" style={{ maxHeight: '240px' }}>
+            {parents.filter(p => parentMatchesOrHasChildMatch(p)).map(parent => {
+              const children = getChildren(parent.id).filter(c => matchesSearch(c) || matchesSearch(parent));
+              const isExpanded = expanded[parent.id] || (search && children.length > 0);
+              const hasChildren = children.length > 0;
+              return (
+                <div key={parent.id}>
+                  <div className="flex items-center group">
+                    {hasChildren ? (
+                      <button onClick={(e) => toggleExpand(parent.id, e)}
+                        className="p-1.5 ml-1 hover:bg-gray-100 rounded transition-colors flex-shrink-0">
+                        <svg className={`w-3.5 h-3.5 text-gray-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    ) : <div className="w-7 flex-shrink-0" />}
+                    <button onClick={() => selectCategory(parent)}
+                      className={`flex-1 flex items-center gap-2 px-2 py-2 text-sm text-left hover:bg-blue-50 transition-colors ${value === parent.id ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700'}`}>
+                      <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" style={{ opacity: hasChildren ? 1 : 0.3 }}></span>
+                      <span>{parent.name}</span>
+                      {parent.code && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded ml-auto">{parent.code}</span>}
+                      {value === parent.id && (
+                        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  {isExpanded && children.map(child => (
+                    <button key={child.id} onClick={() => selectCategory(child)}
+                      className={`w-full flex items-center gap-2 pl-10 pr-3 py-1.5 text-sm text-left hover:bg-blue-50 transition-colors ${value === child.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600'}`}>
+                      <span className="w-1 h-1 rounded-full bg-gray-400 flex-shrink-0"></span>
+                      <span>{child.name}</span>
+                      {child.code && <span className="text-xs bg-gray-50 text-gray-400 px-1.5 py-0.5 rounded ml-auto">{child.code}</span>}
+                      {value === child.id && (
+                        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+            {parents.filter(p => parentMatchesOrHasChildMatch(p)).length === 0 && (
+              <div className="px-4 py-3 text-sm text-gray-400 text-center">No categories found</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SearchableItemSelect({ items, value, onChange, placeholder }) {
@@ -2996,11 +3213,25 @@ function StatusBadge({ status }) {
 }
 
 function formatCurrency(amount) {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount || 0);
+  const curr = window.__systemSettings?.currency || 'IDR';
+  const locale = curr === 'IDR' ? 'id-ID' : curr === 'CNY' ? 'zh-CN' : curr === 'THB' ? 'th-TH' : 'en-US';
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: curr, minimumFractionDigits: 0 }).format(amount || 0);
 }
 
 function formatNumber(num) {
   return new Intl.NumberFormat('id-ID').format(num || 0);
+}
+
+// Format date using system timezone (WIB by default)
+function formatDateSys(dateStr, opts = {}) {
+  if (!dateStr) return '-';
+  const tz = window.__systemSettings?.timezone || 'Asia/Bangkok';
+  const d = new Date(dateStr);
+  const { includeTime } = opts;
+  if (includeTime) {
+    return d.toLocaleString('id-ID', { timeZone: tz, dateStyle: 'short', timeStyle: 'short' });
+  }
+  return d.toLocaleDateString('id-ID', { timeZone: tz });
 }
 
 // Helper: get balance_after for stock_movements (sums all warehouse rows for the item)
@@ -3024,7 +3255,6 @@ function DashboardPage() {
   const { t } = useTranslation();
   const { selectedOrg } = useApp();
   const [stats, setStats] = useState({ items: 0, vendors: 0, lowStock: 0, pendingPR: 0 });
-  const [recentMovements, setRecentMovements] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -3034,12 +3264,11 @@ function DashboardPage() {
   async function loadDashboard() {
     setLoading(true);
     try {
-      const [itemsRes, vendorsRes, stockRes, prRes, movRes] = await Promise.all([
+      const [itemsRes, vendorsRes, stockRes, prRes] = await Promise.all([
         supabase.from('items').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('vendors').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('stock_balance').select('*').eq('organization_id', selectedOrg.id),
         supabase.from('purchase_requests').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'SUBMITTED'),
-        supabase.from('stock_movements').select('*, items(name)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: true }).limit(10),
       ]);
 
       const stockData = stockRes.data || [];
@@ -3053,7 +3282,6 @@ function DashboardPage() {
         lowStock: lowStockCount,
         pendingPR: prRes.count || 0,
       });
-      setRecentMovements(movRes.data || []);
     } catch (err) {
       console.error('Dashboard error:', err);
     } finally {
@@ -3074,19 +3302,6 @@ function DashboardPage() {
         <StatCard title={t('dashboard.pendingPR')} value={formatNumber(stats.pendingPR)} icon={Icons.ShoppingCart} color="orange" />
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 className="text-sm font-semibold text-gray-800 mb-4">{t('dashboard.recentMovements')}</h3>
-        <DataTable
-          columns={[
-            { header: t('common.date'), render: (r) => new Date(r.created_at).toLocaleDateString('id-ID') },
-            { header: t('dashboard.item'), render: (r) => r.items?.name || '-' },
-            { header: t('dashboard.type'), render: (r) => <Badge color={r.movement_type === 'IN' ? 'green' : r.movement_type === 'OUT' ? 'red' : 'blue'}>{r.movement_type}</Badge> },
-            { header: t('dashboard.qty'), render: (r) => formatNumber(r.quantity) },
-            { header: t('dashboard.balance'), render: (r) => formatNumber(r.balance_after) },
-          ]}
-          data={recentMovements}
-        />
-      </div>
     </div>
   );
 }
@@ -3425,7 +3640,7 @@ function PeriodLocksManagement({ hotels, canEdit, currentUser }) {
                     </Badge>
                   </td>
                   <td className="py-2 px-3 text-xs text-gray-500">
-                    {new Date(lock.locked_at).toLocaleDateString()}
+                    {formatDateSys(lock.locked_at)}
                   </td>
                   <td className="py-2 px-3">
                     {canReopen && lock.is_locked && (
@@ -3462,8 +3677,6 @@ function ItemsPage() {
   const [editItem, setEditItem] = useState(null);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [filterSubCategory, setFilterSubCategory] = useState('all');
-  const [filterWarehouse, setFilterWarehouse] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false });
@@ -3491,6 +3704,15 @@ function ItemsPage() {
     setCategories(uniqueCats);
     setUnits(unitRes.data || []);
     setWarehouses(whRes.data || []);
+    // Default filter to Guest Amenities (first parent category with code AMN, or first parent)
+    if (!filterCategory) {
+      const amenities = uniqueCats.find(c => !c.parent_id && c.code === 'AMN');
+      if (amenities) setFilterCategory(amenities.id);
+      else {
+        const firstParent = uniqueCats.find(c => !c.parent_id);
+        if (firstParent) setFilterCategory(firstParent.id);
+      }
+    }
     setLoading(false);
   }
 
@@ -3555,12 +3777,6 @@ function ItemsPage() {
     }
   }
 
-  // Sub-category tabs: detect children of selected parent
-  const childCatsOfFilter = filterCategory ? categories.filter(c => c.parent_id === filterCategory) : [];
-  const hasSubCategoryTabs = childCatsOfFilter.length > 0;
-
-  // Reset sub-category tab when parent category changes
-  useEffect(() => { setFilterSubCategory('all'); }, [filterCategory]);
 
   const filtered = items.filter(i => {
     const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -3568,16 +3784,9 @@ function ItemsPage() {
       (i.brand && i.brand.toLowerCase().includes(search.toLowerCase()));
     let matchCategory = true;
     if (filterCategory) {
-      if (hasSubCategoryTabs && filterSubCategory !== 'all') {
-        // Specific sub-category selected
-        matchCategory = i.category_id === filterSubCategory;
-      } else {
-        // Parent selected (show all: parent + children)
-        matchCategory = i.category_id === filterCategory || categories.some(c => c.id === i.category_id && c.parent_id === filterCategory);
-      }
+      matchCategory = i.category_id === filterCategory || categories.some(c => c.id === i.category_id && c.parent_id === filterCategory);
     }
-    const matchWarehouse = !filterWarehouse || i.default_warehouse_id === filterWarehouse;
-    return matchSearch && matchCategory && matchWarehouse;
+    return matchSearch && matchCategory;
   });
 
   const totalPages = Math.ceil(filtered.length / pageSize);
@@ -3585,7 +3794,7 @@ function ItemsPage() {
   const paginatedItems = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   // Reset to page 1 when filters change
-  useEffect(() => { setCurrentPage(1); }, [search, filterCategory, filterSubCategory, filterWarehouse, pageSize]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterCategory, pageSize]);
 
   return (
     <div>
@@ -3605,54 +3814,13 @@ function ItemsPage() {
             <option value="">All Categories</option>
             {categories.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select value={filterWarehouse} onChange={e => setFilterWarehouse(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
-            <option value="">All Warehouses</option>
-            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
-          {(filterCategory || filterWarehouse) && (
-            <button onClick={() => { setFilterCategory(''); setFilterSubCategory('all'); setFilterWarehouse(''); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
+          {filterCategory && (
+            <button onClick={() => { setFilterCategory(''); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
               Clear Filters
             </button>
           )}
         </div>
       </div>
-
-      {/* Sub-category Tabs */}
-      {hasSubCategoryTabs && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4">
-          <div className="flex flex-wrap gap-0 px-3 pt-2 border-b border-gray-100 overflow-x-auto">
-            <button onClick={() => setFilterSubCategory('all')}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
-                filterSubCategory === 'all' ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}>
-              Semua ({items.filter(i => i.category_id === filterCategory || categories.some(c => c.id === i.category_id && c.parent_id === filterCategory)).length})
-            </button>
-            {childCatsOfFilter.map(sub => {
-              const count = items.filter(i => i.category_id === sub.id).length;
-              return (
-                <button key={sub.id} onClick={() => setFilterSubCategory(sub.id)}
-                  className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
-                    filterSubCategory === sub.id ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}>
-                  {sub.name} ({count})
-                </button>
-              );
-            })}
-            {(() => {
-              const directCount = items.filter(i => i.category_id === filterCategory).length;
-              return directCount > 0 ? (
-                <button onClick={() => setFilterSubCategory(filterCategory)}
-                  className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
-                    filterSubCategory === filterCategory ? 'border-primary-500 text-primary-700 bg-primary-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}>
-                  Lainnya ({directCount})
-                </button>
-              ) : null;
-            })()}
-          </div>
-        </div>
-      )}
 
       {/* Data Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -3663,7 +3831,6 @@ function ItemsPage() {
             { header: t('items.name'), key: 'name', render: r => <span className="font-medium">{r.name}</span> },
             { header: t('items.brand'), render: r => r.brand || '-' },
             { header: t('items.size'), render: r => r.size ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{r.size}</span> : '-' },
-            { header: t('items.category'), render: r => r.item_categories?.name || '-' },
             { header: t('items.purchaseUnit'), render: r => r.purchase_unit?.abbreviation || r.units?.abbreviation || '-' },
             { header: t('items.usageUnit'), render: r => r.usage_unit?.abbreviation || r.units?.abbreviation || '-' },
             { header: t('items.conversionRate'), render: r => r.conversion_rate && r.conversion_rate !== 1 ? <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-medium">1:{r.conversion_rate}</span> : <span className="text-gray-400">1:1</span> },
@@ -3714,10 +3881,7 @@ function ItemsPage() {
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editItem ? t('items.editItem') : t('items.addNew')} size="lg">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label={t('items.category')} required>
-            <Select value={form.category_id} onChange={e => handleCategoryChange(e.target.value)}>
-              <option value="">{t('items.selectCategory')}</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
+            <TreeSelect value={form.category_id} onChange={v => handleCategoryChange(v)} categories={categories} placeholder={t('items.selectCategory')} />
           </FormField>
           <FormField label={t('items.code')} required>
             <Input value={form.code} onChange={e => editItem && setForm({...form, code: e.target.value})} placeholder={editItem ? 'AMN-001' : t('items.codeAutoGenerated')} readOnly={!editItem} className={!editItem ? 'bg-gray-100 cursor-not-allowed' : ''} />
@@ -5300,26 +5464,30 @@ function StockBalancePage() {
   const [categories, setCategories] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [allItems, setAllItems] = useState([]);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterWarehouse, setFilterWarehouse] = useState('');
+  const [filterItem, setFilterItem] = useState('');
   const [reconciling, setReconciling] = useState(false);
 
   useEffect(() => { if(selectedOrg) loadStock(); }, [selectedOrg]);
 
   async function loadStock() {
     setLoading(true);
-    const [stockRes, catRes, whRes] = await Promise.all([
+    const [stockRes, catRes, whRes, itemRes] = await Promise.all([
       supabase.from('stock_balance')
         .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name)')
         .eq('organization_id', selectedOrg.id)
         .order('updated_at', { ascending: false }),
       supabase.from('item_categories').select('id, code, name').eq('is_active', true).order('name'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name').eq('is_active', true).order('name'),
     ]);
     setStock(stockRes.data || []);
     setCategories(catRes.data || []);
     setWarehouses(whRes.data || []);
+    setAllItems(itemRes.data || []);
     setLoading(false);
   }
 
@@ -5355,7 +5523,8 @@ function StockBalancePage() {
     const matchSearch = !term || (s.items?.name?.toLowerCase().includes(term) || s.items?.code?.toLowerCase().includes(term) || s.departments?.name?.toLowerCase().includes(term) || s.items?.brand?.toLowerCase().includes(term));
     const matchCat = !filterCategory || s.items?.item_categories?.id === filterCategory;
     const matchWh = !filterWarehouse || s.warehouse_id === filterWarehouse;
-    return matchSearch && matchCat && matchWh;
+    const matchItem = !filterItem || s.item_id === filterItem;
+    return matchSearch && matchCat && matchWh && matchItem;
   });
 
   const totalValue = filtered.reduce((sum, s) => sum + (s.total_value || 0), 0);
@@ -5385,6 +5554,9 @@ function StockBalancePage() {
         <div className="p-4 border-b border-gray-100 flex flex-wrap gap-3 items-center">
           <input type="text" placeholder={t('stock.searchPlaceholder')} value={search} onChange={e=>setSearch(e.target.value)}
             className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"/>
+          <div className="w-full sm:w-64">
+            <SearchableItemSelect items={allItems} value={filterItem} onChange={setFilterItem} placeholder="Filter by Item..." />
+          </div>
           <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
             <option value="">{t('stock.allCategories')}</option>
@@ -5395,8 +5567,8 @@ function StockBalancePage() {
             <option value="">{t('stock.allWarehouses') || 'Semua Gudang'}</option>
             {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
           </select>
-          {(filterCategory || filterWarehouse || search) && (
-            <button onClick={() => { setFilterCategory(''); setFilterWarehouse(''); setSearch(''); }}
+          {(filterCategory || filterWarehouse || filterItem || search) && (
+            <button onClick={() => { setFilterCategory(''); setFilterWarehouse(''); setFilterItem(''); setSearch(''); }}
               className="px-3 py-2 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg">
               {t('common.clearFilters')}
             </button>
@@ -5425,7 +5597,7 @@ function StockBalancePage() {
             }},
             { header: t('stock.avgCost'), render: r => formatCurrency(r.avg_cost) },
             { header: t('stock.totalValue'), render: r => formatCurrency(r.total_value) },
-            { header: t('stock.lastUpdate'), render: r => r.last_movement_at ? new Date(r.last_movement_at).toLocaleDateString('id-ID') : '-' },
+            { header: t('stock.lastUpdate'), render: r => r.last_movement_at ? formatDateSys(r.last_movement_at) : '-' },
           ]}
           data={filtered}
         />
@@ -5603,11 +5775,19 @@ function BinCardPage() {
   }, [movements]);
 
   // Step 2: Apply display filters (period, type, category) — balance already calculated
+  // Helper: convert UTC timestamp to local date string (YYYY-MM-DD) for accurate date comparison
+  function toLocalDateStr(utcStr) {
+    const tz = window.__systemSettings?.timezone || 'Asia/Bangkok';
+    const d = new Date(utcStr);
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    return parts; // returns YYYY-MM-DD format
+  }
   const filtered = movementsWithBalance.filter(m => {
     if (filterCategory && m.items?.category_id !== filterCategory) return false;
     if (filterType && m.movement_type !== filterType) return false;
-    if (dateRange.from && m.created_at < dateRange.from) return false;
-    if (dateRange.to && m.created_at > dateRange.to + 'T23:59:59') return false;
+    const localDate = toLocalDateStr(m.created_at);
+    if (dateRange.from && localDate < dateRange.from) return false;
+    if (dateRange.to && localDate > dateRange.to) return false;
     return true;
   });
 
@@ -5765,7 +5945,7 @@ function BinCardPage() {
                 <tr><td colSpan="14" className="px-2 py-8 text-center text-gray-400">{t('bincard.empty')}</td></tr>
               ) : filteredWithBalance.map((r, idx) => (
                 <tr key={r.id || idx} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-2 py-1 whitespace-nowrap text-gray-600">{new Date(r.created_at).toLocaleString('id-ID', {dateStyle:'short',timeStyle:'short'})}</td>
+                  <td className="px-2 py-1 whitespace-nowrap text-gray-600">{formatDateSys(r.created_at, { includeTime: true })}</td>
                   <td className="px-2 py-1 whitespace-nowrap text-gray-600">{getWarehouseName(r.warehouse_id) || '-'}</td>
                   <td className="px-2 py-1 max-w-[180px]"><span className="font-medium text-gray-800 text-xs block truncate" title={r.items?.name}>{r.items?.name}</span><span className="text-gray-400" style={{fontSize:'10px'}}>{r.items?.code}</span></td>
                   <td className="px-2 py-1 text-center"><Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'blue'}>{r.movement_type}</Badge></td>
@@ -6032,7 +6212,7 @@ function PurchaseRequestPage() {
         <DataTable loading={loading}
           columns={[
             { header: t('pr.number'), render: r => <button onClick={() => openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.pr_number}</button> },
-            { header: t('common.date'), render: r => new Date(r.request_date).toLocaleDateString('id-ID') },
+            { header: t('common.date'), render: r => formatDateSys(r.request_date) },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
             { header: 'Category', render: r => r.item_categories ? <Badge color="purple">{r.item_categories.code}</Badge> : <span className="text-xs text-gray-400">-</span> },
             { header: t('pr.priority'), render: r => <Badge color={r.priority==='URGENT'?'red':r.priority==='HIGH'?'orange':'gray'}>{r.priority}</Badge> },
@@ -6047,7 +6227,7 @@ function PurchaseRequestPage() {
             { header: t('approval.info'), render: r => r.approved_by ? (
               <div className="text-xs">
                 <div className="font-medium text-green-700">{getUserName(r.approved_by)}</div>
-                <div className="text-gray-400">{r.approved_at ? new Date(r.approved_at).toLocaleDateString('id-ID') : ''}</div>
+                <div className="text-gray-400">{r.approved_at ? formatDateSys(r.approved_at) : ''}</div>
               </div>
             ) : r.status === 'PENDING' ? <span className="text-xs text-yellow-600">{t('approval.notApproved')}</span> : <span className="text-xs text-gray-400">-</span> },
           ]}
@@ -6164,7 +6344,7 @@ function PurchaseRequestPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('common.date')}</p>
-                <p className="font-semibold">{new Date(viewDoc.request_date).toLocaleDateString('id-ID')}</p>
+                <p className="font-semibold">{formatDateSys(viewDoc.request_date)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('stock.dept')}</p>
@@ -6189,7 +6369,7 @@ function PurchaseRequestPage() {
               {viewDoc.needed_date && (
                 <div>
                   <p className="text-xs text-gray-500">{t('pr.neededDate')}</p>
-                  <p className="font-semibold">{new Date(viewDoc.needed_date).toLocaleDateString('id-ID')}</p>
+                  <p className="font-semibold">{formatDateSys(viewDoc.needed_date)}</p>
                 </div>
               )}
               {viewDoc.notes && (
@@ -6539,9 +6719,9 @@ function PurchaseOrderPage() {
         <DataTable loading={loading}
           columns={[
             { header: t('po.number'), render: r => <button onClick={() => openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.po_number}</button> },
-            { header: t('po.orderDate'), render: r => new Date(r.order_date).toLocaleDateString('id-ID') },
+            { header: t('po.orderDate'), render: r => formatDateSys(r.order_date) },
             { header: t('po.vendor'), render: r => r.vendors?.name || '-' },
-            { header: t('po.expectedDelivery'), render: r => r.expected_delivery ? new Date(r.expected_delivery).toLocaleDateString('id-ID') : '-' },
+            { header: t('po.expectedDelivery'), render: r => r.expected_delivery ? formatDateSys(r.expected_delivery) : '-' },
             { header: t('po.totalAmount'), render: r => formatCurrency(r.total_amount) },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
             { header: 'Invoice Status', render: r => {
@@ -6554,7 +6734,7 @@ function PurchaseOrderPage() {
             { header: t('approval.info'), render: r => r.approved_by ? (
               <div className="text-xs">
                 <div className="font-medium text-green-700">{getUserName(r.approved_by)}</div>
-                <div className="text-gray-400">{r.approved_at ? new Date(r.approved_at).toLocaleDateString('id-ID') : ''}</div>
+                <div className="text-gray-400">{r.approved_at ? formatDateSys(r.approved_at) : ''}</div>
               </div>
             ) : r.status === 'PENDING' ? <span className="text-xs text-yellow-600">{t('approval.notApproved')}</span> : <span className="text-xs text-gray-400">-</span> },
           ]}
@@ -6672,7 +6852,7 @@ function PurchaseOrderPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('po.orderDate')}</p>
-                <p className="font-semibold">{new Date(viewDoc.order_date).toLocaleDateString('id-ID')}</p>
+                <p className="font-semibold">{formatDateSys(viewDoc.order_date)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('po.vendor')}</p>
@@ -6685,7 +6865,7 @@ function PurchaseOrderPage() {
               {viewDoc.expected_delivery && (
                 <div>
                   <p className="text-xs text-gray-500">{t('po.expectedDelivery')}</p>
-                  <p className="font-semibold">{new Date(viewDoc.expected_delivery).toLocaleDateString('id-ID')}</p>
+                  <p className="font-semibold">{formatDateSys(viewDoc.expected_delivery)}</p>
                 </div>
               )}
               {viewDoc.payment_terms && (
@@ -7087,7 +7267,7 @@ function StockOpnamePage() {
           loading={loading}
           columns={[
             { header: t('opname.number'), render: r => <span className="font-mono text-xs font-semibold text-primary-700">{r.opname_number}</span> },
-            { header: t('opname.date'), render: r => new Date(r.opname_date).toLocaleDateString('id-ID') },
+            { header: t('opname.date'), render: r => formatDateSys(r.opname_date) },
             { header: 'Category', render: r => catMap[r.category_id]?.name || '-' },
             { header: 'Assigned To', render: r => userMap[r.assigned_to]?.full_name || '-' },
             { header: t('opname.totalVariance'), render: r => <span className={r.total_variance_value < 0 ? 'text-red-600' : r.total_variance_value > 0 ? 'text-green-600' : ''}>{formatCurrency(r.total_variance_value || 0)}</span> },
@@ -7462,7 +7642,7 @@ function WriteOffPage() {
         <DataTable loading={loading}
           columns={[
             { header: t('writeoff.number'), render: r => <span className="font-mono text-xs font-semibold text-primary-700">{r.wo_number}</span> },
-            { header: t('writeoff.date'), render: r => new Date(r.write_off_date).toLocaleDateString('id-ID') },
+            { header: t('writeoff.date'), render: r => formatDateSys(r.write_off_date) },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
           ]}
@@ -7805,7 +7985,7 @@ function PurchaseInvoicePage() {
         <DataTable loading={loading}
           columns={[
             { header: t('pi.number'), render: r => <button onClick={() => openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.pi_number}</button> },
-            { header: t('pi.invoiceDate'), render: r => new Date(r.invoice_date).toLocaleDateString('id-ID') },
+            { header: t('pi.invoiceDate'), render: r => formatDateSys(r.invoice_date) },
             { header: t('pi.vendor'), render: r => r.vendors?.name || '-' },
             { header: t('pi.fromPO'), render: r => r.purchase_orders?.po_number ? <Badge color="blue">{r.purchase_orders.po_number}</Badge> : '-' },
             { header: t('pi.totalAmount'), render: r => formatCurrency(r.total_amount) },
@@ -7813,7 +7993,7 @@ function PurchaseInvoicePage() {
             { header: t('approval.info'), render: r => r.approved_by ? (
               <div className="text-xs">
                 <div className="font-medium text-green-700">{getUserName(r.approved_by)}</div>
-                <div className="text-gray-400">{r.approved_at ? new Date(r.approved_at).toLocaleDateString('id-ID') : ''}</div>
+                <div className="text-gray-400">{r.approved_at ? formatDateSys(r.approved_at) : ''}</div>
               </div>
             ) : r.status === 'PENDING' ? <span className="text-xs text-yellow-600">{t('approval.notApproved')}</span> : <span className="text-xs text-gray-400">-</span> },
             { header: t('pi.paymentStatus'), render: r => <Badge color={paymentBadgeColor(r.payment_status)}>{r.payment_status}</Badge> },
@@ -7932,7 +8112,7 @@ function PurchaseInvoicePage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('pi.invoiceDate')}</p>
-                <p className="font-semibold">{new Date(viewDoc.invoice_date).toLocaleDateString('id-ID')}</p>
+                <p className="font-semibold">{formatDateSys(viewDoc.invoice_date)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('pi.vendor')}</p>
@@ -8360,7 +8540,7 @@ function PurchaseReceivedPage() {
         <DataTable loading={loading}
           columns={[
             { header: t('gr.number'), render: r => <button onClick={() => openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.gr_number}</button> },
-            { header: t('gr.receivedDate'), render: r => new Date(r.received_date).toLocaleDateString('id-ID') },
+            { header: t('gr.receivedDate'), render: r => formatDateSys(r.received_date) },
             { header: t('pi.vendor'), render: r => r.vendors?.name || '-' },
             { header: t('gr.fromPI'), render: r => r.purchase_invoices?.pi_number ? <Badge color="blue">{r.purchase_invoices.pi_number}</Badge> : '-' },
             { header: t('writeoff.department'), render: r => r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : '-' },
@@ -8462,7 +8642,7 @@ function PurchaseReceivedPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('gr.receivedDate')}</p>
-                <p className="font-semibold">{new Date(viewDoc.received_date).toLocaleDateString('id-ID')}</p>
+                <p className="font-semibold">{formatDateSys(viewDoc.received_date)}</p>
               </div>
               {viewDoc.purchase_invoices && (
                 <div>
@@ -8631,9 +8811,9 @@ function ReportsPage() {
   function getExportRows() {
     const arr = Array.isArray(data) ? data : [];
     if (reportType === 'valuation') return arr.map(r => [r.items?.code, r.items?.name, r.items?.brand||'', r.items?.item_categories?.name||'', r.departments?.code||'', r.quantity, r.avg_cost, r.total_value]);
-    if (reportType === 'movement') return arr.map(r => [new Date(r.created_at).toLocaleDateString('id-ID'), r.items?.code+' - '+r.items?.name, r.movement_type, r.quantity, r.unit_cost, r.total_cost, r.departments?.code||'', r.reference_number||'', r.notes||'']);
+    if (reportType === 'movement') return arr.map(r => [formatDateSys(r.created_at), r.items?.code+' - '+r.items?.name, r.movement_type, r.quantity, r.unit_cost, r.total_cost, r.departments?.code||'', r.reference_number||'', r.notes||'']);
     if (reportType === 'lowstock') return arr.map(r => [r.items?.code, r.items?.name, r.items?.item_categories?.name||'', r.departments?.code||'', r.items?.min_stock, r.quantity, r.items?.min_stock - r.quantity]);
-    if (reportType === 'opname') return arr.map(r => [r.opname_number, new Date(r.opname_date).toLocaleDateString('id-ID'), r.departments?.code||'', r.opname_type, r.status, r.total_variance_value]);
+    if (reportType === 'opname') return arr.map(r => [r.opname_number, formatDateSys(r.opname_date), r.departments?.code||'', r.opname_type, r.status, r.total_variance_value]);
     if (reportType === 'linen') return arr.map(r => [r.item?.code, r.item?.name, r.item?.brand||'', r.store, r.room, r.dirty, r.laundry, r.damage, r.total, r.totalValue]);
     return [];
   }
@@ -8667,7 +8847,7 @@ function ReportsPage() {
     doc.setFontSize(16);
     doc.text(reportNames[reportType] || 'Report', 14, 15);
     doc.setFontSize(10);
-    doc.text(`${selectedOrg?.name} | ${new Date().toLocaleDateString('id-ID')}`, 14, 22);
+    doc.text(`${selectedOrg?.name} | ${formatDateSys(new Date().toISOString())}`, 14, 22);
 
     if (reportType === 'purchase') {
       doc.setFontSize(12);
@@ -8799,7 +8979,7 @@ function ReportsPage() {
 
         {reportType === 'movement' && (
           <DataTable loading={loading} columns={[
-            { header: t('common.date'), render: r => new Date(r.created_at).toLocaleDateString('id-ID') },
+            { header: t('common.date'), render: r => formatDateSys(r.created_at) },
             { header: t('dashboard.item'), render: r => <span className="text-xs">{r.items?.code} - {r.items?.name}</span> },
             { header: t('reports.movementType'), render: r => <Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'yellow'}>{r.movement_type}</Badge> },
             { header: t('reports.movementQty'), render: r => <span className={r.movement_type==='IN'?'text-green-600':r.movement_type==='OUT'?'text-red-600':''}>{r.movement_type==='OUT'?'-':r.movement_type==='IN'?'+':''}{formatNumber(r.quantity)}</span> },
@@ -8813,7 +8993,7 @@ function ReportsPage() {
             <div className="p-3 bg-gray-50 border-b"><span className="font-semibold text-sm">Purchase Orders ({data.pos.length})</span></div>
             <DataTable loading={loading} columns={[
               { header: t('reports.poNumber'), render: r => <span className="font-mono text-xs font-semibold text-primary-700">{r.po_number}</span> },
-              { header: t('common.date'), render: r => new Date(r.order_date).toLocaleDateString('id-ID') },
+              { header: t('common.date'), render: r => formatDateSys(r.order_date) },
               { header: t('reports.vendorName'), render: r => r.vendors?.name || '-' },
               { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
               { header: t('po.totalAmount'), render: r => <span className="font-semibold">{formatCurrency(r.total_amount)}</span> },
@@ -8821,7 +9001,7 @@ function ReportsPage() {
             <div className="p-3 bg-gray-50 border-b border-t"><span className="font-semibold text-sm">Purchase Invoices ({data.pis.length})</span></div>
             <DataTable loading={false} columns={[
               { header: t('reports.piNumber'), render: r => <span className="font-mono text-xs font-semibold text-primary-700">{r.pi_number}</span> },
-              { header: t('common.date'), render: r => new Date(r.invoice_date).toLocaleDateString('id-ID') },
+              { header: t('common.date'), render: r => formatDateSys(r.invoice_date) },
               { header: t('reports.vendorName'), render: r => r.vendors?.name || '-' },
               { header: t('pi.fromPO'), render: r => r.purchase_orders?.po_number ? <Badge color="blue">{r.purchase_orders.po_number}</Badge> : '-' },
               { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
@@ -8845,7 +9025,7 @@ function ReportsPage() {
         {reportType === 'opname' && (
           <DataTable loading={loading} columns={[
             { header: t('reports.opnameNumber'), render: r => <span className="font-mono text-xs font-semibold text-primary-700">{r.opname_number}</span> },
-            { header: t('common.date'), render: r => new Date(r.opname_date).toLocaleDateString('id-ID') },
+            { header: t('common.date'), render: r => formatDateSys(r.opname_date) },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
             { header: t('opname.type'), render: r => <Badge color={r.opname_type==='annual'?'purple':r.opname_type==='spot'?'orange':'gray'}>{r.opname_type}</Badge> },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
@@ -9376,7 +9556,7 @@ function ApprovalPage() {
                     <div className="flex items-center gap-3">
                       <Badge color={typeColors[item._type]}>{item._type}</Badge>
                       <span className="font-mono text-sm font-semibold text-gray-900">{item._number}</span>
-                      <span className="text-sm text-gray-500">{new Date(item._date).toLocaleDateString('id-ID')}</span>
+                      <span className="text-sm text-gray-500">{formatDateSys(item._date)}</span>
                       <span className="text-sm text-gray-400">{item._desc}</span>
                       {(item._type === 'WRITEOFF' || item._type === 'STOCK_OPNAME') && (
                         <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
@@ -9427,11 +9607,11 @@ function ApprovalPage() {
                     <div className="flex items-center gap-3">
                       <Badge color={typeColors[item._type]}>{item._type}</Badge>
                       <span className="font-mono text-sm font-semibold text-gray-900">{item._number}</span>
-                      <span className="text-sm text-gray-500">{new Date(item._date).toLocaleDateString('id-ID')}</span>
+                      <span className="text-sm text-gray-500">{formatDateSys(item._date)}</span>
                       <span className="text-sm text-gray-400">{item._desc}</span>
                       <Badge color={item.status === 'CONFIRMED' ? 'blue' : 'green'}>{item.status === 'CONFIRMED' ? (item._type === 'DIRECT_PURCHASE' ? 'Received' : 'Confirmed') : 'Approved'}</Badge>
                       {item._approver && <span className="text-xs text-gray-400">by {item._approver}</span>}
-                      {item.approved_at && <span className="text-xs text-gray-400">{new Date(item.approved_at).toLocaleDateString('id-ID')}</span>}
+                      {item.approved_at && <span className="text-xs text-gray-400">{formatDateSys(item.approved_at)}</span>}
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => handleViewDetail(item)} className="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
@@ -9464,7 +9644,7 @@ function ApprovalPage() {
                   <Badge color={r.action === 'APPROVED' ? 'green' : r.action === 'REJECTED' ? 'red' : r.action === 'REVOKE_APPROVAL' ? 'orange' : 'blue'}>{r.action}</Badge>
                 )},
                 { header: 'By', render: r => r.users?.full_name || '-' },
-                { header: 'Date', render: r => new Date(r.action_at).toLocaleString('id-ID') },
+                { header: 'Date', render: r => formatDateSys(r.action_at, { includeTime: true }) },
                 { header: 'Notes', render: r => r.notes || '-' },
                 { header: 'Level', render: r => r.approval_level > 1 ? `Level ${r.approval_level}` : '-' },
               ]}
@@ -9490,7 +9670,7 @@ function ApprovalPage() {
           <div>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div><span className="text-xs text-gray-500">Document No:</span><div className="font-mono font-semibold">{detailModal._number}</div></div>
-              <div><span className="text-xs text-gray-500">Date:</span><div>{new Date(detailModal._date).toLocaleDateString('id-ID')}</div></div>
+              <div><span className="text-xs text-gray-500">Date:</span><div>{formatDateSys(detailModal._date)}</div></div>
               <div><span className="text-xs text-gray-500">Status:</span><div><Badge color={detailModal.status === 'APPROVED' ? 'green' : detailModal.status === 'PENDING' ? 'yellow' : 'gray'}>{detailModal.status}</Badge></div></div>
               {detailModal._type === 'PO' && detailModal.vendors && <div><span className="text-xs text-gray-500">Vendor:</span><div>{detailModal.vendors?.name || detailModal._desc}</div></div>}
               {detailModal._type === 'PI' && detailModal.vendors && <div><span className="text-xs text-gray-500">Vendor:</span><div>{detailModal.vendors?.name || detailModal._desc}</div></div>}
@@ -9832,6 +10012,7 @@ const ALL_MENUS = [
   { id: 'reports', label: 'Reports' },
   { id: 'user-mgmt', label: 'User Management' },
   { id: 'role-mgmt', label: 'Role Management' },
+  { id: 'system-settings', label: 'System Settings' },
 ];
 
 const ALL_ACTIONS = [
@@ -9845,6 +10026,7 @@ const ALL_ACTIONS = [
   { id: 'export_reports', label: 'roles.action.export_reports' },
   { id: 'manage_users', label: 'roles.action.manage_users' },
   { id: 'manage_roles', label: 'roles.action.manage_roles' },
+  { id: 'unlock_opening_balance', label: 'roles.action.unlock_opening_balance' },
 ];
 
 function RoleManagementPage() {
@@ -10034,6 +10216,212 @@ function RoleManagementPage() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// SYSTEM SETTINGS PAGE
+// ============================================================
+function SystemSettingsPage() {
+  const { selectedOrg, showNotification } = useApp();
+  const { t } = useTranslation();
+  const [settings, setSettings] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('regional');
+
+  const TIMEZONE_OPTIONS = [
+    { value: 'Asia/Bangkok', label: 'WIB - Asia/Bangkok (UTC+7)' },
+    { value: 'Asia/Singapore', label: 'WITA - Asia/Singapore (UTC+8)' },
+    { value: 'Asia/Jayapura', label: 'WIT - Asia/Jayapura (UTC+9)' },
+    { value: 'Asia/Tokyo', label: 'Asia/Tokyo (UTC+9)' },
+    { value: 'Asia/Shanghai', label: 'Asia/Shanghai (UTC+8)' },
+    { value: 'UTC', label: 'UTC (UTC+0)' },
+  ];
+
+  const CURRENCY_OPTIONS = [
+    { value: 'IDR', label: 'IDR - Indonesian Rupiah' },
+    { value: 'USD', label: 'USD - US Dollar' },
+    { value: 'SGD', label: 'SGD - Singapore Dollar' },
+    { value: 'MYR', label: 'MYR - Malaysian Ringgit' },
+    { value: 'CNY', label: 'CNY - Chinese Yuan' },
+    { value: 'THB', label: 'THB - Thai Baht' },
+  ];
+
+  const DATE_FORMAT_OPTIONS = [
+    { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (31/12/2026)' },
+    { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (12/31/2026)' },
+    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2026-12-31)' },
+    { value: 'DD-MMM-YYYY', label: 'DD-MMM-YYYY (31-Dec-2026)' },
+  ];
+
+  const LANGUAGE_OPTIONS = [
+    { value: 'id', label: 'Bahasa Indonesia' },
+    { value: 'en', label: 'English' },
+    { value: 'zh', label: '中文 (Chinese)' },
+  ];
+
+  const MONTH_OPTIONS = [
+    { value: '01', label: 'January' }, { value: '02', label: 'February' },
+    { value: '03', label: 'March' }, { value: '04', label: 'April' },
+    { value: '05', label: 'May' }, { value: '06', label: 'June' },
+    { value: '07', label: 'July' }, { value: '08', label: 'August' },
+    { value: '09', label: 'September' }, { value: '10', label: 'October' },
+    { value: '11', label: 'November' }, { value: '12', label: 'December' },
+  ];
+
+  useEffect(() => { if (selectedOrg) loadSettings(); }, [selectedOrg]);
+
+  async function loadSettings() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('setting_key, setting_value')
+        .eq('organization_id', selectedOrg.id);
+      if (error) throw error;
+      const map = {};
+      (data || []).forEach(r => { map[r.setting_key] = r.setting_value; });
+      // Apply defaults for any missing settings
+      const defaults = {
+        timezone: 'Asia/Bangkok', currency: 'IDR', date_format: 'DD/MM/YYYY',
+        language: 'id', low_stock_threshold: '10', auto_generate_code: 'true', fiscal_year_start: '01'
+      };
+      Object.keys(defaults).forEach(k => { if (!map[k]) map[k] = defaults[k]; });
+      setSettings(map);
+    } catch (err) {
+      showNotification('Error loading settings: ' + err.message, 'error');
+    }
+    setLoading(false);
+  }
+
+  function updateSetting(key, value) {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  }
+
+  async function saveSettings() {
+    setSaving(true);
+    try {
+      const upserts = Object.entries(settings).map(([key, val]) => ({
+        organization_id: selectedOrg.id,
+        setting_key: key,
+        setting_value: val,
+        updated_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert(upserts, { onConflict: 'organization_id,setting_key' });
+      if (error) throw error;
+      showNotification(t('settings.saved'));
+      // Update the global settings cache
+      if (window.__systemSettings) {
+        Object.assign(window.__systemSettings, settings);
+      } else {
+        window.__systemSettings = { ...settings };
+      }
+    } catch (err) {
+      showNotification(t('settings.saveError') + ': ' + err.message, 'error');
+    }
+    setSaving(false);
+  }
+
+  function SettingRow({ label, desc, children }) {
+    return (
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between py-4 border-b border-gray-100 last:border-0 gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900">{label}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+        </div>
+        <div className="sm:w-72 flex-shrink-0">{children}</div>
+      </div>
+    );
+  }
+
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="spinner" /></div>;
+
+  const tabs = [
+    { id: 'regional', label: t('settings.regional'), icon: Icons.Globe || Icons.Settings },
+    { id: 'inventory', label: t('settings.inventory'), icon: Icons.Package },
+    { id: 'general', label: t('settings.general'), icon: Icons.Settings },
+  ];
+
+  const selectClass = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white";
+  const inputClass = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500";
+
+  return (
+    <div className="fade-in space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">{t('settings.title')}</h2>
+          <p className="text-gray-500 text-sm mt-1">{t('settings.subtitle')}</p>
+        </div>
+        <Button onClick={saveSettings} disabled={saving}>
+          {saving ? <><div className="spinner mr-2" style={{width:16,height:16,borderWidth:2}} /> {t('settings.saving')}</> : <><Icons.Save /> {t('settings.save')}</>}
+        </Button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+        {tabs.map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+            <tab.icon /> {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        {activeTab === 'regional' && (
+          <div>
+            <SettingRow label={t('settings.timezone')} desc={t('settings.timezoneDesc')}>
+              <select className={selectClass} value={settings.timezone || 'Asia/Bangkok'} onChange={e => updateSetting('timezone', e.target.value)}>
+                {TIMEZONE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </SettingRow>
+            <SettingRow label={t('settings.currency')} desc={t('settings.currencyDesc')}>
+              <select className={selectClass} value={settings.currency || 'IDR'} onChange={e => updateSetting('currency', e.target.value)}>
+                {CURRENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </SettingRow>
+            <SettingRow label={t('settings.dateFormat')} desc={t('settings.dateFormatDesc')}>
+              <select className={selectClass} value={settings.date_format || 'DD/MM/YYYY'} onChange={e => updateSetting('date_format', e.target.value)}>
+                {DATE_FORMAT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </SettingRow>
+            <SettingRow label={t('settings.language')} desc={t('settings.languageDesc')}>
+              <select className={selectClass} value={settings.language || 'id'} onChange={e => updateSetting('language', e.target.value)}>
+                {LANGUAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </SettingRow>
+          </div>
+        )}
+
+        {activeTab === 'inventory' && (
+          <div>
+            <SettingRow label={t('settings.lowStockThreshold')} desc={t('settings.lowStockThresholdDesc')}>
+              <input type="number" className={inputClass} min="0" value={settings.low_stock_threshold || '10'} onChange={e => updateSetting('low_stock_threshold', e.target.value)} />
+            </SettingRow>
+            <SettingRow label={t('settings.autoGenerateCode')} desc={t('settings.autoGenerateCodeDesc')}>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" checked={settings.auto_generate_code === 'true'} onChange={e => updateSetting('auto_generate_code', e.target.checked ? 'true' : 'false')} />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                <span className="ml-3 text-sm text-gray-700">{settings.auto_generate_code === 'true' ? 'Enabled' : 'Disabled'}</span>
+              </label>
+            </SettingRow>
+          </div>
+        )}
+
+        {activeTab === 'general' && (
+          <div>
+            <SettingRow label={t('settings.fiscalYearStart')} desc={t('settings.fiscalYearStartDesc')}>
+              <select className={selectClass} value={settings.fiscal_year_start || '01'} onChange={e => updateSetting('fiscal_year_start', e.target.value)}>
+                {MONTH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </SettingRow>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -10543,23 +10931,31 @@ function OpeningBalancePage() {
     }
   }
 
-  async function handleUnlockCategory() {
-    if (!selectedCategory) return;
-    if (currentUser?.role !== 'superadmin') {
-      showNotification('Hanya Superadmin yang dapat membuka kunci Opening Balance.', 'error');
+  function canUnlockOB() {
+    const perms = currentUser?.role?.permissions;
+    if (!perms) return false;
+    if (perms.all === true) return true;
+    return !!perms.special_actions?.unlock_opening_balance;
+  }
+
+  async function handleUnlockCategory(cat) {
+    const targetCat = cat || selectedCategory;
+    if (!targetCat) return;
+    if (!canUnlockOB()) {
+      showNotification('Anda tidak memiliki hak akses untuk membuka kunci Opening Balance.', 'error');
       return;
     }
-    if (!confirm('Apakah Anda yakin ingin membuka kunci Opening Balance untuk kategori "' + selectedCategory.name + '"? Data dapat diedit kembali setelah di-unlock.')) return;
+    if (!confirm('Apakah Anda yakin ingin membuka kunci Opening Balance untuk kategori "' + targetCat.name + '"? Data dapat diedit kembali setelah di-unlock.')) return;
     try {
       await supabase.from('opening_balance_locks').upsert({
         organization_id: selectedOrg.id,
-        category_id: selectedCategory.id,
+        category_id: targetCat.id,
         is_locked: false,
         unlocked_at: new Date().toISOString(),
         unlocked_by: currentUser?.id || null,
         updated_at: new Date().toISOString()
       }, { onConflict: 'organization_id,category_id' });
-      showNotification('Opening Balance berhasil di-unlock untuk kategori ' + selectedCategory.name);
+      showNotification('Opening Balance berhasil di-unlock untuk kategori ' + targetCat.name);
       await loadOverview();
     } catch (err) {
       showNotification('Error: ' + err.message, 'error');
@@ -10793,8 +11189,8 @@ function OpeningBalancePage() {
                   <span className="flex items-center gap-1 px-3 py-2 bg-red-50 text-red-700 rounded-lg text-sm font-medium">
                     <Icons.Lock /> {t('ob.lockedStatus')}
                   </span>
-                  {currentUser?.role === 'superadmin' && (
-                    <Button variant="secondary" onClick={handleUnlockCategory} className="text-amber-700 border-amber-300 hover:bg-amber-50">
+                  {canUnlockOB() && (
+                    <Button variant="secondary" onClick={() => handleUnlockCategory(selectedCategory)} className="text-amber-700 border-amber-300 hover:bg-amber-50">
                       <Icons.Unlock /> Unlock
                     </Button>
                   )}
@@ -11235,9 +11631,18 @@ function OpeningBalancePage() {
                     {config.statuses.length} status
                   </span>
                 )}
-                <span className="text-xs font-medium text-primary-600 group-hover:text-primary-700">
-                  {stats.status === 'locked' ? t('ob.view') : stats.status === 'in_progress' ? t('ob.continue') : t('ob.startCounting')} →
-                </span>
+                <div className="flex items-center gap-2">
+                  {stats.status === 'locked' && canUnlockOB() && (
+                    <button onClick={(e) => { e.stopPropagation(); handleUnlockCategory(cat); }}
+                      className="flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 hover:bg-orange-100 px-2 py-1 rounded-lg border border-orange-200 transition-colors"
+                      title="Unlock Opening Balance">
+                      <Icons.Unlock /> Unlock
+                    </button>
+                  )}
+                  <span className="text-xs font-medium text-primary-600 group-hover:text-primary-700">
+                    {stats.status === 'locked' ? t('ob.view') : stats.status === 'in_progress' ? t('ob.continue') : t('ob.startCounting')} →
+                  </span>
+                </div>
               </div>
             </div>
           );
@@ -11870,7 +12275,7 @@ function RoomMakeUpPage() {
         <div className="hidden sm:block">
           <DataTable loading={loading} columns={[
             { header: t('makeup.number'), render: r => <span className="font-medium text-primary-700">{r.makeup_number}</span> },
-            { header: t('common.date'), render: r => new Date(r.makeup_date).toLocaleDateString('id-ID') },
+            { header: t('common.date'), render: r => formatDateSys(r.makeup_date) },
             { header: t('makeup.room'), render: r => <span className="font-medium">{r.rooms?.room_number || '-'}</span> },
             { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
             { header: t('makeup.itemCount'), render: r => r.room_makeup_items?.length || 0 },
@@ -11895,7 +12300,7 @@ function RoomMakeUpPage() {
                 </div>
                 <div className="flex items-center justify-between text-xs text-gray-500">
                   <span>{t('makeup.room')}: <span className="font-medium text-gray-700">{r.rooms?.room_number || '-'}</span></span>
-                  <span>{new Date(r.makeup_date).toLocaleDateString('id-ID')}</span>
+                  <span>{formatDateSys(r.makeup_date)}</span>
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-xs text-gray-400">{r.room_makeup_items?.length || 0} items</span>
@@ -11926,7 +12331,7 @@ function RoomMakeUpPage() {
         )}
         {isView && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 bg-gray-50 rounded-lg p-4">
-            <div><p className="text-xs text-gray-500">{t('common.date')}</p><p className="font-medium">{new Date(viewing.makeup_date).toLocaleDateString('id-ID')}</p></div>
+            <div><p className="text-xs text-gray-500">{t('common.date')}</p><p className="font-medium">{formatDateSys(viewing.makeup_date)}</p></div>
             <div><p className="text-xs text-gray-500">{t('makeup.room')}</p><p className="font-medium">{viewing.rooms?.room_number}</p></div>
             <div><p className="text-xs text-gray-500">{t('common.status')}</p><StatusBadge status={viewing.status} /></div>
           </div>
@@ -12832,7 +13237,7 @@ function DirectPurchasePage() {
         </div>
         <DataTable loading={loading} columns={[
           { header: t('dp.number'), render: r => <span className="font-medium text-primary-700">{r.purchase_number}</span> },
-          { header: t('dp.date'), render: r => new Date(r.purchase_date).toLocaleDateString('id-ID') },
+          { header: t('dp.date'), render: r => formatDateSys(r.purchase_date) },
           { header: t('dp.location'), render: r => r.purchase_location || '-' },
           { header: 'Dept', render: r => r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : '-' },
           { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
@@ -12943,7 +13348,7 @@ function DirectPurchasePage() {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 bg-gray-50 rounded-lg p-4">
-              <div><p className="text-xs text-gray-500">{t('dp.date')}</p><p className="font-medium">{new Date(viewing.purchase_date).toLocaleDateString('id-ID')}</p></div>
+              <div><p className="text-xs text-gray-500">{t('dp.date')}</p><p className="font-medium">{formatDateSys(viewing.purchase_date)}</p></div>
               <div><p className="text-xs text-gray-500">{t('dp.location')}</p><p className="font-medium">{viewing.purchase_location}</p></div>
               <div><p className="text-xs text-gray-500">Department</p><p className="font-medium">{viewing.departments ? `${viewing.departments.code} - ${viewing.departments.name}` : '-'}</p></div>
               <div><p className="text-xs text-gray-500">{t('common.status')}</p><StatusBadge status={viewing.status} /></div>
@@ -13556,7 +13961,7 @@ function LaundryPage() {
                     <td className="px-4 py-3 text-sm">{rec.items?.name || '-'}</td>
                     <td className="px-4 py-3 text-center text-sm">{rec.quantity}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {rec.created_at ? new Date(rec.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'}
+                      {rec.created_at ? formatDateSys(rec.created_at) : '-'}
                     </td>
                   </tr>
                 ))}
@@ -13691,7 +14096,7 @@ function InUseWarehousePage() {
                  <td className="px-4 py-3 text-sm text-gray-600">{item.items?.categories?.name || '-'}</td>
                  <td className="px-4 py-3 text-sm font-medium">{item.quantity}</td>
                  <td className="px-4 py-3"><Badge color="green">{t('iu.inUse')}</Badge></td>
-                 <td className="px-4 py-3 text-sm text-gray-500">{item.updated_at ? new Date(item.updated_at).toLocaleDateString() : '-'}</td>
+                 <td className="px-4 py-3 text-sm text-gray-500">{item.updated_at ? formatDateSys(item.updated_at) : '-'}</td>
                  <td className="px-4 py-3 text-center">
                    <button onClick={() => markDepleted(item)} className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors">
                      {t('iu.markDepleted')}
@@ -14065,7 +14470,7 @@ function SingleItemUsagePage() {
             </div>
             {viewRecord.status === 'CONFIRMED' && viewRecord.confirmed_at && (
               <div className="mt-3 pt-3 border-t text-xs text-gray-500">
-                Dikonfirmasi pada: {new Date(viewRecord.confirmed_at).toLocaleString('id-ID')}
+                Dikonfirmasi pada: {formatDateSys(viewRecord.confirmed_at, { includeTime: true })}
               </div>
             )}
           </div>
@@ -14417,7 +14822,7 @@ function TransferPage() {
         </div>
         <DataTable loading={loading} columns={[
           { header: t('transfer.number'), render: r => <span className="font-medium text-primary-700">{r.transfer_number}</span> },
-          { header: t('common.date'), render: r => new Date(r.transfer_date).toLocaleDateString('id-ID') },
+          { header: t('common.date'), render: r => formatDateSys(r.transfer_date) },
           { header: t('transfer.from'), render: r => <Badge color="red">{warehouses.find(w => w.id === r.from_warehouse_id)?.code || '-'}</Badge> },
           { header: t('transfer.to'), render: r => <Badge color="green">{warehouses.find(w => w.id === r.to_warehouse_id)?.code || '-'}</Badge> },
           { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
@@ -14496,7 +14901,7 @@ function TransferPage() {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 bg-gray-50 rounded-lg p-4">
-              <div><p className="text-xs text-gray-500">{t('common.date')}</p><p className="font-medium">{new Date(viewing.transfer_date).toLocaleDateString('id-ID')}</p></div>
+              <div><p className="text-xs text-gray-500">{t('common.date')}</p><p className="font-medium">{formatDateSys(viewing.transfer_date)}</p></div>
               <div><p className="text-xs text-gray-500">{t('transfer.from')}</p><Badge color="red">{warehouses.find(w => w.id === viewing.from_warehouse_id)?.code}</Badge></div>
               <div><p className="text-xs text-gray-500">{t('transfer.to')}</p><Badge color="green">{warehouses.find(w => w.id === viewing.to_warehouse_id)?.code}</Badge></div>
               <div><p className="text-xs text-gray-500">{t('common.status')}</p><StatusBadge status={viewing.status} /></div>
