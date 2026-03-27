@@ -1014,6 +1014,8 @@ const translations = {
     'roles.action.approve_pi': 'Approve Invoice',
     'roles.action.approve_wo': 'Approve Write-Off',
     'roles.action.approve_opname': 'Approve Opname',
+    'roles.action.revoke_approval': 'Revoke Approval',
+    'roles.action.revert_to_draft': 'Revert to Draft',
     'roles.action.export_reports': 'Export Reports',
     'roles.action.manage_users': 'Manage Users',
     'roles.action.manage_roles': 'Manage Roles',
@@ -1908,6 +1910,8 @@ const translations = {
     'roles.action.approve_pi': '审批发票',
     'roles.action.approve_wo': '审批报废',
     'roles.action.approve_opname': '审批盘点',
+    'roles.action.revoke_approval': '撤销批准',
+    'roles.action.revert_to_draft': '恢复为草稿',
     'roles.action.export_reports': '导出报表',
     'roles.action.manage_users': '管理用户',
     'roles.action.manage_roles': '管理角色',
@@ -1996,6 +2000,7 @@ const Icons = {
   Save: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>,
   MapPin: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
   Info: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
+  RotateCcw: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M1 4v6h6"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>,
 };
 
 // ============================================================
@@ -3031,7 +3036,7 @@ function DashboardPage() {
         supabase.from('vendors').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('stock_balance').select('*').eq('organization_id', selectedOrg.id),
         supabase.from('purchase_requests').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'SUBMITTED'),
-        supabase.from('stock_movements').select('*, items(name)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }).limit(10),
+        supabase.from('stock_movements').select('*, items(name)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: true }).limit(10),
       ]);
 
       const stockData = stockRes.data || [];
@@ -5301,7 +5306,7 @@ function BinCardPage() {
       supabase.from('stock_movements')
         .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
         .eq('organization_id', selectedOrg.id)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: true })
         .limit(1000),
       supabase.from('items').select('id, code, name, category_id, default_warehouse_id').eq('is_active', true).order('code'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
@@ -5483,40 +5488,91 @@ function BinCardPage() {
 // PURCHASE REQUEST PAGE
 // ============================================================
 function PurchaseRequestPage() {
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, showNotification, currentUser } = useApp();
   const { t } = useTranslation();
   const [prs, setPrs] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [units, setUnits] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ department_id: '', request_date: new Date().toISOString().split('T')[0], needed_date: '', priority: 'NORMAL', notes: '' });
+  const [form, setForm] = useState({ department_id: '', category_id: '', request_date: new Date().toISOString().split('T')[0], needed_date: '', priority: 'NORMAL', notes: '' });
   const [lineItems, setLineItems] = useState([]);
   const [viewDoc, setViewDoc] = useState(null);
   const [viewItems, setViewItems] = useState([]);
+  const [orderStatusMap, setOrderStatusMap] = useState({});
 
   useEffect(() => { if(selectedOrg) loadAll(); }, [selectedOrg]);
 
   async function loadAll() {
     setLoading(true);
-    const [prRes, deptRes, itemRes, unitRes, userRes] = await Promise.all([
-      supabase.from('purchase_requests').select('*, departments(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
+    const [prRes, deptRes, itemRes, unitRes, userRes, catRes] = await Promise.all([
+      supabase.from('purchase_requests').select('*, departments(name, code), item_categories:category_id(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('departments').select('*').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
-      supabase.from('items').select('id, code, name, unit_id').eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, unit_id, category_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('is_active', true).order('code'),
       supabase.from('units').select('*').order('name'),
       supabase.from('users').select('id, full_name').order('full_name'),
+      supabase.from('item_categories').select('id, code, name').order('name'),
     ]);
-    setPrs(prRes.data || []);
+    const allPrs = prRes.data || [];
+    setPrs(allPrs);
     setDepartments(deptRes.data || []);
     setItems(itemRes.data || []);
+    setCategories(catRes.data || []);
     setUnits(unitRes.data || []);
     setUsers(userRes.data || []);
+
+    // Load order status data for approved PRs
+    const approvedPrIds = allPrs.filter(p => ['APPROVED','PARTIAL_ORDERED','FULLY_ORDERED'].includes(p.status)).map(p => p.id);
+    if (approvedPrIds.length > 0) {
+      const [prItemsRes, poRes] = await Promise.all([
+        supabase.from('purchase_request_items').select('pr_id, item_id, quantity').in('pr_id', approvedPrIds),
+        supabase.from('purchase_orders').select('id, pr_reference_id').eq('organization_id', selectedOrg.id).in('pr_reference_id', approvedPrIds),
+      ]);
+      const prItemsData = prItemsRes.data || [];
+      const linkedPOs = poRes.data || [];
+      const poIds = linkedPOs.map(po => po.id);
+      let poItemsData = [];
+      if (poIds.length > 0) {
+        const { data } = await supabase.from('purchase_order_items').select('po_id, item_id, quantity').in('po_id', poIds);
+        poItemsData = data || [];
+      }
+      // Build order status map: pr_id -> { status, ordered, total }
+      const orderStatusMap = {};
+      approvedPrIds.forEach(prId => {
+        const prItems = prItemsData.filter(i => i.pr_id === prId);
+        const prPoIds = linkedPOs.filter(po => po.pr_reference_id === prId).map(po => po.id);
+        const poItems = poItemsData.filter(i => prPoIds.includes(i.po_id));
+
+        let totalRequested = 0;
+        let totalOrdered = 0;
+        prItems.forEach(pri => {
+          totalRequested += pri.quantity;
+          const orderedQty = poItems.filter(poi => poi.item_id === pri.item_id).reduce((sum, poi) => sum + poi.quantity, 0);
+          totalOrdered += Math.min(orderedQty, pri.quantity);
+        });
+
+        if (totalRequested === 0) {
+          orderStatusMap[prId] = 'NOT_ORDERED';
+        } else if (totalOrdered >= totalRequested) {
+          orderStatusMap[prId] = 'FULLY_ORDERED';
+        } else if (totalOrdered > 0) {
+          orderStatusMap[prId] = 'PARTIAL_ORDERED';
+        } else {
+          orderStatusMap[prId] = 'NOT_ORDERED';
+        }
+      });
+      setOrderStatusMap(orderStatusMap);
+    }
     setLoading(false);
   }
+
+  // Get filtered items based on selected category
+  const filteredItems = form.category_id ? items.filter(i => i.category_id === form.category_id) : items;
 
   function getUserName(userId) {
     if (!userId) return '-';
@@ -5526,27 +5582,35 @@ function PurchaseRequestPage() {
 
   async function openView(pr) {
     setViewDoc(pr);
-    const { data } = await supabase.from('purchase_request_items').select('*, items(code, name)').eq('pr_id', pr.id);
+    const { data } = await supabase.from('purchase_request_items').select('*, items(code, name, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation), units:units!items_unit_id_fkey(abbreviation))').eq('pr_id', pr.id);
     setViewItems(data || []);
   }
 
   function openCreate() {
     setEditing(null);
-    setForm({ department_id: departments[0]?.id || '', request_date: new Date().toISOString().split('T')[0], needed_date: '', priority: 'NORMAL', notes: '' });
-    setLineItems([{ item_id: '', quantity: 1, unit_id: '', estimated_price: 0 }]);
+    setForm({ department_id: departments[0]?.id || '', category_id: '', request_date: new Date().toISOString().split('T')[0], needed_date: '', priority: 'NORMAL', notes: '' });
+    setLineItems([{ item_id: '', quantity: 1, unit_id: '' }]);
     setShowModal(true);
   }
 
   async function openEdit(pr) {
     setEditing(pr);
-    setForm({ department_id: pr.department_id || '', request_date: pr.request_date, needed_date: pr.needed_date || '', priority: pr.priority, notes: pr.notes || '' });
+    setForm({ department_id: pr.department_id || '', category_id: pr.category_id || '', request_date: pr.request_date, needed_date: pr.needed_date || '', priority: pr.priority, notes: pr.notes || '' });
     const { data: prItems } = await supabase.from('purchase_request_items').select('*').eq('pr_id', pr.id);
-    setLineItems((prItems || []).map(i => ({ item_id: i.item_id, quantity: i.quantity, unit_id: i.unit_id || '', estimated_price: i.estimated_price || 0 })));
-    if (!prItems || prItems.length === 0) setLineItems([{ item_id: '', quantity: 1, unit_id: '', estimated_price: 0 }]);
+    setLineItems((prItems || []).map(i => ({ item_id: i.item_id, quantity: i.quantity, unit_id: i.unit_id || '' })));
+    if (!prItems || prItems.length === 0) setLineItems([{ item_id: '', quantity: 1, unit_id: '' }]);
     setShowModal(true);
   }
 
-  function addLine() { setLineItems([...lineItems, { item_id: '', quantity: 1, unit_id: '', estimated_price: 0 }]); }
+  function handleCategoryChange(catId) {
+    // Clear line items when category changes (because items are now filtered)
+    if (catId !== form.category_id) {
+      setLineItems([{ item_id: '', quantity: 1, unit_id: '' }]);
+    }
+    setForm({ ...form, category_id: catId });
+  }
+
+  function addLine() { setLineItems([...lineItems, { item_id: '', quantity: 1, unit_id: '' }]); }
   function removeLine(idx) { setLineItems(lineItems.filter((_, i) => i !== idx)); }
   function updateLine(idx, field, val) { const nl = [...lineItems]; nl[idx] = { ...nl[idx], [field]: val }; setLineItems(nl); }
 
@@ -5562,6 +5626,7 @@ function PurchaseRequestPage() {
   }
 
   async function handleSave() {
+    if (!form.category_id) { showNotification('Pilih kategori item terlebih dahulu', 'error'); return; }
     if (!form.department_id || lineItems.filter(l => l.item_id).length === 0) return;
     setSaving(true);
     try {
@@ -5593,34 +5658,31 @@ function PurchaseRequestPage() {
       }
 
       const validLines = lineItems.filter(l => l.item_id);
-      const totalEst = validLines.reduce((s, l) => s + (l.quantity * l.estimated_price), 0);
       if (editing) {
         const { error } = await supabase.from('purchase_requests').update({
-          department_id: form.department_id, request_date: form.request_date, needed_date: form.needed_date || null,
-          priority: form.priority, notes: form.notes || null, total_estimated_amount: totalEst
+          department_id: form.department_id, category_id: form.category_id || null, request_date: form.request_date, needed_date: form.needed_date || null,
+          priority: form.priority, notes: form.notes || null
         }).eq('id', editing.id);
         if (error) throw error;
         await supabase.from('purchase_request_items').delete().eq('pr_id', editing.id);
-        const itemsPayload = validLines.map(l => ({
-          pr_id: editing.id, item_id: l.item_id, quantity: l.quantity,
-          unit_id: l.unit_id || null, estimated_price: l.estimated_price,
-          estimated_total: l.quantity * l.estimated_price
-        }));
+        const itemsPayload = validLines.map(l => {
+          const itm = items.find(i => i.id === l.item_id);
+          return { pr_id: editing.id, item_id: l.item_id, quantity: l.quantity, unit_id: itm?.purchase_unit_id || itm?.unit_id || l.unit_id || null };
+        });
         const { error: itemErr } = await supabase.from('purchase_request_items').insert(itemsPayload);
         if (itemErr) throw itemErr;
       } else {
         const prNumber = await generatePRNumber();
         const { data: newPR, error } = await supabase.from('purchase_requests').insert({
           pr_number: prNumber, organization_id: selectedOrg.id, department_id: form.department_id,
-          request_date: form.request_date, needed_date: form.needed_date || null,
-          priority: form.priority, status: 'DRAFT', total_estimated_amount: totalEst, notes: form.notes || null
+          category_id: form.category_id || null, request_date: form.request_date, needed_date: form.needed_date || null,
+          priority: form.priority, status: 'DRAFT', notes: form.notes || null, requested_by: currentUser?.id || null
         }).select().single();
         if (error) throw error;
-        const itemsPayload = validLines.map(l => ({
-          pr_id: newPR.id, item_id: l.item_id, quantity: l.quantity,
-          unit_id: l.unit_id || null, estimated_price: l.estimated_price,
-          estimated_total: l.quantity * l.estimated_price
-        }));
+        const itemsPayload = validLines.map(l => {
+          const itm = items.find(i => i.id === l.item_id);
+          return { pr_id: newPR.id, item_id: l.item_id, quantity: l.quantity, unit_id: itm?.purchase_unit_id || itm?.unit_id || l.unit_id || null };
+        });
         const { error: itemErr } = await supabase.from('purchase_request_items').insert(itemsPayload);
         if (itemErr) throw itemErr;
       }
@@ -5655,7 +5717,7 @@ function PurchaseRequestPage() {
     loadAll();
   }
 
-  const lineTotal = lineItems.reduce((s, l) => s + (l.quantity * l.estimated_price), 0);
+  // Price removed from PR - only filled in PO
 
   return (
     <div>
@@ -5667,9 +5729,16 @@ function PurchaseRequestPage() {
             { header: t('pr.number'), render: r => <button onClick={() => openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.pr_number}</button> },
             { header: t('common.date'), render: r => new Date(r.request_date).toLocaleDateString('id-ID') },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
+            { header: 'Category', render: r => r.item_categories ? <Badge color="purple">{r.item_categories.code}</Badge> : <span className="text-xs text-gray-400">-</span> },
             { header: t('pr.priority'), render: r => <Badge color={r.priority==='URGENT'?'red':r.priority==='HIGH'?'orange':'gray'}>{r.priority}</Badge> },
-            { header: t('pr.estTotal'), render: r => formatCurrency(r.total_estimated_amount) },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
+            { header: 'Order Status', render: r => {
+              if (!['APPROVED','PARTIAL_ORDERED','FULLY_ORDERED'].includes(r.status)) return <span className="text-xs text-gray-400">-</span>;
+              const os = orderStatusMap[r.id];
+              if (os === 'FULLY_ORDERED') return <Badge color="green">Fully Ordered</Badge>;
+              if (os === 'PARTIAL_ORDERED') return <Badge color="orange">Partial Ordered</Badge>;
+              return <Badge color="gray">Not Ordered</Badge>;
+            }},
             { header: t('approval.info'), render: r => r.approved_by ? (
               <div className="text-xs">
                 <div className="font-medium text-green-700">{getUserName(r.approved_by)}</div>
@@ -5699,6 +5768,13 @@ function PurchaseRequestPage() {
               {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
             </Select>
           </FormField>
+          <FormField label="Item Category" required>
+            <Select value={form.category_id} onChange={e => handleCategoryChange(e.target.value)}
+              disabled={editing && lineItems.some(l => l.item_id)}>
+              <option value="">-- Pilih Kategori --</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+            </Select>
+          </FormField>
           <FormField label={t('common.date')} required>
             <Input type="date" value={form.request_date} onChange={e => setForm({...form, request_date: e.target.value})} />
           </FormField>
@@ -5713,12 +5789,27 @@ function PurchaseRequestPage() {
               <option value="URGENT">Urgent</option>
             </Select>
           </FormField>
-          <div className="sm:col-span-2">
-            <FormField label={t('bincard.notes')}>
-              <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
-            </FormField>
-          </div>
+          <FormField label={t('bincard.notes')}>
+            <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
+          </FormField>
         </div>
+
+        {/* Category info */}
+        {form.category_id && (
+          <div className="mb-4 p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+            <Icons.Info className="w-4 h-4 text-blue-500 flex-shrink-0" />
+            <span className="text-xs text-blue-700">
+              Kategori: <strong>{categories.find(c => c.id === form.category_id)?.name}</strong> — Hanya item dari kategori ini yang bisa ditambahkan.
+              ({filteredItems.length} item tersedia)
+            </span>
+          </div>
+        )}
+        {!form.category_id && (
+          <div className="mb-4 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+            <Icons.AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <span className="text-xs text-amber-700">Pilih kategori item terlebih dahulu sebelum menambahkan item.</span>
+          </div>
+        )}
 
         <div className="border-t pt-4">
           <div className="flex justify-between items-center mb-3">
@@ -5729,30 +5820,26 @@ function PurchaseRequestPage() {
             <thead><tr className="bg-gray-50">
               <th className="p-2 text-left">{t('dashboard.item')}</th>
               <th className="p-2 text-right w-20">{t('pr.qty')}</th>
-              <th className="p-2 text-right w-32">{t('pr.estPrice')}</th>
-              <th className="p-2 text-right w-32">{t('pr.total')}</th>
+              <th className="p-2 text-center w-32">{t('items.purchaseUnit')}</th>
               <th className="p-2 w-10"></th>
             </tr></thead>
             <tbody>
-              {lineItems.map((line, idx) => (
+              {lineItems.map((line, idx) => {
+                const selectedItem = items.find(i => i.id === line.item_id);
+                const puName = selectedItem?.purchase_unit?.abbreviation || (selectedItem?.unit_id ? (units.find(u => u.id === selectedItem.unit_id)?.abbreviation || '-') : '-');
+                return (
                 <tr key={idx} className="border-b">
                   <td className="p-2">
-                    <SearchableItemSelect items={items} value={line.item_id} onChange={v => updateLine(idx, 'item_id', v)} placeholder={t('pr.selectItem')} />
+                    <SearchableItemSelect items={filteredItems} value={line.item_id} onChange={v => updateLine(idx, 'item_id', v)} placeholder={form.category_id ? t('pr.selectItem') : 'Pilih kategori dulu...'} disabled={!form.category_id} />
                   </td>
                   <td className="p-2"><input type="number" value={line.quantity} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value)||0)}
-                    className="w-full px-2 py-1 border rounded text-sm text-right" min="1" /></td>
-                  <td className="p-2"><input type="number" value={line.estimated_price} onChange={e => updateLine(idx, 'estimated_price', parseFloat(e.target.value)||0)}
-                    className="w-full px-2 py-1 border rounded text-sm text-right" min="0" /></td>
-                  <td className="p-2 text-right font-medium">{formatCurrency(line.quantity * line.estimated_price)}</td>
+                    className="w-full px-2 py-1 border rounded text-sm text-right" min="1" disabled={!form.category_id} /></td>
+                  <td className="p-2 text-center text-sm text-gray-600">{line.item_id ? puName : '-'}</td>
                   <td className="p-2">{lineItems.length > 1 && <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-600"><Icons.Trash /></button>}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
-            <tfoot><tr className="bg-gray-50 font-semibold">
-              <td colSpan="3" className="p-2 text-right">{t('pr.estTotal')}:</td>
-              <td className="p-2 text-right">{formatCurrency(lineTotal)}</td>
-              <td></td>
-            </tr></tfoot>
           </table>
         </div>
 
@@ -5777,6 +5864,10 @@ function PurchaseRequestPage() {
               <div>
                 <p className="text-xs text-gray-500">{t('stock.dept')}</p>
                 <p className="font-semibold">{viewDoc.departments?.name}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Category</p>
+                <p className="font-semibold">{viewDoc.item_categories?.name || '-'}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('pr.priority')}</p>
@@ -5811,8 +5902,7 @@ function PurchaseRequestPage() {
                     <tr>
                       <th className="text-left p-2">{t('dashboard.item')}</th>
                       <th className="text-right p-2">{t('pr.qty')}</th>
-                      <th className="text-right p-2">{t('pr.estPrice')}</th>
-                      <th className="text-right p-2">{t('pr.total')}</th>
+                      <th className="text-center p-2">{t('items.purchaseUnit')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -5820,8 +5910,7 @@ function PurchaseRequestPage() {
                       <tr key={idx} className="border-b">
                         <td className="p-2"><span className="font-mono text-xs">{item.items?.code}</span> - {item.items?.name}</td>
                         <td className="p-2 text-right">{formatNumber(item.quantity)}</td>
-                        <td className="p-2 text-right">{formatCurrency(item.estimated_price)}</td>
-                        <td className="p-2 text-right font-medium">{formatCurrency(item.quantity * item.estimated_price)}</td>
+                        <td className="p-2 text-center">{item.items?.purchase_unit?.abbreviation || item.items?.units?.abbreviation || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -5842,7 +5931,7 @@ function PurchaseRequestPage() {
 // PURCHASE ORDER PAGE
 // ============================================================
 function PurchaseOrderPage() {
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, showNotification, currentUser } = useApp();
   const { t } = useTranslation();
   const [pos, setPos] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -5856,22 +5945,116 @@ function PurchaseOrderPage() {
   const [lineItems, setLineItems] = useState([]);
   const [viewDoc, setViewDoc] = useState(null);
   const [viewItems, setViewItems] = useState([]);
+  const [approvedPRs, setApprovedPRs] = useState([]);
+  const [showPRSelect, setShowPRSelect] = useState(false);
+  const [selectedPR, setSelectedPR] = useState('');
+  const [invoiceStatusMap, setInvoiceStatusMap] = useState({});
 
   useEffect(() => { if(selectedOrg) loadAll(); }, [selectedOrg]);
 
   async function loadAll() {
     setLoading(true);
-    const [poRes, vendorRes, itemRes, userRes] = await Promise.all([
-      supabase.from('purchase_orders').select('*, vendors(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
+    const [poRes, vendorRes, itemRes, userRes, prRes] = await Promise.all([
+      supabase.from('purchase_orders').select('*, vendors(name, code), pr_reference_id').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('vendors').select('*').eq('is_active', true).order('name'),
-      supabase.from('items').select('id, code, name, unit_id').eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, unit_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('is_active', true).order('code'),
       supabase.from('users').select('id, full_name').order('full_name'),
+      supabase.from('purchase_requests').select('id, pr_number, request_date, needed_date, priority, notes, departments(name, code)').eq('organization_id', selectedOrg.id).in('status', ['APPROVED', 'PARTIAL_ORDERED']).order('created_at', { ascending: false }),
     ]);
     setPos(poRes.data || []);
     setVendors(vendorRes.data || []);
     setItems(itemRes.data || []);
     setUsers(userRes.data || []);
+
+    // Filter out PRs that already have a PO linked (check notes or pr_reference_id)
+    const allApprovedPRs = prRes.data || [];
+    // Get all PO notes to check if PR number is referenced
+    const poList = poRes.data || [];
+    const linkedPRNumbers = new Set();
+    poList.forEach(po => {
+      if (po.pr_reference_id) linkedPRNumbers.add(po.pr_reference_id);
+      if (po.notes && po.notes.startsWith('Imported from PR:')) {
+        const prNum = po.notes.replace('Imported from PR: ', '').trim();
+        const matchPR = allApprovedPRs.find(p => p.pr_number === prNum);
+        if (matchPR) linkedPRNumbers.add(matchPR.id);
+      }
+    });
+    setApprovedPRs(allApprovedPRs.filter(pr => !linkedPRNumbers.has(pr.id)));
+
+    // Load invoice status data for POs
+    const allPOs = poList;
+    const approvedPoIds = allPOs.filter(p => ['APPROVED','SENT','RECEIVED','PARTIAL_INVOICED','FULLY_INVOICED'].includes(p.status)).map(p => p.id);
+    if (approvedPoIds.length > 0) {
+      const [poItemsRes, piRes] = await Promise.all([
+        supabase.from('purchase_order_items').select('po_id, item_id, quantity').in('po_id', approvedPoIds),
+        supabase.from('purchase_invoices').select('id, po_id').eq('organization_id', selectedOrg.id).in('po_id', approvedPoIds),
+      ]);
+      const poItemsData = poItemsRes.data || [];
+      const linkedPIs = piRes.data || [];
+      const piIds = linkedPIs.map(pi => pi.id);
+      let piItemsData = [];
+      if (piIds.length > 0) {
+        const { data } = await supabase.from('purchase_invoice_items').select('pi_id, item_id, quantity').in('pi_id', piIds);
+        piItemsData = data || [];
+      }
+      const invoiceStatusMap = {};
+      approvedPoIds.forEach(poId => {
+        const poItems = poItemsData.filter(i => i.po_id === poId);
+        const posPiIds = linkedPIs.filter(pi => pi.po_id === poId).map(pi => pi.id);
+        const piItems = piItemsData.filter(i => posPiIds.includes(i.pi_id));
+
+        let totalOrdered = 0;
+        let totalInvoiced = 0;
+        poItems.forEach(poi => {
+          totalOrdered += poi.quantity;
+          const invoicedQty = piItems.filter(pii => pii.item_id === poi.item_id).reduce((sum, pii) => sum + pii.quantity, 0);
+          totalInvoiced += Math.min(invoicedQty, poi.quantity);
+        });
+
+        if (totalOrdered === 0) {
+          invoiceStatusMap[poId] = 'NOT_INVOICED';
+        } else if (totalInvoiced >= totalOrdered) {
+          invoiceStatusMap[poId] = 'FULLY_INVOICED';
+        } else if (totalInvoiced > 0) {
+          invoiceStatusMap[poId] = 'PARTIAL_INVOICED';
+        } else {
+          invoiceStatusMap[poId] = 'NOT_INVOICED';
+        }
+      });
+      setInvoiceStatusMap(invoiceStatusMap);
+    }
     setLoading(false);
+  }
+
+  async function importFromPR(prId) {
+    if (!prId) return;
+    const pr = approvedPRs.find(p => p.id === prId);
+    if (!pr) return;
+
+    // Load PR items
+    const { data: prItems } = await supabase.from('purchase_request_items').select('*, items(code, name)').eq('pr_id', prId);
+    if (!prItems || prItems.length === 0) {
+      showNotification('PR tidak memiliki item', 'error');
+      return;
+    }
+
+    // Set line items from PR
+    const newLines = prItems.map(pi => ({
+      item_id: pi.item_id,
+      quantity: pi.quantity || 1,
+      unit_price: 0,
+      discount_percent: 0,
+      tax_percent: 11
+    }));
+    setLineItems(newLines);
+    setForm(prev => ({
+      ...prev,
+      notes: 'Imported from PR: ' + pr.pr_number,
+      pr_reference_id: pr.id
+    }));
+    setShowPRSelect(false);
+    setSelectedPR('');
+    showNotification('Item dari ' + pr.pr_number + ' berhasil di-import (' + newLines.length + ' items)');
   }
 
   function getUserName(userId) {
@@ -5882,7 +6065,7 @@ function PurchaseOrderPage() {
 
   async function openView(po) {
     setViewDoc(po);
-    const { data } = await supabase.from('purchase_order_items').select('*, items(code, name)').eq('po_id', po.id);
+    const { data } = await supabase.from('purchase_order_items').select('*, items(code, name, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation))').eq('po_id', po.id);
     setViewItems(data || []);
   }
 
@@ -5984,12 +6167,15 @@ function PurchaseOrderPage() {
         if (itemErr) throw itemErr;
       } else {
         const poNumber = await generatePONumber();
-        const { data: newPO, error } = await supabase.from('purchase_orders').insert({
+        const poPayload = {
           po_number: poNumber, organization_id: selectedOrg.id, vendor_id: form.vendor_id,
           order_date: form.order_date, expected_delivery: form.expected_delivery || null,
           payment_terms: form.payment_terms || null, status: 'DRAFT', notes: form.notes || null,
-          subtotal, discount_amount: totalDiscount, tax_amount: totalTax, total_amount: totalAmount
-        }).select().single();
+          subtotal, discount_amount: totalDiscount, tax_amount: totalTax, total_amount: totalAmount,
+          created_by: currentUser?.id || null
+        };
+        if (form.pr_reference_id) poPayload.pr_reference_id = form.pr_reference_id;
+        const { data: newPO, error } = await supabase.from('purchase_orders').insert(poPayload).select().single();
         if (error) throw error;
         const itemsPayload = validLines.map(l => ({
           po_id: newPO.id, item_id: l.item_id, quantity: l.quantity,
@@ -6053,6 +6239,13 @@ function PurchaseOrderPage() {
             { header: t('po.expectedDelivery'), render: r => r.expected_delivery ? new Date(r.expected_delivery).toLocaleDateString('id-ID') : '-' },
             { header: t('po.totalAmount'), render: r => formatCurrency(r.total_amount) },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
+            { header: 'Invoice Status', render: r => {
+              if (!['APPROVED','SENT','RECEIVED','PARTIAL_INVOICED','FULLY_INVOICED'].includes(r.status)) return <span className="text-xs text-gray-400">-</span>;
+              const is = invoiceStatusMap[r.id];
+              if (is === 'FULLY_INVOICED') return <Badge color="green">Fully Invoiced</Badge>;
+              if (is === 'PARTIAL_INVOICED') return <Badge color="orange">Partial Invoiced</Badge>;
+              return <Badge color="gray">Not Invoiced</Badge>;
+            }},
             { header: t('approval.info'), render: r => r.approved_by ? (
               <div className="text-xs">
                 <div className="font-medium text-green-700">{getUserName(r.approved_by)}</div>
@@ -6093,12 +6286,19 @@ function PurchaseOrderPage() {
           <FormField label={t('po.paymentTerms')}>
             <Input value={form.payment_terms} onChange={e => setForm({...form, payment_terms: e.target.value})} placeholder="e.g. NET 30" />
           </FormField>
-          <div className="sm:col-span-2">
-            <FormField label={t('po.notes')}>
-              <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
-            </FormField>
-          </div>
+          <FormField label={t('po.notes')}>
+            <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
+          </FormField>
+          {!editing && (
+          <FormField label="Import dari PR">
+            <Select value={selectedPR} onChange={e => { setSelectedPR(e.target.value); if(e.target.value) importFromPR(e.target.value); }}>
+              <option value="">-- Pilih PR --</option>
+              {approvedPRs.map(pr => <option key={pr.id} value={pr.id}>{pr.pr_number} — {pr.departments?.name || ''}</option>)}
+            </Select>
+          </FormField>
+          )}
         </div>
+
 
         <div className="border-t pt-4">
           <div className="flex justify-between items-center mb-3">
@@ -6109,6 +6309,7 @@ function PurchaseOrderPage() {
             <table className="w-full text-sm">
               <thead><tr className="bg-gray-50">
                 <th className="p-2 text-left">{t('dashboard.item')}</th>
+                <th className="p-2 text-center w-20">{t('items.purchaseUnit')}</th>
                 <th className="p-2 text-right w-16">{t('po.qty')}</th>
                 <th className="p-2 text-right w-28">{t('po.unitPrice')}</th>
                 <th className="p-2 text-right w-16">{t('po.discount')}</th>
@@ -6117,11 +6318,15 @@ function PurchaseOrderPage() {
                 <th className="p-2 w-10"></th>
               </tr></thead>
               <tbody>
-                {lineItems.map((line, idx) => (
+                {lineItems.map((line, idx) => {
+                  const selItem = items.find(i => i.id === line.item_id);
+                  const puAbbr = selItem?.purchase_unit?.abbreviation || '-';
+                  return (
                   <tr key={idx} className="border-b">
                     <td className="p-2">
                       <SearchableItemSelect items={items} value={line.item_id} onChange={v => updateLine(idx, 'item_id', v)} placeholder={t('pr.selectItem')} />
                     </td>
+                    <td className="p-2 text-center text-sm text-gray-600">{line.item_id ? puAbbr : '-'}</td>
                     <td className="p-2"><input type="number" value={line.quantity} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value)||0)}
                       className="w-full px-2 py-1 border rounded text-sm text-right" min="1" /></td>
                     <td className="p-2"><input type="number" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', parseFloat(e.target.value)||0)}
@@ -6133,7 +6338,8 @@ function PurchaseOrderPage() {
                     <td className="p-2 text-right font-medium">{formatCurrency(calcLineTotal(line))}</td>
                     <td className="p-2">{lineItems.length > 1 && <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-600"><Icons.Trash /></button>}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -6197,6 +6403,7 @@ function PurchaseOrderPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="text-left p-2">{t('dashboard.item')}</th>
+                      <th className="text-center p-2">{t('items.purchaseUnit')}</th>
                       <th className="text-right p-2">{t('po.qty')}</th>
                       <th className="text-right p-2">{t('po.unitPrice')}</th>
                       <th className="text-right p-2">{t('po.lineTotal')}</th>
@@ -6206,6 +6413,7 @@ function PurchaseOrderPage() {
                     {viewItems.map((item, idx) => (
                       <tr key={idx} className="border-b">
                         <td className="p-2"><span className="font-mono text-xs">{item.items?.code}</span> - {item.items?.name}</td>
+                        <td className="p-2 text-center">{item.items?.purchase_unit?.abbreviation || '-'}</td>
                         <td className="p-2 text-right">{formatNumber(item.quantity)}</td>
                         <td className="p-2 text-right">{formatCurrency(item.unit_price)}</td>
                         <td className="p-2 text-right font-medium">{formatCurrency(item.total_price)}</td>
@@ -7044,7 +7252,7 @@ function WriteOffPage() {
 // PURCHASE INVOICE PAGE
 // ============================================================
 function PurchaseInvoicePage() {
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, showNotification, currentUser } = useApp();
   const { t } = useTranslation();
   const [invoices, setInvoices] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -7067,8 +7275,8 @@ function PurchaseInvoicePage() {
     const [piRes, vendorRes, itemRes, poRes, userRes] = await Promise.all([
       supabase.from('purchase_invoices').select('*, vendors(name, code), purchase_orders(po_number)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('vendors').select('*').eq('is_active', true).order('name'),
-      supabase.from('items').select('id, code, name, unit_id').eq('is_active', true).order('code'),
-      supabase.from('purchase_orders').select('id, po_number, vendor_id, status').eq('organization_id', selectedOrg.id).in('status', ['SENT','RECEIVED']).order('po_number'),
+      supabase.from('items').select('id, code, name, unit_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('is_active', true).order('code'),
+      supabase.from('purchase_orders').select('id, po_number, vendor_id, status').eq('organization_id', selectedOrg.id).in('status', ['APPROVED','SENT','RECEIVED','PARTIAL_INVOICED']).order('po_number'),
       supabase.from('users').select('id, full_name').order('full_name'),
     ]);
     setInvoices(piRes.data || []);
@@ -7087,7 +7295,7 @@ function PurchaseInvoicePage() {
 
   async function openView(pi) {
     setViewDoc(pi);
-    const { data } = await supabase.from('purchase_invoice_items').select('*, items(code, name)').eq('pi_id', pi.id);
+    const { data } = await supabase.from('purchase_invoice_items').select('*, items(code, name, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation))').eq('pi_id', pi.id);
     setViewItems(data || []);
   }
 
@@ -7205,7 +7413,8 @@ function PurchaseInvoicePage() {
           invoice_number: form.invoice_number || null, invoice_date: form.invoice_date,
           due_date: form.due_date || null, po_id: form.po_id || null,
           status: 'DRAFT', payment_status: 'UNPAID', notes: form.notes || null,
-          subtotal, discount_amount: totalDiscount, tax_amount: totalTax, total_amount: totalAmount
+          subtotal, discount_amount: totalDiscount, tax_amount: totalTax, total_amount: totalAmount,
+          created_by: currentUser?.id || null
         }).select().single();
         if (error) throw error;
         const itemsPayload = validLines.map(l => ({
@@ -7333,6 +7542,7 @@ function PurchaseInvoicePage() {
             <table className="w-full text-sm">
               <thead><tr className="bg-gray-50">
                 <th className="p-2 text-left">{t('dashboard.item')}</th>
+                <th className="p-2 text-center w-20">{t('items.purchaseUnit')}</th>
                 <th className="p-2 text-right w-16">{t('pi.qty')}</th>
                 <th className="p-2 text-right w-28">{t('pi.unitPrice')}</th>
                 <th className="p-2 text-right w-16">{t('pi.discount')}</th>
@@ -7341,11 +7551,15 @@ function PurchaseInvoicePage() {
                 <th className="p-2 w-10"></th>
               </tr></thead>
               <tbody>
-                {lineItems.map((line, idx) => (
+                {lineItems.map((line, idx) => {
+                  const selItem = items.find(i => i.id === line.item_id);
+                  const puAbbr = selItem?.purchase_unit?.abbreviation || '-';
+                  return (
                   <tr key={idx} className="border-b">
                     <td className="p-2">
                       <SearchableItemSelect items={items} value={line.item_id} onChange={v => updateLine(idx, 'item_id', v)} placeholder={t('pr.selectItem')} />
                     </td>
+                    <td className="p-2 text-center text-sm text-gray-600">{line.item_id ? puAbbr : '-'}</td>
                     <td className="p-2"><input type="number" value={line.quantity} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value)||0)}
                       className="w-full px-2 py-1 border rounded text-sm text-right" min="1" /></td>
                     <td className="p-2"><input type="number" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', parseFloat(e.target.value)||0)}
@@ -7357,7 +7571,8 @@ function PurchaseInvoicePage() {
                     <td className="p-2 text-right font-medium">{formatCurrency(calcLineTotal(line))}</td>
                     <td className="p-2">{lineItems.length > 1 && <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-600"><Icons.Trash /></button>}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -7419,6 +7634,7 @@ function PurchaseInvoicePage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="text-left p-2">{t('dashboard.item')}</th>
+                      <th className="text-center p-2">{t('items.purchaseUnit')}</th>
                       <th className="text-right p-2">{t('pi.qty')}</th>
                       <th className="text-right p-2">{t('pi.unitPrice')}</th>
                       <th className="text-right p-2">{t('pi.lineTotal')}</th>
@@ -7428,6 +7644,7 @@ function PurchaseInvoicePage() {
                     {viewItems.map((item, idx) => (
                       <tr key={idx} className="border-b">
                         <td className="p-2"><span className="font-mono text-xs">{item.items?.code}</span> - {item.items?.name}</td>
+                        <td className="p-2 text-center">{item.items?.purchase_unit?.abbreviation || '-'}</td>
                         <td className="p-2 text-right">{formatNumber(item.quantity)}</td>
                         <td className="p-2 text-right">{formatCurrency(item.unit_price)}</td>
                         <td className="p-2 text-right font-medium">{formatCurrency(item.total_price)}</td>
@@ -7707,6 +7924,69 @@ function PurchaseReceivedPage() {
     } catch (err) { showNotification('Error: ' + err.message, 'error'); }
   }
 
+  async function handleRevokeGR(gr) {
+    if (gr.status !== 'CONFIRMED') return;
+    const userRole = currentUser?.role?.code || '';
+    if (userRole !== 'superadmin' && userRole !== 'gm') {
+      showNotification('Only GM or Superadmin can revoke', 'error'); return;
+    }
+    // Superadmin dan GM boleh revoke dokumen sendiri
+    if (!confirm(`Revoke GR ${gr.gr_number}? Stock movements will be reversed.`)) return;
+    try {
+      // Load GR items to reverse stock
+      const { data: grItems } = await supabase.from('purchase_received_items').select('*').eq('gr_id', gr.id);
+      if (!grItems || grItems.length === 0) throw new Error('No items found');
+
+      // Reverse stock movements and stock balance for each item
+      for (const item of grItems) {
+        const qty = parseFloat(item.received_qty);
+        if (qty <= 0) continue;
+        const unitPrice = parseFloat(item.unit_price) || 0;
+        const totalCost = qty * unitPrice;
+
+        // Delete the stock movement for this GR
+        await supabase.from('stock_movements').delete()
+          .eq('organization_id', selectedOrg.id)
+          .eq('item_id', item.item_id)
+          .eq('reference_type', 'GR')
+          .eq('reference_number', gr.gr_number);
+
+        // Reduce stock balance
+        const { data: existing } = await supabase.from('stock_balance')
+          .select('id, quantity, avg_cost, total_value')
+          .eq('organization_id', selectedOrg.id)
+          .eq('item_id', item.item_id)
+          .maybeSingle();
+
+        if (existing) {
+          const newQty = Math.max(0, parseFloat(existing.quantity) - qty);
+          const newTotalValue = Math.max(0, parseFloat(existing.total_value) - totalCost);
+          const newAvgCost = newQty > 0 ? newTotalValue / newQty : 0;
+          await supabase.from('stock_balance').update({
+            quantity: newQty,
+            avg_cost: newAvgCost,
+            total_value: newTotalValue,
+            updated_at: new Date().toISOString(),
+          }).eq('id', existing.id);
+        }
+      }
+
+      // Revert GR status to DRAFT
+      await supabase.from('purchase_received').update({ status: 'DRAFT' }).eq('id', gr.id);
+
+      // If PI was marked as RECEIVED, revert PI status back to APPROVED
+      if (gr.pi_id) {
+        const { data: piData } = await supabase.from('purchase_invoices').select('status').eq('id', gr.pi_id).single();
+        if (piData?.status === 'RECEIVED') {
+          await supabase.from('purchase_invoices').update({ status: 'APPROVED' }).eq('id', gr.pi_id);
+        }
+      }
+
+      showNotification(gr.gr_number + ' revoked to draft', 'success');
+      loadAll();
+    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+  }
+
   function updateLine(idx, field, val) {
     const nl = [...lineItems];
     nl[idx] = { ...nl[idx], [field]: val };
@@ -7730,8 +8010,12 @@ function PurchaseReceivedPage() {
           data={receipts}
           actions={(row) => (
             <div className="flex items-center gap-1">
+              <button onClick={e=>{e.stopPropagation();openView(row)}} className="p-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"><Icons.Eye /> Detail</button>
               {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();confirmReceipt(row)}} className="p-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100">{t('gr.confirm')}</button>}
               {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();handleDelete(row)}} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400"><Icons.Trash /></button>}
+              {row.status === 'CONFIRMED' && (currentUser?.role?.code === 'superadmin' || currentUser?.role?.code === 'gm') && (
+                <button onClick={e=>{e.stopPropagation();handleRevokeGR(row)}} className="p-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100"><Icons.RotateCcw /> Revoke</button>
+              )}
             </div>
           )}
         />
@@ -7914,7 +8198,7 @@ function ReportsPage() {
         if (filterDept) q = q.eq('department_id', filterDept);
         if (dateFrom) q = q.gte('created_at', dateFrom);
         if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
-        const { data: res } = await q.order('created_at', { ascending: false }).limit(500);
+        const { data: res } = await q.order('created_at', { ascending: true }).limit(500);
         setData(res || []);
       } else if (reportType === 'purchase') {
         const [poRes, piRes] = await Promise.all([
@@ -8303,10 +8587,13 @@ function ApprovalPage() {
   const [tab, setTab] = useState('pending');
   const [loading, setLoading] = useState(true);
   const [pendingItems, setPendingItems] = useState([]);
+  const [approvedItems, setApprovedItems] = useState([]);
   const [historyItems, setHistoryItems] = useState([]);
   const [users, setUsers] = useState([]);
   const [rejectModal, setRejectModal] = useState(null);
   const [rejectNotes, setRejectNotes] = useState('');
+  const [detailModal, setDetailModal] = useState(null);
+  const [detailItems, setDetailItems] = useState([]);
 
   const userRole = currentUser?.role?.code || '';
 
@@ -8318,24 +8605,36 @@ function ApprovalPage() {
   async function loadAll() {
     if (!selectedOrg) return;
     setLoading(true);
-    const [prRes, poRes, piRes, woRes, opnRes, usersRes, logRes] = await Promise.all([
-      supabase.from('purchase_requests').select('*, users:created_by(full_name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
-      supabase.from('purchase_orders').select('*, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
-      supabase.from('purchase_invoices').select('*, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
-      supabase.from('write_offs').select('*, departments(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
-      supabase.from('stock_opname').select('*').eq('organization_id', selectedOrg.id).eq('status', 'SUBMITTED'),
+    const [prRes, poRes, piRes, woRes, opnRes, prAppRes, poAppRes, piAppRes, usersRes, logRes] = await Promise.all([
+      supabase.from('purchase_requests').select('*').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
+      supabase.from('purchase_orders').select('*, created_by, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
+      supabase.from('purchase_invoices').select('*, created_by, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
+      supabase.from('write_offs').select('*, created_by, departments(name)').eq('organization_id', selectedOrg.id).eq('status', 'PENDING'),
+      supabase.from('stock_opname').select('*, created_by').eq('organization_id', selectedOrg.id).eq('status', 'SUBMITTED'),
+      // Query APPROVED documents for revoke
+      supabase.from('purchase_requests').select('*').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED'),
+      supabase.from('purchase_orders').select('*, created_by, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED'),
+      supabase.from('purchase_invoices').select('*, created_by, vendors(name)').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED'),
       supabase.from('users').select('id, username, full_name, role_id, roles:role_id(code)').eq('is_active', true),
       supabase.from('approval_logs').select('*, users:action_by(full_name)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }).limit(100),
     ]);
     const pending = [];
-    (prRes.data || []).forEach(r => pending.push({ ...r, _type: 'PR', _number: r.pr_number, _date: r.request_date, _desc: r.notes || '-' }));
+    (prRes.data || []).forEach(r => pending.push({ ...r, created_by: r.requested_by, _type: 'PR', _number: r.pr_number, _date: r.request_date, _desc: r.notes || '-' }));
     (poRes.data || []).forEach(r => pending.push({ ...r, _type: 'PO', _number: r.po_number, _date: r.order_date, _desc: r.vendors?.name || '-' }));
     (piRes.data || []).forEach(r => pending.push({ ...r, _type: 'PI', _number: r.pi_number, _date: r.invoice_date, _desc: r.vendors?.name || '-' }));
     (woRes.data || []).forEach(r => pending.push({ ...r, _type: 'WRITEOFF', _number: r.wo_number, _date: r.write_off_date, _desc: r.departments?.name || r.reason || '-' }));
     (opnRes.data || []).forEach(r => pending.push({ ...r, _type: 'STOCK_OPNAME', _number: r.opname_number, _date: r.opname_date, _desc: 'Stock Opname' }));
-    // Sort by date desc
     pending.sort((a, b) => new Date(b._date) - new Date(a._date));
     setPendingItems(pending);
+    // Approved items for revoke
+    const allUsrs = usersRes.data || [];
+    const getApproverName = (id) => { const u = allUsrs.find(x => x.id === id); return u ? (u.full_name || u.username) : '-'; };
+    const approved = [];
+    (prAppRes.data || []).forEach(r => approved.push({ ...r, created_by: r.requested_by, _type: 'PR', _number: r.pr_number, _date: r.request_date, _desc: r.notes || '-', _approver: getApproverName(r.approved_by) }));
+    (poAppRes.data || []).forEach(r => approved.push({ ...r, _type: 'PO', _number: r.po_number, _date: r.order_date, _desc: r.vendors?.name || '-', _approver: getApproverName(r.approved_by) }));
+    (piAppRes.data || []).forEach(r => approved.push({ ...r, _type: 'PI', _number: r.pi_number, _date: r.invoice_date, _desc: r.vendors?.name || '-', _approver: getApproverName(r.approved_by) }));
+    approved.sort((a, b) => new Date(b.approved_at || b._date) - new Date(a.approved_at || a._date));
+    setApprovedItems(approved);
     setUsers(usersRes.data || []);
     setHistoryItems(logRes.data || []);
     setLoading(false);
@@ -8346,6 +8645,15 @@ function ApprovalPage() {
   function canApprove(item) {
     if (userRole === 'superadmin' || userRole === 'gm') return true;
     if (userRole === 'findir' && (item._type === 'WRITEOFF' || item._type === 'STOCK_OPNAME')) return true;
+    return false;
+  }
+
+  function canRevoke(item) {
+    // Only GM and Superadmin can revoke
+    if (userRole !== 'superadmin' && userRole !== 'gm') return false;
+    // Superadmin dan GM boleh revoke dokumen sendiri
+    // Can revoke PR, PO, PI, Write-Off, and Stock Opname
+    if (['PR', 'PO', 'PI', 'WRITEOFF', 'STOCK_OPNAME'].includes(item._type)) return true;
     return false;
   }
 
@@ -8428,6 +8736,89 @@ function ApprovalPage() {
     loadAll();
   }
 
+  async function handleRevertToDraft(item) {
+    // Proteksi: PI tidak bisa di-revert jika masih ada GR CONFIRMED terkait
+    if (item._type === 'PI') {
+      const { data: activeGRs } = await supabase.from('purchase_received')
+        .select('id, gr_number, status')
+        .eq('pi_id', item.id)
+        .in('status', ['CONFIRMED', 'DRAFT']);
+      const confirmedGRs = (activeGRs || []).filter(g => g.status === 'CONFIRMED');
+      if (confirmedGRs.length > 0) {
+        const grNumbers = confirmedGRs.map(g => g.gr_number).join(', ');
+        showNotification(`Tidak bisa revert ${item._number}. Masih ada ${confirmedGRs.length} GR yang CONFIRMED: ${grNumbers}. Revoke semua GR terlebih dahulu.`, 'error');
+        return;
+      }
+    }
+
+    if (!confirm(`Revert ${item._number} to draft?`)) return;
+    const now = new Date().toISOString();
+    const tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : item._type === 'PI' ? 'purchase_invoices' : item._type === 'STOCK_OPNAME' ? 'stock_opname' : 'write_offs';
+    const upd = { status: 'DRAFT' };
+
+    const { error } = await supabase.from(tableName).update(upd).eq('id', item.id);
+    if (error) { showNotification('Error: ' + error.message, 'error'); return; }
+
+    await supabase.from('approval_logs').insert({
+      organization_id: selectedOrg.id, document_type: item._type, document_id: item.id,
+      document_number: item._number, action: 'REVERTED_TO_DRAFT', action_by: currentUser?.id,
+    });
+    showNotification(item._number + ' reverted to draft', 'success');
+    loadAll();
+  }
+
+  async function handleRevokeApproval(item) {
+    // Proteksi: PI tidak bisa di-revoke jika masih ada GR CONFIRMED terkait
+    if (item._type === 'PI') {
+      const { data: activeGRs } = await supabase.from('purchase_received')
+        .select('id, gr_number, status')
+        .eq('pi_id', item.id)
+        .in('status', ['CONFIRMED', 'DRAFT']);
+      const confirmedGRs = (activeGRs || []).filter(g => g.status === 'CONFIRMED');
+      if (confirmedGRs.length > 0) {
+        const grNumbers = confirmedGRs.map(g => g.gr_number).join(', ');
+        showNotification(`Tidak bisa revoke ${item._number}. Masih ada ${confirmedGRs.length} GR yang CONFIRMED: ${grNumbers}. Revoke semua GR terlebih dahulu.`, 'error');
+        return;
+      }
+    }
+
+    if (!confirm(`Revoke approval for ${item._number}? Document will return to pending status.`)) return;
+    const now = new Date().toISOString();
+    const tableName = item._type === 'PR' ? 'purchase_requests' : item._type === 'PO' ? 'purchase_orders' : 'purchase_invoices';
+    const upd = { status: 'PENDING', approved_by: null, approved_at: null };
+
+    const { error } = await supabase.from(tableName).update(upd).eq('id', item.id);
+    if (error) { showNotification('Error: ' + error.message, 'error'); return; }
+
+    await supabase.from('approval_logs').insert({
+      organization_id: selectedOrg.id, document_type: item._type, document_id: item.id,
+      document_number: item._number, action: 'REVOKE_APPROVAL', action_by: currentUser?.id,
+    });
+    showNotification(item._number + ' approval revoked', 'success');
+    loadAll();
+  }
+
+  async function handleViewDetail(item) {
+    setDetailModal(item);
+    // Load detail items based on type
+    const tableName = item._type === 'PR' ? 'purchase_request_items' : item._type === 'PO' ? 'purchase_order_items' : 'purchase_invoice_items';
+    const fkCol = item._type === 'PR' ? 'pr_id' : item._type === 'PO' ? 'po_id' : 'pi_id';
+    const { data, error } = await supabase.from(tableName).select('*').eq(fkCol, item.id);
+    if (error) { console.error('Detail items error:', error); setDetailItems([]); return; }
+    // Enrich with master_items data
+    const items = data || [];
+    if (items.length > 0) {
+      const itemIds = items.map(i => i.item_id).filter(Boolean);
+      if (itemIds.length > 0) {
+        const { data: masterData } = await supabase.from('master_items').select('id, name, sku, unit').in('id', itemIds);
+        const masterMap = {};
+        (masterData || []).forEach(m => { masterMap[m.id] = m; });
+        items.forEach(i => { i.master_items = masterMap[i.item_id] || null; });
+      }
+    }
+    setDetailItems(items);
+  }
+
   const typeColors = { PR: 'blue', PO: 'purple', PI: 'orange', WRITEOFF: 'red', STOCK_OPNAME: 'green' };
 
   return (
@@ -8438,6 +8829,10 @@ function ApprovalPage() {
         <button onClick={() => setTab('pending')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'pending' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
           {t('approval.pending')} {pendingItems.length > 0 && <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{pendingItems.length}</span>}
+        </button>
+        <button onClick={() => setTab('approved')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'approved' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          Approved {approvedItems.length > 0 && <span className="ml-1 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5">{approvedItems.length}</span>}
         </button>
         <button onClick={() => setTab('history')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'history' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
@@ -8469,6 +8864,16 @@ function ApprovalPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {item.submitted_by && <span className="text-xs text-gray-400">{t('approval.submittedBy')}: {getUserName(item.submitted_by)}</span>}
+                      {['PR','PO','PI'].includes(item._type) && (
+                        <button onClick={() => handleViewDetail(item)} className="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
+                          <Icons.Eye /> Detail
+                        </button>
+                      )}
+                      {canRevoke(item) && (
+                        <button onClick={() => handleRevertToDraft(item)} className="px-3 py-1.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors">
+                          <Icons.RotateCcw /> Revert to Draft
+                        </button>
+                      )}
                       {canApprove(item) && (
                         <>
                           <button onClick={() => handleApprove(item)} className="px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors">
@@ -8478,6 +8883,42 @@ function ApprovalPage() {
                             <Icons.X /> {t('approval.reject')}
                           </button>
                         </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'approved' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          {loading ? <div className="p-8 text-center">Loading...</div> : approvedItems.length === 0 ? (
+            <div className="p-12 text-center text-gray-400"><Icons.Check /><p className="mt-2">No approved documents</p></div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {approvedItems.map(item => (
+                <div key={item._type + '-' + item.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Badge color={typeColors[item._type]}>{item._type}</Badge>
+                      <span className="font-mono text-sm font-semibold text-gray-900">{item._number}</span>
+                      <span className="text-sm text-gray-500">{new Date(item._date).toLocaleDateString('id-ID')}</span>
+                      <span className="text-sm text-gray-400">{item._desc}</span>
+                      <Badge color="green">Approved</Badge>
+                      {item._approver && <span className="text-xs text-gray-400">by {item._approver}</span>}
+                      {item.approved_at && <span className="text-xs text-gray-400">{new Date(item.approved_at).toLocaleDateString('id-ID')}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleViewDetail(item)} className="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
+                        <Icons.Eye /> Detail
+                      </button>
+                      {canRevoke(item) && (
+                        <button onClick={() => handleRevokeApproval(item)} className="px-3 py-1.5 text-xs font-medium bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors">
+                          <Icons.RotateCcw /> Revoke Approval
+                        </button>
                       )}
                     </div>
                   </div>
@@ -8498,7 +8939,7 @@ function ApprovalPage() {
                 { header: 'Type', render: r => <Badge color={typeColors[r.document_type] || 'gray'}>{r.document_type}</Badge> },
                 { header: 'Document', render: r => <span className="font-mono text-xs font-semibold">{r.document_number}</span> },
                 { header: 'Action', render: r => (
-                  <Badge color={r.action === 'APPROVED' ? 'green' : r.action === 'REJECTED' ? 'red' : 'blue'}>{r.action}</Badge>
+                  <Badge color={r.action === 'APPROVED' ? 'green' : r.action === 'REJECTED' ? 'red' : r.action === 'REVOKE_APPROVAL' ? 'orange' : 'blue'}>{r.action}</Badge>
                 )},
                 { header: 'By', render: r => r.users?.full_name || '-' },
                 { header: 'Date', render: r => new Date(r.action_at).toLocaleString('id-ID') },
@@ -8520,6 +8961,51 @@ function ApprovalPage() {
           <Button onClick={() => setRejectModal(null)}>{t('common.cancel')}</Button>
           <Button variant="primary" onClick={confirmReject} className="bg-red-600 hover:bg-red-700">{t('approval.reject')}</Button>
         </div>
+      </Modal>
+
+      <Modal open={!!detailModal} onClose={() => { setDetailModal(null); setDetailItems([]); }} title={`Detail ${detailModal?._type || ''} - ${detailModal?._number || ''}`} size="lg">
+        {detailModal && (
+          <div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div><span className="text-xs text-gray-500">Document No:</span><div className="font-mono font-semibold">{detailModal._number}</div></div>
+              <div><span className="text-xs text-gray-500">Date:</span><div>{new Date(detailModal._date).toLocaleDateString('id-ID')}</div></div>
+              <div><span className="text-xs text-gray-500">Status:</span><div><Badge color={detailModal.status === 'APPROVED' ? 'green' : detailModal.status === 'PENDING' ? 'yellow' : 'gray'}>{detailModal.status}</Badge></div></div>
+              {detailModal._type === 'PO' && detailModal.vendors && <div><span className="text-xs text-gray-500">Vendor:</span><div>{detailModal.vendors?.name || detailModal._desc}</div></div>}
+              {detailModal._type === 'PI' && detailModal.vendors && <div><span className="text-xs text-gray-500">Vendor:</span><div>{detailModal.vendors?.name || detailModal._desc}</div></div>}
+              {detailModal._type === 'PR' && <div><span className="text-xs text-gray-500">Notes:</span><div>{detailModal.notes || '-'}</div></div>}
+              {detailModal.approved_by && <div><span className="text-xs text-gray-500">Approved by:</span><div>{getUserName(detailModal.approved_by)}</div></div>}
+            </div>
+            <div className="border-t pt-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Items</h4>
+              {detailItems.length === 0 ? (
+                <div className="text-sm text-gray-400 text-center py-4">Loading items...</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead><tr className="bg-gray-50">
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Item</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">SKU</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Qty</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Unit</th>
+                    {detailModal._type !== 'PR' && <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Price</th>}
+                    {detailModal._type !== 'PR' && <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Total</th>}
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {detailItems.map((di, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">{di.master_items?.name || '-'}</td>
+                        <td className="px-3 py-2 text-gray-400">{di.master_items?.sku || '-'}</td>
+                        <td className="px-3 py-2 text-right">{di.quantity}</td>
+                        <td className="px-3 py-2">{di.unit || di.master_items?.unit || '-'}</td>
+                        {detailModal._type !== 'PR' && <td className="px-3 py-2 text-right">{(di.unit_price || 0).toLocaleString('id-ID')}</td>}
+                        {detailModal._type !== 'PR' && <td className="px-3 py-2 text-right font-medium">{((di.quantity || 0) * (di.unit_price || 0)).toLocaleString('id-ID')}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
@@ -8806,6 +9292,8 @@ const ALL_ACTIONS = [
   { id: 'approve_pi', label: 'roles.action.approve_pi' },
   { id: 'approve_wo', label: 'roles.action.approve_wo' },
   { id: 'approve_opname', label: 'roles.action.approve_opname' },
+  { id: 'revoke_approval', label: 'roles.action.revoke_approval' },
+  { id: 'revert_to_draft', label: 'roles.action.revert_to_draft' },
   { id: 'export_reports', label: 'roles.action.export_reports' },
   { id: 'manage_users', label: 'roles.action.manage_users' },
   { id: 'manage_roles', label: 'roles.action.manage_roles' },
@@ -9480,6 +9968,29 @@ function OpeningBalancePage() {
     }
   }
 
+  async function handleUnlockCategory() {
+    if (!selectedCategory) return;
+    if (currentUser?.role !== 'superadmin') {
+      showNotification('Hanya Superadmin yang dapat membuka kunci Opening Balance.', 'error');
+      return;
+    }
+    if (!confirm('Apakah Anda yakin ingin membuka kunci Opening Balance untuk kategori "' + selectedCategory.name + '"? Data dapat diedit kembali setelah di-unlock.')) return;
+    try {
+      await supabase.from('opening_balance_locks').upsert({
+        organization_id: selectedOrg.id,
+        category_id: selectedCategory.id,
+        is_locked: false,
+        unlocked_at: new Date().toISOString(),
+        unlocked_by: currentUser?.id || null,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'organization_id,category_id' });
+      showNotification('Opening Balance berhasil di-unlock untuk kategori ' + selectedCategory.name);
+      await loadOverview();
+    } catch (err) {
+      showNotification('Error: ' + err.message, 'error');
+    }
+  }
+
   // ---- RENDER ----
   if (loading) return <div className="p-12 flex justify-center"><div className="spinner"></div></div>;
 
@@ -9520,9 +10031,16 @@ function OpeningBalancePage() {
                 <Icons.ArrowLeft /> {t('ob.backToCategories')}
               </Button>
               {isLocked ? (
-                <span className="flex items-center gap-1 px-3 py-2 bg-red-50 text-red-700 rounded-lg text-sm font-medium">
-                  <Icons.Lock /> {t('ob.lockedStatus')}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1 px-3 py-2 bg-red-50 text-red-700 rounded-lg text-sm font-medium">
+                    <Icons.Lock /> {t('ob.lockedStatus')}
+                  </span>
+                  {currentUser?.role === 'superadmin' && (
+                    <Button variant="secondary" onClick={handleUnlockCategory} className="text-amber-700 border-amber-300 hover:bg-amber-50">
+                      <Icons.Unlock /> Unlock
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <>
                   <Button variant="secondary" onClick={handleLockCategory} disabled={catCounted === 0}>
@@ -10582,7 +11100,7 @@ function RoomMakeUpPage() {
             <FormField label={t('makeup.room')} required>
               <Select value={selectedRoom} onChange={e => handleRoomSelect(e.target.value)}>
                 <option value="">{t('makeup.selectRoom')}</option>
-                {rooms.map(r => <option key={r.id} value={r.id}>{r.room_number} - {r.room_types?.name || ''} (Floor {r.floor})</option>)}
+                {rooms.map(r => <option key={r.id} value={r.id}>{r.room_number}</option>)}
               </Select>
             </FormField>
             <FormField label={t('common.date')} required>
@@ -11075,13 +11593,7 @@ function RoomMakeUpPage() {
           </div>
         )}
 
-        {/* Notes */}
-        {!isView && (
-          <FormField label={t('makeup.notes')}>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder={t('makeup.notesPlaceholder')} />
-          </FormField>
-        )}
+        {/* Notes - only show in view mode */}
         {isView && viewing.notes && (
           <div className="mb-4 bg-gray-50 rounded-lg p-3">
             <p className="text-xs text-gray-500 mb-1">{t('makeup.notes')}</p>
@@ -12278,7 +12790,7 @@ function SingleItemUsagePage() {
       ]);
       setRecords(recRes.data || []);
       setItems(itemRes.data || []);
-      setWarehouses((whRes.data || []).filter(w => w.warehouse_type !== 'damage'));
+      setWarehouses((whRes.data || []).filter(w => w.warehouse_type === 'store'));
       setDepartments(deptRes.data || []);
     } catch (e) { console.error(e); }
     setLoading(false);
