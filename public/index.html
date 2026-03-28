@@ -2055,6 +2055,9 @@ const Icons = {
   MapPin: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
   Info: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
   RotateCcw: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M1 4v6h6"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>,
+  Linen: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M8 3v7m8-7v7"/></svg>,
+  Wrench: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
+  Monitor: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>,
 };
 
 // ============================================================
@@ -2294,13 +2297,13 @@ function App() {
     { type: 'group', label: t('menu.group.globalMaster'), icon: Icons.Package, children: [
       { id: 'hotels', label: t('menu.hotels'), icon: Icons.Building },
       { id: 'departments', label: t('menu.departments'), icon: Icons.Building },
-      { id: 'items', label: t('menu.items'), icon: Icons.Package },
-      { id: 'categories', label: t('menu.categories'), icon: Icons.Tag },
       { id: 'vendors', label: t('menu.vendors'), icon: Icons.Truck },
       { id: 'room-types', label: t('menu.roomTypes'), icon: Icons.Tag },
       { id: 'bed-formations', label: t('menu.bedFormations'), icon: Icons.Bed },
     ]},
     { type: 'group', label: t('menu.group.hotelMaster'), icon: Icons.Building, children: [
+      { id: 'items', label: t('menu.items'), icon: Icons.Package },
+      { id: 'categories', label: t('menu.categories'), icon: Icons.Tag },
       { id: 'warehouses', label: t('menu.warehouses'), icon: Icons.Warehouse },
       { id: 'rooms', label: t('menu.rooms'), icon: Icons.Door },
     ]},
@@ -2317,14 +2320,12 @@ function App() {
       { id: 'laundry', label: 'Laundry', icon: Icons.Truck },
     ]},
     { type: 'group', label: t('menu.group.stock'), icon: Icons.Database, children: [
+      { id: 'opening-balance', label: t('ob.menu'), icon: Icons.Scale },
       { id: 'stock', label: t('menu.stock'), icon: Icons.Database },
       { id: 'movements', label: t('menu.movements'), icon: Icons.ClipboardList },
       { id: 'transfer', label: t('menu.transfer'), icon: Icons.Truck },
       { id: 'opname', label: t('menu.opname'), icon: Icons.ClipboardList },
       { id: 'in-use-warehouse', label: t('menu.inUseWarehouse'), icon: Icons.Warehouse },
-    ]},
-    { type: 'group', label: t('menu.group.stockIn'), icon: Icons.Truck, children: [
-      { id: 'opening-balance', label: t('ob.menu'), icon: Icons.Scale },
     ]},
     { type: 'group', label: t('menu.group.stockOut'), icon: Icons.Package, children: [
       { id: 'single-usage', label: t('menu.singleUsage'), icon: Icons.Package },
@@ -2334,8 +2335,8 @@ function App() {
     { type: 'group', label: t('menu.group.settings'), icon: Icons.Settings, children: [
       { id: 'user-mgmt', label: t('menu.userMgmt'), icon: Icons.Users },
       { id: 'role-mgmt', label: t('menu.roleMgmt'), icon: Icons.Shield },
-      { id: 'system-settings', label: t('menu.systemSettings'), icon: Icons.Settings },
       { id: 'change-password', label: t('menu.changePassword'), icon: Icons.Lock },
+      { id: 'system-settings', label: t('menu.systemSettings'), icon: Icons.Settings },
     ]},
   ];
 
@@ -2790,7 +2791,7 @@ function DataTable({ columns, data, loading: isLoading, onRowClick, actions, mob
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               {columns.map((col, i) => (
-                <th key={i} className="text-left px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600 whitespace-nowrap">{col.header}</th>
+                <th key={i} className={`${col.align === 'right' ? 'text-right' : 'text-left'} px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600 whitespace-nowrap`}>{col.header}</th>
               ))}
               {actions && <th className="text-right px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600">{t('common.actions')}</th>}
             </tr>
@@ -2801,7 +2802,7 @@ function DataTable({ columns, data, loading: isLoading, onRowClick, actions, mob
                   className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
                   onClick={() => onRowClick && onRowClick(row)}>
                 {columns.map((col, j) => (
-                  <td key={j} className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap">
+                  <td key={j} className={`px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap ${col.align === 'right' ? 'text-right' : ''}`}>
                     {col.render ? col.render(row) : row[col.key]}
                   </td>
                 ))}
@@ -3215,7 +3216,7 @@ function StatusBadge({ status }) {
 function formatCurrency(amount) {
   const curr = window.__systemSettings?.currency || 'IDR';
   const locale = curr === 'IDR' ? 'id-ID' : curr === 'CNY' ? 'zh-CN' : curr === 'THB' ? 'th-TH' : 'en-US';
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: curr, minimumFractionDigits: 0 }).format(amount || 0);
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: curr, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(amount || 0));
 }
 
 function formatNumber(num) {
@@ -3265,7 +3266,7 @@ function DashboardPage() {
     setLoading(true);
     try {
       const [itemsRes, vendorsRes, stockRes, prRes] = await Promise.all([
-        supabase.from('items').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('items').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('is_active', true),
         supabase.from('vendors').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('stock_balance').select('*').eq('organization_id', selectedOrg.id),
         supabase.from('purchase_requests').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'SUBMITTED'),
@@ -3677,9 +3678,168 @@ function ItemsPage() {
   const [editItem, setEditItem] = useState(null);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterSubCategory, setFilterSubCategory] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false });
+  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false });
+
+  // Import from hotel states
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importOrgs, setImportOrgs] = useState([]);
+  const [importSelectedOrg, setImportSelectedOrg] = useState('');
+  const [importCategories, setImportCategories] = useState([]);
+  const [importFilterCat, setImportFilterCat] = useState('');
+  const [importFilterSubCat, setImportFilterSubCat] = useState('');
+  const [importItems, setImportItems] = useState([]);
+  const [importChecked, setImportChecked] = useState({});
+  const [importLoading, setImportLoading] = useState(false);
+  const [importSaving, setImportSaving] = useState(false);
+
+  async function openImportModal() {
+    setShowImportModal(true);
+    setImportSelectedOrg('');
+    setImportCategories([]);
+    setImportFilterCat('');
+    setImportFilterSubCat('');
+    setImportItems([]);
+    setImportChecked({});
+    // Load other hotels
+    const { data: orgs } = await supabase.from('organizations').select('id, code, name').neq('id', selectedOrg?.id).order('name');
+    setImportOrgs(orgs || []);
+  }
+
+  async function handleImportOrgChange(orgId) {
+    setImportSelectedOrg(orgId);
+    setImportFilterCat('');
+    setImportFilterSubCat('');
+    setImportItems([]);
+    setImportChecked({});
+    if (!orgId) { setImportCategories([]); return; }
+    setImportLoading(true);
+    const { data: cats } = await supabase.from('item_categories').select('*').eq('organization_id', orgId).order('name');
+    setImportCategories(cats || []);
+    setImportLoading(false);
+  }
+
+  async function handleImportCatFilter(catId) {
+    setImportFilterCat(catId);
+    setImportFilterSubCat('');
+    setImportItems([]);
+    setImportChecked({});
+  }
+
+  async function handleImportSubCatFilter(subCatId) {
+    setImportFilterSubCat(subCatId);
+    setImportChecked({});
+    if (!subCatId && !importFilterCat) { setImportItems([]); return; }
+    setImportLoading(true);
+    let query = supabase.from('items').select('*, item_categories(name), units:units!items_unit_id_fkey(abbreviation)').eq('organization_id', importSelectedOrg).eq('is_active', true);
+    if (subCatId) {
+      query = query.eq('category_id', subCatId);
+    } else if (importFilterCat) {
+      // Get all sub-category IDs under this parent + the parent itself
+      const subCatIds = importCategories.filter(c => c.parent_id === importFilterCat).map(c => c.id);
+      query = query.in('category_id', [importFilterCat, ...subCatIds]);
+    }
+    const { data } = await query.order('code');
+    // Filter out items already existing in current hotel (by code)
+    const existingCodes = new Set(items.map(i => i.code));
+    const available = (data || []).filter(i => !existingCodes.has(i.code));
+    setImportItems(available);
+    setImportLoading(false);
+  }
+
+  // When parent cat changes, auto-load items
+  useEffect(() => {
+    if (importFilterCat && !importFilterSubCat) {
+      handleImportSubCatFilter('');
+    }
+  }, [importFilterCat]);
+
+  function toggleImportCheck(itemId) {
+    setImportChecked(prev => ({ ...prev, [itemId]: !prev[itemId] }));
+  }
+
+  function toggleImportAll() {
+    const allChecked = importItems.length > 0 && importItems.every(i => importChecked[i.id]);
+    if (allChecked) {
+      setImportChecked({});
+    } else {
+      const newChecked = {};
+      importItems.forEach(i => { newChecked[i.id] = true; });
+      setImportChecked(newChecked);
+    }
+  }
+
+  async function handleImportItems() {
+    const selectedItems = importItems.filter(i => importChecked[i.id]);
+    if (selectedItems.length === 0) return;
+    setImportSaving(true);
+    try {
+      // First ensure categories exist in current hotel
+      const catIdsNeeded = [...new Set(selectedItems.map(i => i.category_id).filter(Boolean))];
+      const sourceCats = importCategories.filter(c => catIdsNeeded.includes(c.id));
+      // Also get parent categories needed
+      const parentIdsNeeded = [...new Set(sourceCats.map(c => c.parent_id).filter(Boolean))];
+      const parentCats = importCategories.filter(c => parentIdsNeeded.includes(c.id));
+      const allCatsToImport = [...parentCats, ...sourceCats];
+
+      // Check which categories already exist in current hotel by code
+      const { data: existingCats } = await supabase.from('item_categories').select('id, code').eq('organization_id', selectedOrg?.id);
+      const existingCatCodes = new Map((existingCats || []).map(c => [c.code, c.id]));
+
+      // Create missing categories and build mapping (source_id -> new_id)
+      const catIdMap = {};
+      // First pass: parents
+      for (const cat of parentCats) {
+        if (existingCatCodes.has(cat.code)) {
+          catIdMap[cat.id] = existingCatCodes.get(cat.code);
+        } else {
+          const { data: newCat } = await supabase.from('item_categories').insert({
+            code: cat.code, name: cat.name, description: cat.description,
+            parent_id: null, is_active: true, organization_id: selectedOrg?.id
+          }).select('id').single();
+          if (newCat) { catIdMap[cat.id] = newCat.id; existingCatCodes.set(cat.code, newCat.id); }
+        }
+      }
+      // Second pass: children
+      for (const cat of sourceCats) {
+        if (existingCatCodes.has(cat.code)) {
+          catIdMap[cat.id] = existingCatCodes.get(cat.code);
+        } else {
+          const newParentId = cat.parent_id ? (catIdMap[cat.parent_id] || null) : null;
+          const { data: newCat } = await supabase.from('item_categories').insert({
+            code: cat.code, name: cat.name, description: cat.description,
+            parent_id: newParentId, is_active: true, organization_id: selectedOrg?.id
+          }).select('id').single();
+          if (newCat) { catIdMap[cat.id] = newCat.id; existingCatCodes.set(cat.code, newCat.id); }
+        }
+      }
+
+      // Import items with mapped category IDs
+      const itemPayloads = selectedItems.map(item => ({
+        code: item.code, name: item.name, description: item.description,
+        category_id: catIdMap[item.category_id] || null,
+        unit_id: item.unit_id, purchase_unit_id: item.purchase_unit_id,
+        usage_unit_id: item.usage_unit_id, conversion_rate: item.conversion_rate,
+        brand: item.brand, size: item.size,
+        min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point,
+        default_warehouse_id: null, // Don't copy warehouse (different per hotel)
+        allow_single_usage: item.allow_single_usage,
+        allow_direct_purchase: item.allow_direct_purchase,
+        allow_inuse_warehouse: item.allow_inuse_warehouse,
+        is_active: true, organization_id: selectedOrg?.id
+      }));
+      const { error } = await supabase.from('items').insert(itemPayloads);
+      if (error) throw error;
+      showNotification(`Successfully imported ${selectedItems.length} items`);
+      setShowImportModal(false);
+      loadData();
+    } catch (err) {
+      showNotification('Import error: ' + err.message, 'error');
+    }
+    setImportSaving(false);
+  }
 
   useEffect(() => { loadData(); }, [selectedOrg]);
 
@@ -3689,8 +3849,8 @@ function ItemsPage() {
       ? supabase.from('warehouses').select('*').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name')
       : supabase.from('warehouses').select('*').eq('is_active', true).order('name');
     const [itemsRes, catRes, unitRes, whRes] = await Promise.all([
-      supabase.from('items').select('*, item_categories(name), units:units!items_unit_id_fkey(abbreviation), purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name), usage_unit:units!items_usage_unit_id_fkey(abbreviation, name), default_warehouse:warehouses!items_default_warehouse_id_fkey(id, code, name)').order('code'),
-      supabase.from('item_categories').select('*').order('name'),
+      supabase.from('items').select('*, item_categories(name), units:units!items_unit_id_fkey(abbreviation), purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name), usage_unit:units!items_usage_unit_id_fkey(abbreviation, name), default_warehouse:warehouses!items_default_warehouse_id_fkey(id, code, name)').eq('organization_id', selectedOrg?.id).order('code'),
+      supabase.from('item_categories').select('*').eq('organization_id', selectedOrg?.id).order('name'),
       supabase.from('units').select('*').order('name'),
       whQuery,
     ]);
@@ -3725,6 +3885,7 @@ function ItemsPage() {
     const { data: existing } = await supabase
       .from('items')
       .select('code')
+      .eq('organization_id', selectedOrg?.id)
       .like('code', prefix + '-%')
       .order('code', { ascending: false })
       .limit(1);
@@ -3748,13 +3909,13 @@ function ItemsPage() {
 
   function openCreate() {
     setEditItem(null);
-    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false });
+    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false });
     setShowModal(true);
   }
 
   function openEdit(item) {
     setEditItem(item);
-    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false, allow_direct_purchase: item.allow_direct_purchase || false });
+    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false, allow_direct_purchase: item.allow_direct_purchase || false, allow_inuse_warehouse: item.allow_inuse_warehouse || false });
     setShowModal(true);
   }
 
@@ -3766,6 +3927,7 @@ function ItemsPage() {
         if (error) throw error;
         showNotification(t('items.successUpdate'));
       } else {
+        payload.organization_id = selectedOrg?.id;
         const { error } = await supabase.from('items').insert(payload);
         if (error) throw error;
         showNotification(t('items.successAdd'));
@@ -3783,7 +3945,9 @@ function ItemsPage() {
       i.code.toLowerCase().includes(search.toLowerCase()) ||
       (i.brand && i.brand.toLowerCase().includes(search.toLowerCase()));
     let matchCategory = true;
-    if (filterCategory) {
+    if (filterSubCategory) {
+      matchCategory = i.category_id === filterSubCategory;
+    } else if (filterCategory) {
       matchCategory = i.category_id === filterCategory || categories.some(c => c.id === i.category_id && c.parent_id === filterCategory);
     }
     return matchSearch && matchCategory;
@@ -3794,12 +3958,15 @@ function ItemsPage() {
   const paginatedItems = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   // Reset to page 1 when filters change
-  useEffect(() => { setCurrentPage(1); }, [search, filterCategory, pageSize]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterCategory, filterSubCategory, pageSize]);
 
   return (
     <div>
       <PageHeader title={t('items.title')} subtitle={`${items.length} ${t('items.registered')}`}
-        actions={<Button onClick={openCreate}><Icons.Plus /> {t('items.addItem')}</Button>} />
+        actions={<div className="flex gap-2">
+          <Button variant="secondary" onClick={openImportModal}><Icons.Package /> Import from Hotel</Button>
+          <Button onClick={openCreate}><Icons.Plus /> {t('items.addItem')}</Button>
+        </div>} />
 
       {/* Filter Bar */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4 p-4">
@@ -3809,13 +3976,20 @@ function ItemsPage() {
             <input type="text" placeholder={t('items.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
               className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
           </div>
-          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+          <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setFilterSubCategory(''); }}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
             <option value="">All Categories</option>
             {categories.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          {filterCategory && (
-            <button onClick={() => { setFilterCategory(''); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
+          {filterCategory && categories.some(c => c.parent_id === filterCategory) && (
+            <select value={filterSubCategory} onChange={e => setFilterSubCategory(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
+              <option value="">All Sub-Categories</option>
+              {categories.filter(c => c.parent_id === filterCategory).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          {(filterCategory || filterSubCategory) && (
+            <button onClick={() => { setFilterCategory(''); setFilterSubCategory(''); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
               Clear Filters
             </button>
           )}
@@ -3840,6 +4014,7 @@ function ItemsPage() {
             { header: 'ROP', render: r => formatNumber(r.reorder_point) },
             { header: 'SIU', render: r => r.allow_single_usage ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
             { header: 'DP', render: r => r.allow_direct_purchase ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
+            { header: 'IUW', render: r => r.allow_inuse_warehouse ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
             { header: t('common.status'), render: r => <Badge color={r.is_active ? 'green' : 'red'}>{r.is_active ? t('common.active') : t('common.inactive')}</Badge> },
           ]}
           data={paginatedItems}
@@ -3955,10 +4130,104 @@ function ItemsPage() {
               <span className="text-xs text-gray-400">Item ini boleh diinput via Direct Purchase</span>
             </div>
           </FormField>
+          <FormField label="Allow In-Use Warehouse">
+            <div className="flex items-center gap-3 mt-1">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked={form.allow_inuse_warehouse || false}
+                  onChange={e => setForm({...form, allow_inuse_warehouse: e.target.checked})}
+                  className="sr-only peer" />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                <span className="ml-2 text-sm text-gray-600">{form.allow_inuse_warehouse ? 'Yes' : 'No'}</span>
+              </label>
+              <span className="text-xs text-gray-400">Item ini boleh masuk ke In-Use Warehouse (kamar)</span>
+            </div>
+          </FormField>
         </div>
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
           <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
           <Button onClick={handleSave}>{editItem ? t('common.update') : t('common.save')}</Button>
+        </div>
+      </Modal>
+
+      {/* Import from Hotel Modal */}
+      <Modal open={showImportModal} onClose={() => setShowImportModal(false)} title="Import Items from Another Hotel" size="xl">
+        <div className="space-y-4">
+          {/* Step 1: Select Hotel */}
+          <FormField label="Select Source Hotel" required>
+            <Select value={importSelectedOrg} onChange={e => handleImportOrgChange(e.target.value)}>
+              <option value="">-- Select Hotel --</option>
+              {importOrgs.map(o => <option key={o.id} value={o.id}>{o.name} ({o.code})</option>)}
+            </Select>
+          </FormField>
+
+          {importSelectedOrg && (
+            <div className="flex gap-3">
+              {/* Step 2: Filter Category Level 1 */}
+              <FormField label="Category (Level 1)" className="flex-1">
+                <Select value={importFilterCat} onChange={e => handleImportCatFilter(e.target.value)}>
+                  <option value="">-- All Categories --</option>
+                  {importCategories.filter(c => !c.parent_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </FormField>
+
+              {/* Step 3: Filter Category Level 2 */}
+              {importFilterCat && importCategories.some(c => c.parent_id === importFilterCat) && (
+                <FormField label="Sub-Category (Level 2)" className="flex-1">
+                  <Select value={importFilterSubCat} onChange={e => handleImportSubCatFilter(e.target.value)}>
+                    <option value="">-- All Sub-Categories --</option>
+                    {importCategories.filter(c => c.parent_id === importFilterCat).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
+                </FormField>
+              )}
+            </div>
+          )}
+
+          {/* Step 4: Item Checklist */}
+          {importItems.length > 0 && (
+            <div className="border rounded-lg max-h-80 overflow-y-auto">
+              <div className="sticky top-0 bg-gray-50 px-4 py-2 border-b flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={importItems.length > 0 && importItems.every(i => importChecked[i.id])}
+                    onChange={toggleImportAll} className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                  <span className="text-sm font-medium text-gray-700">Select All ({importItems.length} items available)</span>
+                </label>
+                <span className="text-xs text-gray-500 ml-auto">{Object.values(importChecked).filter(Boolean).length} selected</span>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {importItems.map(item => (
+                  <label key={item.id} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" checked={!!importChecked[item.id]} onChange={() => toggleImportCheck(item.id)}
+                      className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                    <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{item.code}</span>
+                    <span className="text-sm font-medium text-gray-800">{item.name}</span>
+                    {item.brand && <span className="text-xs text-gray-500">{item.brand}</span>}
+                    <span className="text-xs text-gray-400 ml-auto">{item.item_categories?.name || ''}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {importSelectedOrg && importFilterCat && importItems.length === 0 && !importLoading && (
+            <div className="text-center py-6 text-gray-500 text-sm">
+              No new items available to import (all items from this category already exist in your hotel)
+            </div>
+          )}
+
+          {importLoading && <div className="text-center py-4"><span className="text-sm text-gray-500">Loading...</span></div>}
+        </div>
+        <div className="flex justify-between items-center mt-6 pt-4 border-t">
+          <span className="text-sm text-gray-500">
+            {Object.values(importChecked).filter(Boolean).length > 0
+              ? `${Object.values(importChecked).filter(Boolean).length} items will be imported (categories auto-created if needed)`
+              : 'Select items to import'}
+          </span>
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => setShowImportModal(false)}>Cancel</Button>
+            <Button onClick={handleImportItems} disabled={importSaving || Object.values(importChecked).filter(Boolean).length === 0}>
+              {importSaving ? 'Importing...' : `Import ${Object.values(importChecked).filter(Boolean).length} Items`}
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>
@@ -3970,7 +4239,7 @@ function ItemsPage() {
 // ============================================================
 function CategoriesPage() {
   const { t } = useTranslation();
-  const { showNotification } = useApp();
+  const { showNotification, selectedOrg } = useApp();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -3988,10 +4257,10 @@ function CategoriesPage() {
 
   async function loadCategories() {
     setLoading(true);
-    const { data } = await supabase.from('item_categories').select('*').order('code');
+    const { data } = await supabase.from('item_categories').select('*').eq('organization_id', selectedOrg?.id).order('code');
     setCategories(data || []);
     // Count items per category
-    const { data: items } = await supabase.from('items').select('category_id');
+    const { data: items } = await supabase.from('items').select('category_id').eq('organization_id', selectedOrg?.id);
     const counts = {};
     (items || []).forEach(i => { counts[i.category_id] = (counts[i.category_id] || 0) + 1; });
     setItemCounts(counts);
@@ -4023,6 +4292,7 @@ function CategoriesPage() {
         const { error } = await supabase.from('item_categories').update(payload).eq('id', editing.id);
         if (error) throw error;
       } else {
+        payload.organization_id = selectedOrg?.id;
         const { error } = await supabase.from('item_categories').insert(payload);
         if (error) throw error;
       }
@@ -4837,7 +5107,7 @@ function RoomItemsModal({ room, open, onClose }) {
     setLoading(true);
     const [riRes, itemsRes] = await Promise.all([
       supabase.from('room_items').select('*, items(id, code, name, brand)').eq('room_id', room.id).order('type').order('created_at'),
-      supabase.from('items').select('id, code, name, brand').eq('is_active', true).order('name'),
+      supabase.from('items').select('id, code, name, brand').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
     ]);
     setRoomItems(riRes.data || []);
     setAllItems(itemsRes.data || []);
@@ -4981,128 +5251,433 @@ function RoomItemsModal({ room, open, onClose }) {
 }
 
 // ============================================================
+// ROOM CATEGORY STANDARDS MODAL (Guest Amenities / Linen)
+// ============================================================
+function RoomCategoryStandardsModal({ room, open, onClose, standardType, parentCategoryCode, title, colorScheme, allRooms }) {
+  const { showNotification } = useApp();
+  const [localItems, setLocalItems] = useState([]);
+  const [originalItems, setOriginalItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [copyFromRoom, setCopyFromRoom] = useState('');
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const colors = colorScheme || { bg: 'purple-50', header: 'purple-100', text: 'purple-800', border: 'purple-200', dot: 'purple-500' };
+
+  useEffect(() => { if (open && room) { loadData(); setHasChanges(false); setEditingIdx(null); } }, [open, room]);
+
+  async function loadData() {
+    setLoading(true);
+    const [stdRes, catRes] = await Promise.all([
+      supabase.from('room_category_standards').select('*, item_categories(id, code, name)')
+        .eq('room_id', room.id).eq('standard_type', standardType).order('sort_order').order('created_at'),
+      supabase.from('item_categories').select('*').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
+    ]);
+    const loaded = (stdRes.data || []).map((s, i) => ({ ...s, sort_order: s.sort_order || i }));
+    setOriginalItems(JSON.parse(JSON.stringify(loaded)));
+    setLocalItems(loaded);
+    const allCats = catRes.data || [];
+    const parentCat = allCats.find(c => !c.parent_id && c.code === parentCategoryCode);
+    const children = parentCat ? allCats.filter(c => c.parent_id === parentCat.id) : [];
+    setCategories(children);
+    setLoading(false);
+  }
+
+  function handleAdd() {
+    if (!selectedCategory) return;
+    const exists = localItems.find(s => s.category_id === selectedCategory);
+    if (exists) { showNotification('Category already added', 'error'); return; }
+    const cat = categories.find(c => c.id === selectedCategory);
+    const maxSort = localItems.reduce((max, a) => Math.max(max, a.sort_order || 0), 0);
+    setLocalItems([...localItems, {
+      _tempId: 'temp_' + Date.now(), category_id: selectedCategory,
+      item_categories: cat ? { id: cat.id, code: cat.code, name: cat.name } : null,
+      sort_order: maxSort + 1
+    }]);
+    setSelectedCategory('');
+    setHasChanges(true);
+  }
+
+  function handleRemove(idx) {
+    const updated = localItems.filter((_, i) => i !== idx);
+    setLocalItems(updated);
+    setHasChanges(true);
+    if (editingIdx === idx) setEditingIdx(null);
+  }
+
+  function handleMoveUp(idx) {
+    if (idx === 0) return;
+    const items = [...localItems];
+    [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
+    setLocalItems(items);
+    setHasChanges(true);
+  }
+
+  function handleMoveDown(idx) {
+    if (idx >= localItems.length - 1) return;
+    const items = [...localItems];
+    [items[idx], items[idx + 1]] = [items[idx + 1], items[idx]];
+    setLocalItems(items);
+    setHasChanges(true);
+  }
+
+  function startEdit(idx) {
+    setEditingIdx(idx);
+    setEditCategoryId(localItems[idx].category_id);
+  }
+
+  function saveEdit(idx) {
+    if (!editCategoryId) return;
+    const existsElsewhere = localItems.find((s, i) => i !== idx && s.category_id === editCategoryId);
+    if (existsElsewhere) { showNotification('Category already exists in list', 'error'); return; }
+    const cat = categories.find(c => c.id === editCategoryId);
+    const updated = [...localItems];
+    updated[idx] = { ...updated[idx], category_id: editCategoryId,
+      item_categories: cat ? { id: cat.id, code: cat.code, name: cat.name } : updated[idx].item_categories };
+    setLocalItems(updated);
+    setEditingIdx(null);
+    setHasChanges(true);
+  }
+
+  function handleCopyFrom() {
+    if (!copyFromRoom) return;
+    setSaving(true);
+    supabase.from('room_category_standards').select('*, item_categories(id, code, name)')
+      .eq('room_id', copyFromRoom).eq('standard_type', standardType).order('sort_order')
+      .then(({ data: sourceStandards, error: fetchErr }) => {
+        if (fetchErr) { showNotification('Error: ' + fetchErr.message, 'error'); setSaving(false); return; }
+        if (!sourceStandards || sourceStandards.length === 0) {
+          showNotification('Source room has no ' + title.toLowerCase() + ' categories', 'error'); setSaving(false); return;
+        }
+        const existingIds = localItems.map(s => s.category_id);
+        const newItems = sourceStandards.filter(s => !existingIds.includes(s.category_id));
+        if (newItems.length === 0) {
+          showNotification('All categories from source room already exist', 'error'); setSaving(false); return;
+        }
+        const maxSort = localItems.reduce((max, a) => Math.max(max, a.sort_order || 0), 0);
+        const toAdd = newItems.map((s, i) => ({
+          _tempId: 'temp_' + Date.now() + '_' + i, category_id: s.category_id,
+          item_categories: s.item_categories, sort_order: maxSort + i + 1
+        }));
+        setLocalItems([...localItems, ...toAdd]);
+        setCopyFromRoom('');
+        setHasChanges(true);
+        showNotification('Added ' + toAdd.length + ' categories (click Save to confirm)');
+        setSaving(false);
+      });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const origIds = originalItems.map(o => o.id).filter(Boolean);
+      const localIds = localItems.map(l => l.id).filter(Boolean);
+      const toDelete = origIds.filter(id => !localIds.includes(id));
+      const toInsert = localItems.filter(l => !l.id || l._tempId);
+      const toUpdate = localItems.filter(l => l.id && !l._tempId);
+
+      if (toDelete.length > 0) {
+        const { error } = await supabase.from('room_category_standards').delete().in('id', toDelete);
+        if (error) throw error;
+      }
+      if (toInsert.length > 0) {
+        const maxExistingSort = toUpdate.length > 0 ? Math.max(...toUpdate.map((_, i) => i)) : -1;
+        const payload = toInsert.map((s, i) => ({
+          room_id: room.id, category_id: s.category_id, standard_type: standardType,
+          sort_order: localItems.indexOf(s)
+        }));
+        const { error } = await supabase.from('room_category_standards').insert(payload);
+        if (error) throw error;
+      }
+      for (let i = 0; i < toUpdate.length; i++) {
+        const item = toUpdate[i];
+        const orig = originalItems.find(o => o.id === item.id);
+        const newSortOrder = localItems.indexOf(item);
+        if (orig && (orig.category_id !== item.category_id || orig.sort_order !== newSortOrder)) {
+          const { error } = await supabase.from('room_category_standards')
+            .update({ category_id: item.category_id, sort_order: newSortOrder }).eq('id', item.id);
+          if (error) throw error;
+        }
+      }
+      showNotification(title + ' saved successfully');
+      setHasChanges(false);
+      onClose();
+    } catch (err) { showNotification('Error saving: ' + err.message, 'error'); }
+    setSaving(false);
+  }
+
+  function handleCancel() {
+    if (hasChanges) {
+      if (!confirm('Discard unsaved changes?')) return;
+    }
+    setLocalItems(JSON.parse(JSON.stringify(originalItems)));
+    setHasChanges(false);
+    setEditingIdx(null);
+    onClose();
+  }
+
+  if (!room) return null;
+
+  const usedCategoryIds = localItems.map(s => s.category_id);
+  const availableCategories = categories.filter(c => !usedCategoryIds.includes(c.id));
+  const editAvailableCategories = editingIdx !== null
+    ? categories.filter(c => c.id === localItems[editingIdx]?.category_id || !usedCategoryIds.includes(c.id))
+    : [];
+  const otherRooms = (allRooms || []).filter(r => r.id !== room.id);
+
+  return (
+    <Modal open={open} onClose={handleCancel} title={`${title} - Room ${room.room_number}`} size="md">
+      <p className="text-sm text-gray-500 mb-4">Define standard {title.toLowerCase()} categories for Room {room.room_number}
+        {hasChanges && <span className="ml-2 text-xs text-orange-500 font-medium">(unsaved changes)</span>}
+      </p>
+
+      {/* Add category row */}
+      <div className="bg-gray-50 rounded-lg p-4 mb-4">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">Add Category</h4>
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Sub-Category</label>
+            <Select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}>
+              <option value="">-- Select Category --</option>
+              {availableCategories.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+            </Select>
+          </div>
+          <Button onClick={handleAdd} disabled={!selectedCategory}><Icons.Plus /></Button>
+        </div>
+      </div>
+
+      {/* Copy from another room */}
+      {otherRooms.length > 0 && (
+        <div className="bg-blue-50 rounded-lg p-3 mb-4">
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-medium text-blue-700 whitespace-nowrap">Copy from:</label>
+            <Select value={copyFromRoom} onChange={e => setCopyFromRoom(e.target.value)} className="flex-1">
+              <option value="">-- Select Room --</option>
+              {otherRooms.map(r => <option key={r.id} value={r.id}>{r.room_number}{r.room_types?.name ? ` (${r.room_types.name})` : ''}</option>)}
+            </Select>
+            <Button variant="secondary" onClick={handleCopyFrom} disabled={!copyFromRoom || saving}>Copy</Button>
+          </div>
+        </div>
+      )}
+
+      {loading ? <div className="text-center py-8 text-gray-400">Loading...</div> : localItems.length === 0 ? (
+        <div className="text-center py-8 text-gray-400">No categories assigned yet</div>
+      ) : (
+        <div>
+          <h4 className={`text-sm font-semibold text-${colors.text} mb-2 flex items-center gap-2`}>
+            <span className={`w-2 h-2 bg-${colors.dot} rounded-full`}></span> Assigned Categories ({localItems.length})
+          </h4>
+          <div className={`bg-${colors.bg} rounded-lg overflow-hidden`}>
+            <table className="w-full text-sm">
+              <thead><tr className={`bg-${colors.header} text-${colors.text}`}>
+                <th className="text-left px-3 py-2 font-medium w-10">#</th>
+                <th className="text-left px-3 py-2 font-medium">Code</th>
+                <th className="text-left px-3 py-2 font-medium">Category Name</th>
+                <th className="w-32"></th>
+              </tr></thead>
+              <tbody>
+                {localItems.map((s, idx) => (
+                  <tr key={s.id || s._tempId} className={`border-t border-${colors.border}`}>
+                    {editingIdx === idx ? (
+                      <>
+                        <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                        <td className="px-3 py-2" colSpan={2}>
+                          <Select value={editCategoryId} onChange={e => setEditCategoryId(e.target.value)}>
+                            {editAvailableCategories.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                          </Select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => saveEdit(idx)} className="p-1 hover:bg-green-100 rounded text-green-600" title="Save"><Icons.Save /></button>
+                            <button onClick={() => setEditingIdx(null)} className="p-1 hover:bg-gray-100 rounded text-gray-400" title="Cancel"><Icons.X /></button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                        <td className="px-3 py-2"><span className="font-mono text-xs bg-white px-1.5 py-0.5 rounded">{s.item_categories?.code}</span></td>
+                        <td className="px-3 py-2 font-medium">{s.item_categories?.name}</td>
+                        <td className="px-2 py-2">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => handleMoveUp(idx)} disabled={idx === 0} className="p-1 hover:bg-gray-100 rounded text-gray-400 disabled:opacity-30" title="Move up">&#9650;</button>
+                            <button onClick={() => handleMoveDown(idx)} disabled={idx === localItems.length - 1} className="p-1 hover:bg-gray-100 rounded text-gray-400 disabled:opacity-30" title="Move down">&#9660;</button>
+                            <button onClick={() => startEdit(idx)} className="p-1 hover:bg-gray-100 rounded text-gray-500" title="Edit"><Icons.Edit /></button>
+                            <button onClick={() => handleRemove(idx)} className="p-1 hover:bg-red-100 rounded text-red-400" title="Delete"><Icons.Trash /></button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+        <Button variant="secondary" onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} disabled={saving || !hasChanges}>
+          {saving ? 'Saving...' : 'Save'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ============================================================
 // ROOM ACTIVITY CHECKLIST MODAL
 // ============================================================
 function RoomActivityChecklistModal({ room, open, onClose, allRooms }) {
   const { t } = useTranslation();
   const { showNotification } = useApp();
-  const [activities, setActivities] = useState([]);
+  const [localActivities, setLocalActivities] = useState([]);
+  const [originalActivities, setOriginalActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [addForm, setAddForm] = useState({ name: '', description: '' });
-  const [editingId, setEditingId] = useState(null);
+  const [editingIdx, setEditingIdx] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', description: '' });
   const [copyFromRoom, setCopyFromRoom] = useState('');
+  const [hasChanges, setHasChanges] = useState(false);
 
-  useEffect(() => { if (open && room) loadActivities(); }, [open, room]);
+  useEffect(() => { if (open && room) { loadActivities(); setHasChanges(false); setEditingIdx(null); } }, [open, room]);
 
   async function loadActivities() {
     setLoading(true);
     const { data, error } = await supabase.from('room_activity_checklist')
       .select('*').eq('room_id', room.id).order('sort_order').order('created_at');
-    if (!error) setActivities(data || []);
+    const loaded = (!error && data) ? data : [];
+    setOriginalActivities(JSON.parse(JSON.stringify(loaded)));
+    setLocalActivities(loaded);
     setLoading(false);
   }
 
-  async function handleAdd() {
+  function handleAdd() {
     if (!addForm.name.trim()) return;
-    setSaving(true);
-    try {
-      const maxSort = activities.reduce((max, a) => Math.max(max, a.sort_order || 0), 0);
-      const { error } = await supabase.from('room_activity_checklist').insert({
-        room_id: room.id, name: addForm.name.trim(),
-        description: addForm.description.trim() || null,
-        sort_order: maxSort + 1, is_active: true
-      });
-      if (error) throw error;
-      showNotification(t('roomChecklist.successAdd'));
-      setAddForm({ name: '', description: '' });
-      loadActivities();
-    } catch (err) { showNotification(t('roomChecklist.errorSave') + ': ' + err.message, 'error'); }
-    setSaving(false);
+    const maxSort = localActivities.reduce((max, a) => Math.max(max, a.sort_order || 0), 0);
+    setLocalActivities([...localActivities, {
+      _tempId: 'temp_' + Date.now(), name: addForm.name.trim(),
+      description: addForm.description.trim() || null,
+      sort_order: maxSort + 1, is_active: true
+    }]);
+    setAddForm({ name: '', description: '' });
+    setHasChanges(true);
   }
 
-  async function handleUpdate(id) {
+  function handleUpdateLocal(idx) {
     if (!editForm.name.trim()) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase.from('room_activity_checklist')
-        .update({ name: editForm.name.trim(), description: editForm.description.trim() || null })
-        .eq('id', id);
-      if (error) throw error;
-      showNotification(t('roomChecklist.successUpdate'));
-      setEditingId(null);
-      loadActivities();
-    } catch (err) { showNotification(t('roomChecklist.errorSave') + ': ' + err.message, 'error'); }
-    setSaving(false);
+    const updated = [...localActivities];
+    updated[idx] = { ...updated[idx], name: editForm.name.trim(), description: editForm.description.trim() || null };
+    setLocalActivities(updated);
+    setEditingIdx(null);
+    setHasChanges(true);
   }
 
-  async function handleDelete(id) {
-    try {
-      const { error } = await supabase.from('room_activity_checklist').delete().eq('id', id);
-      if (error) throw error;
-      showNotification(t('roomChecklist.successDelete'));
-      loadActivities();
-    } catch (err) { showNotification(t('roomChecklist.errorSave') + ': ' + err.message, 'error'); }
+  function handleDelete(idx) {
+    setLocalActivities(localActivities.filter((_, i) => i !== idx));
+    setHasChanges(true);
+    if (editingIdx === idx) setEditingIdx(null);
   }
 
-  async function handleToggleActive(activity) {
-    try {
-      const { error } = await supabase.from('room_activity_checklist')
-        .update({ is_active: !activity.is_active }).eq('id', activity.id);
-      if (error) throw error;
-      loadActivities();
-    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+  function handleToggleActive(idx) {
+    const updated = [...localActivities];
+    updated[idx] = { ...updated[idx], is_active: !updated[idx].is_active };
+    setLocalActivities(updated);
+    setHasChanges(true);
   }
 
-  async function handleMoveUp(idx) {
+  function handleMoveUp(idx) {
     if (idx === 0) return;
-    const items = [...activities];
-    const prevOrder = items[idx - 1].sort_order;
-    const curOrder = items[idx].sort_order;
-    await Promise.all([
-      supabase.from('room_activity_checklist').update({ sort_order: curOrder }).eq('id', items[idx - 1].id),
-      supabase.from('room_activity_checklist').update({ sort_order: prevOrder }).eq('id', items[idx].id),
-    ]);
-    loadActivities();
+    const items = [...localActivities];
+    [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
+    setLocalActivities(items);
+    setHasChanges(true);
   }
 
-  async function handleMoveDown(idx) {
-    if (idx >= activities.length - 1) return;
-    const items = [...activities];
-    const nextOrder = items[idx + 1].sort_order;
-    const curOrder = items[idx].sort_order;
-    await Promise.all([
-      supabase.from('room_activity_checklist').update({ sort_order: curOrder }).eq('id', items[idx + 1].id),
-      supabase.from('room_activity_checklist').update({ sort_order: nextOrder }).eq('id', items[idx].id),
-    ]);
-    loadActivities();
+  function handleMoveDown(idx) {
+    if (idx >= localActivities.length - 1) return;
+    const items = [...localActivities];
+    [items[idx], items[idx + 1]] = [items[idx + 1], items[idx]];
+    setLocalActivities(items);
+    setHasChanges(true);
   }
 
-  async function handleCopyFrom() {
+  function handleCopyFrom() {
     if (!copyFromRoom) return;
     setSaving(true);
-    try {
-      const { data: sourceActivities, error: fetchErr } = await supabase.from('room_activity_checklist')
-        .select('*').eq('room_id', copyFromRoom).eq('is_active', true).order('sort_order');
-      if (fetchErr) throw fetchErr;
-      if (!sourceActivities || sourceActivities.length === 0) {
-        showNotification('Source room has no activities', 'error');
+    supabase.from('room_activity_checklist').select('*')
+      .eq('room_id', copyFromRoom).eq('is_active', true).order('sort_order')
+      .then(({ data: sourceActivities, error: fetchErr }) => {
+        if (fetchErr) { showNotification('Error: ' + fetchErr.message, 'error'); setSaving(false); return; }
+        if (!sourceActivities || sourceActivities.length === 0) {
+          showNotification('Source room has no activities', 'error'); setSaving(false); return;
+        }
+        const maxSort = localActivities.reduce((max, a) => Math.max(max, a.sort_order || 0), 0);
+        const toAdd = sourceActivities.map((a, i) => ({
+          _tempId: 'temp_' + Date.now() + '_' + i, name: a.name, description: a.description,
+          sort_order: maxSort + i + 1, is_active: true
+        }));
+        setLocalActivities([...localActivities, ...toAdd]);
+        setCopyFromRoom('');
+        setHasChanges(true);
+        showNotification('Added ' + toAdd.length + ' activities (click Save to confirm)');
         setSaving(false);
-        return;
+      });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const origIds = originalActivities.map(o => o.id).filter(Boolean);
+      const localIds = localActivities.map(l => l.id).filter(Boolean);
+      const toDelete = origIds.filter(id => !localIds.includes(id));
+      const toInsert = localActivities.filter(l => !l.id || l._tempId);
+      const toUpdate = localActivities.filter(l => l.id && !l._tempId);
+
+      if (toDelete.length > 0) {
+        const { error } = await supabase.from('room_activity_checklist').delete().in('id', toDelete);
+        if (error) throw error;
       }
-      const maxSort = activities.reduce((max, a) => Math.max(max, a.sort_order || 0), 0);
-      const payload = sourceActivities.map((a, i) => ({
-        room_id: room.id, name: a.name, description: a.description,
-        sort_order: maxSort + i + 1, is_active: true
-      }));
-      const { error } = await supabase.from('room_activity_checklist').insert(payload);
-      if (error) throw error;
-      showNotification(t('roomChecklist.copySuccess'));
-      setCopyFromRoom('');
-      loadActivities();
-    } catch (err) { showNotification(t('roomChecklist.errorSave') + ': ' + err.message, 'error'); }
+      if (toInsert.length > 0) {
+        const payload = toInsert.map((a, i) => ({
+          room_id: room.id, name: a.name, description: a.description,
+          sort_order: localActivities.indexOf(a), is_active: a.is_active
+        }));
+        const { error } = await supabase.from('room_activity_checklist').insert(payload);
+        if (error) throw error;
+      }
+      for (const item of toUpdate) {
+        const orig = originalActivities.find(o => o.id === item.id);
+        const newSortOrder = localActivities.indexOf(item);
+        if (orig && (orig.name !== item.name || orig.description !== item.description ||
+            orig.is_active !== item.is_active || orig.sort_order !== newSortOrder)) {
+          const { error } = await supabase.from('room_activity_checklist')
+            .update({ name: item.name, description: item.description, is_active: item.is_active, sort_order: newSortOrder })
+            .eq('id', item.id);
+          if (error) throw error;
+        }
+      }
+      showNotification('Activity list saved successfully');
+      setHasChanges(false);
+      onClose();
+    } catch (err) { showNotification('Error saving: ' + err.message, 'error'); }
     setSaving(false);
+  }
+
+  function handleCancel() {
+    if (hasChanges) {
+      if (!confirm('Discard unsaved changes?')) return;
+    }
+    setLocalActivities(JSON.parse(JSON.stringify(originalActivities)));
+    setHasChanges(false);
+    setEditingIdx(null);
+    onClose();
   }
 
   if (!room) return null;
@@ -5110,8 +5685,10 @@ function RoomActivityChecklistModal({ room, open, onClose, allRooms }) {
   const otherRooms = (allRooms || []).filter(r => r.id !== room.id);
 
   return (
-    <Modal open={open} onClose={onClose} title={`${t('roomChecklist.title')} - ${room.room_number}`} size="lg">
-      <p className="text-sm text-gray-500 mb-4">{t('roomChecklist.subtitle')} {room.room_number}</p>
+    <Modal open={open} onClose={handleCancel} title={`${t('roomChecklist.title')} - ${room.room_number}`} size="lg">
+      <p className="text-sm text-gray-500 mb-4">{t('roomChecklist.subtitle')} {room.room_number}
+        {hasChanges && <span className="ml-2 text-xs text-orange-500 font-medium">(unsaved changes)</span>}
+      </p>
 
       {/* Add new activity form */}
       <div className="bg-gray-50 rounded-lg p-4 mb-4">
@@ -5126,7 +5703,7 @@ function RoomActivityChecklistModal({ room, open, onClose, allRooms }) {
             <Input value={addForm.description} onChange={e => setAddForm({...addForm, description: e.target.value})} placeholder="Optional description" />
           </div>
           <div className="sm:col-span-2">
-            <Button onClick={handleAdd} disabled={saving || !addForm.name.trim()} className="w-full"><Icons.Plus /> Add</Button>
+            <Button onClick={handleAdd} disabled={!addForm.name.trim()} className="w-full"><Icons.Plus /> Add</Button>
           </div>
         </div>
       </div>
@@ -5146,7 +5723,7 @@ function RoomActivityChecklistModal({ room, open, onClose, allRooms }) {
       )}
 
       {/* Activities list */}
-      {loading ? <div className="text-center py-8 text-gray-400">Loading...</div> : activities.length === 0 ? (
+      {loading ? <div className="text-center py-8 text-gray-400">Loading...</div> : localActivities.length === 0 ? (
         <div className="text-center py-8 text-gray-400">{t('roomChecklist.noActivities')}</div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -5159,9 +5736,9 @@ function RoomActivityChecklistModal({ room, open, onClose, allRooms }) {
               <th className="w-32"></th>
             </tr></thead>
             <tbody>
-              {activities.map((act, idx) => (
-                <tr key={act.id} className="border-t border-gray-100 hover:bg-gray-50">
-                  {editingId === act.id ? (
+              {localActivities.map((act, idx) => (
+                <tr key={act.id || act._tempId} className="border-t border-gray-100 hover:bg-gray-50">
+                  {editingIdx === idx ? (
                     <>
                       <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
                       <td className="px-3 py-2"><Input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="text-sm" /></td>
@@ -5169,8 +5746,8 @@ function RoomActivityChecklistModal({ room, open, onClose, allRooms }) {
                       <td></td>
                       <td className="px-2 py-2">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => handleUpdate(act.id)} className="p-1 hover:bg-green-100 rounded text-green-600" title="Save"><Icons.Save /></button>
-                          <button onClick={() => setEditingId(null)} className="p-1 hover:bg-gray-100 rounded text-gray-400" title="Cancel"><Icons.X /></button>
+                          <button onClick={() => handleUpdateLocal(idx)} className="p-1 hover:bg-green-100 rounded text-green-600" title="Save"><Icons.Save /></button>
+                          <button onClick={() => setEditingIdx(null)} className="p-1 hover:bg-gray-100 rounded text-gray-400" title="Cancel"><Icons.X /></button>
                         </div>
                       </td>
                     </>
@@ -5180,16 +5757,16 @@ function RoomActivityChecklistModal({ room, open, onClose, allRooms }) {
                       <td className="px-3 py-2 font-medium">{act.name}</td>
                       <td className="px-3 py-2 text-gray-500">{act.description || '-'}</td>
                       <td className="px-3 py-2 text-center">
-                        <button onClick={() => handleToggleActive(act)} className={`text-xs px-2 py-0.5 rounded-full ${act.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        <button onClick={() => handleToggleActive(idx)} className={`text-xs px-2 py-0.5 rounded-full ${act.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                           {act.is_active ? t('common.active') : t('common.inactive')}
                         </button>
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => handleMoveUp(idx)} disabled={idx === 0} className="p-1 hover:bg-gray-100 rounded text-gray-400 disabled:opacity-30" title="Move up">▲</button>
-                          <button onClick={() => handleMoveDown(idx)} disabled={idx === activities.length - 1} className="p-1 hover:bg-gray-100 rounded text-gray-400 disabled:opacity-30" title="Move down">▼</button>
-                          <button onClick={() => { setEditingId(act.id); setEditForm({ name: act.name, description: act.description || '' }); }} className="p-1 hover:bg-gray-100 rounded text-gray-500" title="Edit"><Icons.Edit /></button>
-                          <button onClick={() => handleDelete(act.id)} className="p-1 hover:bg-red-50 rounded text-red-400" title="Delete"><Icons.Trash /></button>
+                          <button onClick={() => handleMoveUp(idx)} disabled={idx === 0} className="p-1 hover:bg-gray-100 rounded text-gray-400 disabled:opacity-30" title="Move up">&#9650;</button>
+                          <button onClick={() => handleMoveDown(idx)} disabled={idx === localActivities.length - 1} className="p-1 hover:bg-gray-100 rounded text-gray-400 disabled:opacity-30" title="Move down">&#9660;</button>
+                          <button onClick={() => { setEditingIdx(idx); setEditForm({ name: act.name, description: act.description || '' }); }} className="p-1 hover:bg-gray-100 rounded text-gray-500" title="Edit"><Icons.Edit /></button>
+                          <button onClick={() => handleDelete(idx)} className="p-1 hover:bg-red-50 rounded text-red-400" title="Delete"><Icons.Trash /></button>
                         </div>
                       </td>
                     </>
@@ -5201,8 +5778,11 @@ function RoomActivityChecklistModal({ room, open, onClose, allRooms }) {
         </div>
       )}
 
-      <div className="flex justify-end mt-6 pt-4 border-t">
-        <Button variant="secondary" onClick={onClose}>{t('common.close') || 'Close'}</Button>
+      <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+        <Button variant="secondary" onClick={handleCancel}>Cancel</Button>
+        <Button onClick={handleSave} disabled={saving || !hasChanges}>
+          {saving ? 'Saving...' : 'Save'}
+        </Button>
       </div>
     </Modal>
   );
@@ -5222,6 +5802,11 @@ function RoomsPage() {
   const [form, setForm] = useState({ room_number: '', floor: '', room_type_id: '', bed_formation_id: '', description: '', is_active: true });
   const [itemsRoom, setItemsRoom] = useState(null);
   const [checklistRoom, setChecklistRoom] = useState(null);
+  const [linenRoom, setLinenRoom] = useState(null);
+  const [fixedAssetRoom, setFixedAssetRoom] = useState(null);
+  const [roomEquipmentRoom, setRoomEquipmentRoom] = useState(null);
+  const [filterFloor, setFilterFloor] = useState('');
+  const [filterRoomType, setFilterRoomType] = useState('');
 
   useEffect(() => { if (selectedOrg) loadRooms(); }, [selectedOrg]);
 
@@ -5355,11 +5940,16 @@ function RoomsPage() {
 
   const typeColors = { STD: 'gray', SUP: 'blue', DLX: 'purple', STE: 'amber', CON: 'teal' };
 
-  const filtered = rooms.filter(r =>
-    r.room_number.toLowerCase().includes(search.toLowerCase()) ||
-    (r.room_types?.name || r.room_type || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.floor && r.floor.toLowerCase().includes(search.toLowerCase()))
-  );
+  const floors = [...new Set(rooms.map(r => r.floor).filter(Boolean))].sort();
+
+  const filtered = rooms.filter(r => {
+    const matchSearch = !search || r.room_number.toLowerCase().includes(search.toLowerCase()) ||
+      (r.room_types?.name || r.room_type || '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.floor && r.floor.toLowerCase().includes(search.toLowerCase()));
+    const matchFloor = !filterFloor || r.floor === filterFloor;
+    const matchType = !filterRoomType || r.room_type_id === filterRoomType;
+    return matchSearch && matchFloor && matchType;
+  });
 
   return (
     <div>
@@ -5368,10 +5958,27 @@ function RoomsPage() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-4 border-b border-gray-100">
-          <div className="relative">
-            <Icons.Search />
-            <input type="text" placeholder={t('items.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full sm:w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" style={{paddingLeft: '2.5rem'}} />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <Icons.Search />
+              <input type="text" placeholder={t('items.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" style={{paddingLeft: '2.5rem'}} />
+            </div>
+            <select value={filterFloor} onChange={e => setFilterFloor(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
+              <option value="">All Floor</option>
+              {floors.map(f => <option key={f} value={f}>Floor {f}</option>)}
+            </select>
+            <select value={filterRoomType} onChange={e => setFilterRoomType(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
+              <option value="">All Room Type</option>
+              {roomTypes.map(rt => <option key={rt.id} value={rt.id}>{rt.name}</option>)}
+            </select>
+            {(filterFloor || filterRoomType) && (
+              <button onClick={() => { setFilterFloor(''); setFilterRoomType(''); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
+                Clear Filters
+              </button>
+            )}
           </div>
         </div>
         <DataTable
@@ -5396,8 +6003,20 @@ function RoomsPage() {
                 <Icons.Warehouse />
               </button>
               <button onClick={(e) => { e.stopPropagation(); setItemsRoom(row); }}
-                className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100" title={t('room.manageItems')}>
-                <Icons.ClipboardList />
+                className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100" title="Guest Amenities">
+                <Icons.Package />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setLinenRoom(row); }}
+                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100" title="Linen">
+                <Icons.Linen />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setFixedAssetRoom(row); }}
+                className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100" title="Fixed Asset">
+                <Icons.Wrench />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setRoomEquipmentRoom(row); }}
+                className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100" title="Room Equipment">
+                <Icons.Monitor />
               </button>
               <button onClick={(e) => { e.stopPropagation(); setChecklistRoom(row); }}
                 className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100" title={t('roomChecklist.title')}>
@@ -5448,8 +6067,169 @@ function RoomsPage() {
         </div>
       </Modal>
 
-      <RoomItemsModal room={itemsRoom} open={!!itemsRoom} onClose={() => setItemsRoom(null)} />
+      <RoomCategoryStandardsModal room={itemsRoom} open={!!itemsRoom} onClose={() => setItemsRoom(null)}
+        standardType="guest_amenities" parentCategoryCode="AMN" title="Guest Amenities"
+        colorScheme={{ bg: 'purple-50', header: 'purple-100', text: 'purple-800', border: 'purple-200', dot: 'purple-500' }} allRooms={rooms} />
+      <RoomCategoryStandardsModal room={linenRoom} open={!!linenRoom} onClose={() => setLinenRoom(null)}
+        standardType="linen" parentCategoryCode="LIN" title="Linen"
+        colorScheme={{ bg: 'blue-50', header: 'blue-100', text: 'blue-800', border: 'blue-200', dot: 'blue-500' }} allRooms={rooms} />
       <RoomActivityChecklistModal room={checklistRoom} open={!!checklistRoom} onClose={() => setChecklistRoom(null)} allRooms={rooms} />
+    </div>
+  );
+}
+
+// ============================================================
+// DOCUMENT DETAIL MODAL (shared by Bin Card popup & page)
+// ============================================================
+function DocDetailModal({ movement, onClose }) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!movement) return;
+    loadDetail();
+  }, [movement]);
+
+  async function loadDetail() {
+    setLoading(true);
+    const rt = movement.reference_type;
+    const rid = movement.reference_id;
+    const rn = movement.reference_number;
+    let result = null;
+    try {
+      if (rt === 'USAGE' && (rid || rn)) {
+        let query = supabase.from('single_item_usage').select('*, items(code, name, units:unit_id(abbreviation)), warehouses(code, name), departments(code, name)');
+        query = rid ? query.eq('id', rid) : query.eq('usage_number', rn);
+        const { data } = await query.single();
+        result = data ? { type: 'USAGE', title: data.usage_number, data, fields: [
+          { label: 'Document No', value: data.usage_number },
+          { label: 'Status', value: data.status },
+          { label: 'Item', value: `${data.items?.code} - ${data.items?.name}` },
+          { label: 'Qty', value: `${data.quantity} ${data.items?.units?.abbreviation || ''}` },
+          { label: 'Warehouse', value: data.warehouses?.name || '-' },
+          { label: 'Department', value: data.departments?.name || '-' },
+          { label: 'Date', value: formatDateSys(data.created_at, { includeTime: true }) },
+          { label: 'Notes', value: data.notes || '-' },
+        ]} : null;
+      } else if (rt === 'GR' && (rid || rn)) {
+        let query = supabase.from('goods_receipts').select('*, vendors(name), purchase_orders(po_number)');
+        query = rid ? query.eq('id', rid) : query.eq('gr_number', rn);
+        const { data } = await query.single();
+        result = data ? { type: 'GR', title: data.gr_number, data, fields: [
+          { label: 'Document No', value: data.gr_number },
+          { label: 'Status', value: data.status },
+          { label: 'Vendor', value: data.vendors?.name || '-' },
+          { label: 'PO Reference', value: data.purchase_orders?.po_number || '-' },
+          { label: 'Date', value: formatDateSys(data.receipt_date) },
+          { label: 'Notes', value: data.notes || '-' },
+        ]} : null;
+      } else if (rt === 'DIRECT_PURCHASE' && (rid || rn)) {
+        let query = supabase.from('direct_purchases').select('*, departments(name)');
+        query = rid ? query.eq('id', rid) : query.eq('purchase_number', rn);
+        const { data } = await query.single();
+        result = data ? { type: 'DP', title: data.purchase_number, data, fields: [
+          { label: 'Document No', value: data.purchase_number },
+          { label: 'Status', value: data.status },
+          { label: 'Location', value: data.purchase_location || '-' },
+          { label: 'Department', value: data.departments?.name || '-' },
+          { label: 'Date', value: formatDateSys(data.purchase_date) },
+          { label: 'Total', value: formatCurrency(data.total_amount) },
+          { label: 'Notes', value: data.notes || '-' },
+        ]} : null;
+      } else if (rt === 'WRITEOFF' && (rid || rn)) {
+        let query = supabase.from('write_offs').select('*, departments(code, name)');
+        query = rid ? query.eq('id', rid) : query.eq('wo_number', rn);
+        const { data } = await query.single();
+        result = data ? { type: 'WO', title: data.wo_number || rn || 'Write-Off', data, fields: [
+          { label: 'Document No', value: data.wo_number || rn || '-' },
+          { label: 'Status', value: data.status },
+          { label: 'Department', value: data.departments?.name || '-' },
+          { label: 'Reason', value: data.reason || '-' },
+          { label: 'Total Value', value: data.total_value ? formatCurrency(data.total_value) : '-' },
+          { label: 'Date', value: formatDateSys(data.write_off_date || data.created_at) },
+          { label: 'Notes', value: data.notes || '-' },
+        ]} : null;
+      } else if ((rt === 'MAKEUP' || rt === 'REPLACEMENT' || rt === 'LOST_BREAKAGE') && (rid || rn)) {
+        let query = supabase.from('room_makeups').select('*, departments(code, name)');
+        query = rid ? query.eq('id', rid) : query.eq('makeup_number', rn);
+        const { data } = await query.single();
+        result = data ? { type: 'MU', title: data.makeup_number || rn, data, fields: [
+          { label: 'Document No', value: data.makeup_number || rn || '-' },
+          { label: 'Type', value: rt },
+          { label: 'Status', value: data.status },
+          { label: 'Department', value: data.departments?.name || '-' },
+          { label: 'Date', value: formatDateSys(data.makeup_date || data.created_at) },
+          { label: 'Notes', value: data.notes || '-' },
+        ]} : null;
+      } else if (rt === 'OPENING_BALANCE') {
+        result = { type: 'OB', title: rn || 'Opening Balance', fields: [
+          { label: 'Document No', value: rn || '-' },
+          { label: 'Type', value: 'Opening Balance' },
+          { label: 'Date', value: formatDateSys(movement.created_at, { includeTime: true }) },
+        ]};
+      } else if (rt === 'TRANSFER' && (rid || rn)) {
+        let query = supabase.from('transfers').select('*, source_warehouse:warehouses!transfers_source_warehouse_id_fkey(name), dest_warehouse:warehouses!transfers_destination_warehouse_id_fkey(name)');
+        query = rid ? query.eq('id', rid) : query.eq('transfer_number', rn);
+        const { data } = await query.single();
+        result = data ? { type: 'TR', title: data.transfer_number || rn, data, fields: [
+          { label: 'Document No', value: data.transfer_number || rn || '-' },
+          { label: 'Status', value: data.status },
+          { label: 'From', value: data.source_warehouse?.name || '-' },
+          { label: 'To', value: data.dest_warehouse?.name || '-' },
+          { label: 'Date', value: formatDateSys(data.transfer_date || data.created_at) },
+          { label: 'Notes', value: data.notes || '-' },
+        ]} : null;
+      } else if ((rt === 'LAUNDRY_SEND' || rt === 'LAUNDRY_RECEIVE') && rid) {
+        result = { type: 'LDR', title: rn || rt, fields: [
+          { label: 'Document No', value: rn || '-' },
+          { label: 'Type', value: rt === 'LAUNDRY_SEND' ? 'Laundry Send' : 'Laundry Receive' },
+          { label: 'Date', value: formatDateSys(movement.created_at, { includeTime: true }) },
+        ]};
+      } else {
+        result = { type: rt || 'UNKNOWN', title: rn || rt || 'Document', fields: [
+          { label: 'Reference', value: rn || '-' },
+          { label: 'Type', value: rt || '-' },
+          { label: 'Date', value: formatDateSys(movement.created_at, { includeTime: true }) },
+        ]};
+      }
+    } catch (e) {
+      result = { type: rt, title: rn || 'Error', fields: [{ label: 'Error', value: e.message }] };
+    }
+    setDetail(result);
+    setLoading(false);
+  }
+
+  if (!movement) return null;
+  const typeColors = { USAGE: 'purple', GR: 'green', DP: 'blue', WO: 'red', MU: 'orange', OB: 'gray', TR: 'cyan', LDR: 'teal' };
+  const color = typeColors[detail?.type] || 'gray';
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-8" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[480px] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Document Detail</h3>
+            <p className="text-xs text-gray-500">{detail?.title || 'Loading...'}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold">×</button>
+        </div>
+        <div className="px-5 py-4">
+          {loading ? (
+            <div className="flex justify-center py-8"><div className="spinner"></div></div>
+          ) : detail ? (
+            <div className="space-y-3">
+              {detail.fields.map((f, i) => (
+                <div key={i} className="flex justify-between items-start gap-4">
+                  <span className="text-sm text-gray-500 whitespace-nowrap">{f.label}</span>
+                  <span className="text-sm font-medium text-gray-800 text-right">{f.value}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-400 py-4">Document not found</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -5470,6 +6250,84 @@ function StockBalancePage() {
   const [filterWarehouse, setFilterWarehouse] = useState('');
   const [filterItem, setFilterItem] = useState('');
   const [reconciling, setReconciling] = useState(false);
+  // Location modal state
+  const [locationItem, setLocationItem] = useState(null);
+  const [locationExpandRooms, setLocationExpandRooms] = useState(false);
+  const [docDetailMovement, setDocDetailMovement] = useState(null);
+
+  function openLocationModal(row) {
+    setLocationItem(row);
+    setLocationExpandRooms(false);
+  }
+
+  // Bincard modal state
+  const [bincardItem, setBincardItem] = useState(null);
+  const [bincardMovements, setBincardMovements] = useState([]);
+  const [bincardLoading, setBincardLoading] = useState(false);
+  const [bincardWarehouses, setBincardWarehouses] = useState([]);
+  const [bincardFilterWh, setBincardFilterWh] = useState('');
+  const [bincardFilterType, setBincardFilterType] = useState('');
+  const [bincardPeriod, setBincardPeriod] = useState('mtd');
+  const [bincardDateFrom, setBincardDateFrom] = useState('');
+  const [bincardDateTo, setBincardDateTo] = useState('');
+
+  function getBincardDateRange(preset) {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = yyyy + '-' + mm + '-' + dd;
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    const ydStr = yesterday.getFullYear() + '-' + String(yesterday.getMonth() + 1).padStart(2, '0') + '-' + String(yesterday.getDate()).padStart(2, '0');
+    const lastMonthEnd = new Date(yyyy, today.getMonth(), 0);
+    const lmsStr = lastMonthEnd.getFullYear() + '-' + String(lastMonthEnd.getMonth() + 1).padStart(2, '0') + '-01';
+    const lmeStr = lastMonthEnd.getFullYear() + '-' + String(lastMonthEnd.getMonth() + 1).padStart(2, '0') + '-' + String(lastMonthEnd.getDate()).padStart(2, '0');
+    switch (preset) {
+      case 'today': return { from: todayStr, to: todayStr };
+      case 'yesterday': return { from: ydStr, to: ydStr };
+      case 'mtd': return { from: yyyy + '-' + mm + '-01', to: todayStr };
+      case 'lastmonth': return { from: lmsStr, to: lmeStr };
+      case 'ytd': return { from: yyyy + '-01-01', to: todayStr };
+      case 'custom': return { from: bincardDateFrom, to: bincardDateTo };
+      default: return { from: '', to: '' };
+    }
+  }
+
+  async function openBincard(row) {
+    const itemId = row.item_id;
+    const itemInfo = row.items;
+    setBincardItem({ id: itemId, code: itemInfo?.code, name: itemInfo?.name });
+    setBincardLoading(true);
+    setBincardFilterWh('');
+    setBincardFilterType('');
+    setBincardPeriod('mtd');
+    const range = getBincardDateRange('mtd');
+    setBincardDateFrom(range.from);
+    setBincardDateTo(range.to);
+    // Load warehouses
+    const { data: whData } = await supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name');
+    setBincardWarehouses(whData || []);
+    // Load movements
+    const { data } = await supabase.from('stock_movements')
+      .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
+      .eq('organization_id', selectedOrg.id).eq('item_id', itemId)
+      .order('created_at', { ascending: true }).limit(10000);
+    setBincardMovements(data || []);
+    setBincardLoading(false);
+  }
+
+  async function reloadBincardMovements(whId) {
+    if (!bincardItem) return;
+    setBincardLoading(true);
+    let query = supabase.from('stock_movements')
+      .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
+      .eq('organization_id', selectedOrg.id).eq('item_id', bincardItem.id)
+      .order('created_at', { ascending: true }).limit(10000);
+    if (whId) query = query.eq('warehouse_id', whId);
+    const { data } = await query;
+    setBincardMovements(data || []);
+    setBincardLoading(false);
+  }
 
   useEffect(() => { if(selectedOrg) loadStock(); }, [selectedOrg]);
 
@@ -5477,12 +6335,12 @@ function StockBalancePage() {
     setLoading(true);
     const [stockRes, catRes, whRes, itemRes] = await Promise.all([
       supabase.from('stock_balance')
-        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name)')
+        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name, warehouse_type)')
         .eq('organization_id', selectedOrg.id)
         .order('updated_at', { ascending: false }),
-      supabase.from('item_categories').select('id, code, name').eq('is_active', true).order('name'),
+      supabase.from('item_categories').select('id, code, name').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
-      supabase.from('items').select('id, code, name').eq('is_active', true).order('name'),
+      supabase.from('items').select('id, code, name').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
     ]);
     setStock(stockRes.data || []);
     setCategories(catRes.data || []);
@@ -5501,7 +6359,7 @@ function StockBalancePage() {
         const details = data.map(d => {
           let line = `Item: ${d.item_id.substring(0,8)}... | Qty: ${d.old_qty} → ${d.new_qty} (${d.diff > 0 ? '+' : ''}${d.diff})`;
           if (d.old_avg_cost !== undefined && d.new_avg_cost !== undefined) {
-            line += ` | Avg Cost: ${Number(d.old_avg_cost).toLocaleString('id-ID')} → ${Number(d.new_avg_cost).toLocaleString('id-ID')}`;
+            line += ` | Avg Cost: ${Math.round(Number(d.old_avg_cost)).toLocaleString('id-ID')} → ${Math.round(Number(d.new_avg_cost)).toLocaleString('id-ID')}`;
           }
           return line;
         }).join('\n');
@@ -5527,9 +6385,41 @@ function StockBalancePage() {
     return matchSearch && matchCat && matchWh && matchItem;
   });
 
-  const totalValue = filtered.reduce((sum, s) => sum + (s.total_value || 0), 0);
-  const totalItems = filtered.length;
-  const lowStockItems = filtered.filter(s => s.items?.reorder_point && s.quantity <= s.items.reorder_point).length;
+  // Group by item_id: aggregate qty and total_value, weighted avg cost, keep warehouse breakdown
+  const groupedMap = {};
+  filtered.forEach(s => {
+    const key = s.item_id;
+    if (!groupedMap[key]) {
+      groupedMap[key] = { ...s, quantity: 0, total_value: 0, _totalCostQty: 0, _whBreakdown: [] };
+    }
+    groupedMap[key].quantity += (s.quantity || 0);
+    groupedMap[key].total_value += (s.total_value || 0);
+    groupedMap[key]._totalCostQty += (s.avg_cost || 0) * (s.quantity || 0);
+    if (s.quantity > 0 || s.total_value > 0) {
+      groupedMap[key]._whBreakdown.push({
+        warehouse_code: s.warehouses?.code || '-',
+        warehouse_name: s.warehouses?.name || '-',
+        warehouse_type: s.warehouses?.warehouse_type || 'general',
+        quantity: s.quantity || 0,
+        avg_cost: s.avg_cost || 0,
+        total_value: s.total_value || 0,
+        unit: s.items?.units?.abbreviation || '',
+      });
+    }
+  });
+  const grouped = Object.values(groupedMap).map(g => {
+    const itemAvgCost = g.quantity > 0 ? g._totalCostQty / g.quantity : 0;
+    // Apply the item-level weighted avg cost to each warehouse breakdown row
+    g._whBreakdown.forEach(wh => {
+      wh.avg_cost = itemAvgCost;
+      wh.total_value = wh.quantity * itemAvgCost;
+    });
+    return { ...g, avg_cost: itemAvgCost };
+  });
+
+  const totalValue = grouped.reduce((sum, s) => sum + (s.total_value || 0), 0);
+  const totalItems = grouped.length;
+  const lowStockItems = grouped.filter(s => s.items?.reorder_point && s.quantity <= s.items.reorder_point).length;
 
   return (
     <div>
@@ -5585,23 +6475,303 @@ function StockBalancePage() {
             </button>
           </div>
         </div>
-        <DataTable loading={loading}
-          columns={[
-            { header: t('dashboard.item'), render: r => <div><span className="font-medium">{r.items?.name}</span>{r.items?.brand && <span className="text-xs text-gray-400 ml-1">({r.items.brand})</span>}<br/><span className="text-xs text-gray-400">{r.items?.code}</span>{r.items?.size && <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded ml-1">{r.items.size}</span>}</div> },
-            { header: t('items.category'), render: r => r.items?.item_categories ? <Badge color="purple">{r.items.item_categories.code}</Badge> : '-' },
-            { header: t('stock.warehouse') || 'Gudang', render: r => r.warehouses ? <Badge color="green">{r.warehouses.code}</Badge> : '-' },
-            { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
-            { header: t('dashboard.qty'), render: r => {
-              const isLow = r.items?.reorder_point && r.quantity <= r.items.reorder_point;
-              return <span className={`font-semibold ${isLow ? 'text-red-600' : ''}`}>{formatNumber(r.quantity)} {r.items?.units?.abbreviation}</span>;
-            }},
-            { header: t('stock.avgCost'), render: r => formatCurrency(r.avg_cost) },
-            { header: t('stock.totalValue'), render: r => formatCurrency(r.total_value) },
-            { header: t('stock.lastUpdate'), render: r => r.last_movement_at ? formatDateSys(r.last_movement_at) : '-' },
-          ]}
-          data={filtered}
-        />
+        {loading ? (
+          <div className="flex justify-center py-12"><div className="spinner"></div></div>
+        ) : grouped.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">{t('common.noData')}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs sm:text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600 whitespace-nowrap">Item Code</th>
+                  <th className="text-left px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600 whitespace-nowrap">{t('dashboard.item')}</th>
+                  <th className="text-left px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600 whitespace-nowrap">Unit</th>
+                  <th className="text-right px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600 whitespace-nowrap">{t('dashboard.qty')}</th>
+                  <th className="text-right px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600 whitespace-nowrap">{t('stock.avgCost')}</th>
+                  <th className="text-right px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600 whitespace-nowrap">{t('stock.totalValue')}</th>
+                  <th className="text-center px-2 sm:px-4 py-2 sm:py-3 font-medium text-gray-600">View</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grouped.map((r, i) => {
+                  const isLow = r.items?.reorder_point && r.quantity <= r.items.reorder_point;
+                  return (
+                    <tr key={r.item_id || i} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap"><span className="text-xs text-gray-500">{r.items?.code || '-'}</span></td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap"><span className="font-medium">{r.items?.name}{r.items?.brand ? ` (${r.items.brand})` : ''}{r.items?.size ? ` [${r.items.size}]` : ''}</span></td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-gray-500">{r.items?.units?.abbreviation || '-'}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-right"><span className={`font-semibold ${isLow ? 'text-red-600' : ''}`}>{formatNumber(r.quantity)}</span></td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-right">{formatCurrency(r.avg_cost)}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-right">{formatCurrency(r.total_value)}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {r._whBreakdown && r._whBreakdown.length > 0 && (
+                            <button onClick={() => openLocationModal(r)}
+                              className="px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors whitespace-nowrap flex items-center gap-1">
+                              <Icons.MapPin /> Location
+                            </button>
+                          )}
+                          <button onClick={() => openBincard(r)}
+                            className="px-2 py-1 text-xs font-medium text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg border border-primary-200 transition-colors whitespace-nowrap flex items-center gap-1">
+                            <Icons.ClipboardList /> Bincard
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Location Modal */}
+      {locationItem && (() => {
+        const breakdown = locationItem._whBreakdown || [];
+        const roomRows = breakdown.filter(wh => wh.warehouse_type === 'room');
+        const nonRoomRows = breakdown.filter(wh => wh.warehouse_type !== 'room');
+        const roomTotalQty = roomRows.reduce((s, wh) => s + wh.quantity, 0);
+        const roomTotalValue = roomRows.reduce((s, wh) => s + wh.total_value, 0);
+        const roomAvgCost = roomTotalQty > 0 ? roomTotalValue / roomTotalQty : 0;
+        const grandTotalQty = breakdown.reduce((s, wh) => s + wh.quantity, 0);
+        const grandTotalValue = breakdown.reduce((s, wh) => s + wh.total_value, 0);
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-8" onClick={() => setLocationItem(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[700px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 flex items-center gap-2"><Icons.Warehouse /> Location Breakdown</h3>
+                  <p className="text-xs text-gray-500">{locationItem.items?.code} - {locationItem.items?.name}{locationItem.items?.brand ? ` (${locationItem.items.brand})` : ''}</p>
+                </div>
+                <button onClick={() => setLocationItem(null)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">×</button>
+              </div>
+              {/* Table */}
+              <div className="flex-1 overflow-auto px-5 py-3">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-50 z-10">
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left px-3 py-2 font-semibold text-gray-600 w-8"></th>
+                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Warehouse</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-600">Qty</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-600">Avg Cost</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-600">Total Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Room group row */}
+                    {roomRows.length > 0 && (
+                      <React.Fragment>
+                        <tr className="border-b border-gray-100 hover:bg-blue-50/30 cursor-pointer"
+                            onClick={() => setLocationExpandRooms(prev => !prev)}>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`inline-block transition-transform text-gray-400 ${locationExpandRooms ? 'rotate-90' : ''}`}>▶</span>
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className="font-semibold text-blue-700 flex items-center gap-1"><Icons.Door /> Total In Room ({roomRows.length})</span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold text-blue-700">{formatNumber(roomTotalQty)}</td>
+                          <td className="px-3 py-2 text-right text-blue-600">{formatCurrency(roomAvgCost)}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-blue-700">{formatCurrency(roomTotalValue)}</td>
+                        </tr>
+                        {locationExpandRooms && roomRows.map((wh, wi) => (
+                          <tr key={`room-${wi}`} className="bg-blue-50/40 border-b border-blue-100/50">
+                            <td className="px-3 py-1.5"></td>
+                            <td className="px-3 py-1.5 whitespace-nowrap pl-8">
+                              <span className="text-xs text-blue-500">{wh.warehouse_name}</span>
+                            </td>
+                            <td className="px-3 py-1.5 text-right text-xs text-gray-600">{formatNumber(wh.quantity)}</td>
+                            <td className="px-3 py-1.5 text-right text-xs text-gray-500">{formatCurrency(wh.avg_cost)}</td>
+                            <td className="px-3 py-1.5 text-right text-xs text-gray-600">{formatCurrency(wh.total_value)}</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    )}
+                    {/* Non-room warehouse rows */}
+                    {nonRoomRows.map((wh, wi) => (
+                      <tr key={`wh-${wi}`} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="px-3 py-2"></td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="text-gray-700 flex items-center gap-1"><Icons.Warehouse /> {wh.warehouse_name}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium">{formatNumber(wh.quantity)}</td>
+                        <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(wh.avg_cost)}</td>
+                        <td className="px-3 py-2 text-right font-medium">{formatCurrency(wh.total_value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2 text-gray-800">Grand Total</td>
+                      <td className="px-3 py-2 text-right text-gray-800">{formatNumber(grandTotalQty)}</td>
+                      <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(locationItem.avg_cost)}</td>
+                      <td className="px-3 py-2 text-right text-gray-800">{formatCurrency(grandTotalValue)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Bincard Modal */}
+      {bincardItem && (() => {
+        const bcDateRange = bincardPeriod === 'custom' ? { from: bincardDateFrom, to: bincardDateTo } : getBincardDateRange(bincardPeriod);
+        function bcToLocalDateStr(utcStr) {
+          const tz = window.__systemSettings?.timezone || 'Asia/Bangkok';
+          return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(utcStr));
+        }
+        // Running balance
+        const balanceMap = {};
+        const withBalance = bincardMovements.map(m => {
+          const key = m.item_id || '';
+          if (!(key in balanceMap)) balanceMap[key] = { qty: 0, avg_cost: 0 };
+          const b = balanceMap[key];
+          const qty = m.quantity || 0;
+          const unitCost = m.unit_cost || 0;
+          if (m.movement_type === 'IN') {
+            const newTotal = b.qty * b.avg_cost + qty * unitCost;
+            b.qty += qty;
+            b.avg_cost = b.qty > 0 ? newTotal / b.qty : 0;
+          } else if (m.movement_type === 'OUT') {
+            b.qty -= qty;
+            if (b.qty <= 0) { b.qty = 0; }
+          }
+          return { ...m, _bal: b.qty, _avg: b.avg_cost, _val: b.qty * b.avg_cost };
+        });
+        // Filter
+        const bcFiltered = withBalance.filter(m => {
+          if (bincardFilterType && m.movement_type !== bincardFilterType) return false;
+          const ld = bcToLocalDateStr(m.created_at);
+          if (bcDateRange.from && ld < bcDateRange.from) return false;
+          if (bcDateRange.to && ld > bcDateRange.to) return false;
+          return true;
+        });
+        const bcTotalIn = bcFiltered.filter(m => m.movement_type === 'IN').reduce((s, m) => s + (m.quantity || 0), 0);
+        const bcTotalOut = bcFiltered.filter(m => m.movement_type === 'OUT').reduce((s, m) => s + (m.quantity || 0), 0);
+        // Beginning = balance of last row before filtered range
+        const bcBeginning = (() => {
+          if (!bcDateRange.from) return 0;
+          const before = withBalance.filter(m => {
+            const ld = bcToLocalDateStr(m.created_at);
+            return ld < bcDateRange.from;
+          });
+          return before.length > 0 ? before[before.length - 1]._bal : 0;
+        })();
+        const bcEndBalance = bcFiltered.length > 0 ? bcFiltered[bcFiltered.length - 1]._bal : bcBeginning;
+        const bcEndValue = bcFiltered.length > 0 ? bcFiltered[bcFiltered.length - 1]._val : 0;
+        const bcGetWhName = (whId) => { const w = bincardWarehouses.find(x => x.id === whId); return w ? w.code : '-'; };
+        const bcPeriodOptions = [
+          { value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' },
+          { value: 'mtd', label: 'MTD' }, { value: 'lastmonth', label: 'Last Month' },
+          { value: 'ytd', label: 'YTD' }, { value: 'custom', label: 'Custom' },
+        ];
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-8" onClick={() => setBincardItem(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[85vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Bin Card</h3>
+                  <p className="text-xs text-gray-500">{bincardItem.code} - {bincardItem.name}</p>
+                </div>
+                <button onClick={() => setBincardItem(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><Icons.X /></button>
+              </div>
+              {/* Stats */}
+              <div className="grid grid-cols-5 gap-2 px-4 py-2 border-b border-gray-100">
+                <div className="bg-blue-50 rounded-lg p-2"><p className="text-[10px] text-gray-500">Beginning</p><p className="text-base font-bold text-blue-700">{formatNumber(bcBeginning)}</p></div>
+                <div className="bg-green-50 rounded-lg p-2"><p className="text-[10px] text-gray-500">Total IN</p><p className="text-base font-bold text-green-600">+{formatNumber(bcTotalIn)}</p></div>
+                <div className="bg-red-50 rounded-lg p-2"><p className="text-[10px] text-gray-500">Total OUT</p><p className="text-base font-bold text-red-600">-{formatNumber(bcTotalOut)}</p></div>
+                <div className="bg-gray-50 rounded-lg p-2"><p className="text-[10px] text-gray-500">Balance</p><p className="text-base font-bold text-gray-800">{formatNumber(bcEndBalance)}</p></div>
+                <div className="bg-purple-50 rounded-lg p-2"><p className="text-[10px] text-gray-500">Value</p><p className="text-base font-bold text-purple-700">{formatCurrency(bcEndValue)}</p></div>
+              </div>
+              {/* Filters */}
+              <div className="px-4 py-1.5 border-b border-gray-100 flex flex-wrap gap-2 items-center">
+                <select value={bincardFilterWh} onChange={e => { setBincardFilterWh(e.target.value); reloadBincardMovements(e.target.value); }}
+                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white">
+                  <option value="">All Warehouses</option>
+                  {bincardWarehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
+                </select>
+                <select value={bincardFilterType} onChange={e => setBincardFilterType(e.target.value)}
+                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white">
+                  <option value="">All Types</option>
+                  <option value="IN">IN</option><option value="OUT">OUT</option><option value="ADJ">ADJ</option>
+                </select>
+                <select value={bincardPeriod} onChange={e => {
+                  setBincardPeriod(e.target.value);
+                  if (e.target.value !== 'custom') { const r = getBincardDateRange(e.target.value); setBincardDateFrom(r.from); setBincardDateTo(r.to); }
+                }} className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white">
+                  {bcPeriodOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                {bincardPeriod === 'custom' && (
+                  <div className="flex items-center gap-1">
+                    <input type="date" value={bincardDateFrom} onChange={e => setBincardDateFrom(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs" />
+                    <span className="text-gray-400">—</span>
+                    <input type="date" value={bincardDateTo} onChange={e => setBincardDateTo(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs" />
+                  </div>
+                )}
+              </div>
+              {/* Table */}
+              <div className="flex-1 overflow-auto px-4">
+                <table className="w-full text-[11px]">
+                  <thead className="sticky top-0 bg-gray-50 z-10">
+                    <tr className="border-b border-gray-200">
+                      <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">Date</th>
+                      <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">Warehouse</th>
+                      <th className="px-1.5 py-1 text-center font-semibold text-gray-600 uppercase">Type</th>
+                      <th className="px-1.5 py-1 text-center font-semibold text-gray-600 uppercase">Unit</th>
+                      <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Qty</th>
+                      <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Cost</th>
+                      <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Balance</th>
+                      <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Avg Cost</th>
+                      <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Total Value</th>
+                      <th className="px-1.5 py-1 text-center font-semibold text-gray-600 uppercase">Dept</th>
+                      <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">User</th>
+                      <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">Ref</th>
+                      <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bincardLoading ? (
+                      <tr><td colSpan="13" className="px-2 py-8 text-center text-gray-400">Loading...</td></tr>
+                    ) : bcFiltered.length === 0 ? (
+                      <tr><td colSpan="13" className="px-2 py-8 text-center text-gray-400">No movements found</td></tr>
+                    ) : bcFiltered.map((r, idx) => (
+                      <tr key={r.id || idx} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="px-1.5 py-0.5 whitespace-nowrap text-gray-600">{formatDateSys(r.created_at, { includeTime: true })}</td>
+                        <td className="px-1.5 py-0.5 whitespace-nowrap text-gray-600">{bcGetWhName(r.warehouse_id)}</td>
+                        <td className="px-1.5 py-0.5 text-center"><Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'blue'}>{r.movement_type}</Badge></td>
+                        <td className="px-1.5 py-0.5 text-center text-gray-500">{r.items?.units?.abbreviation || '-'}</td>
+                        <td className={'px-1.5 py-0.5 text-right font-semibold ' + (r.movement_type==='IN'?'text-green-600':'text-red-600')}>{r.movement_type==='IN'?'+':'-'}{formatNumber(r.quantity)}</td>
+                        <td className="px-1.5 py-0.5 text-right text-gray-600">{formatCurrency(r.unit_cost)}</td>
+                        <td className="px-1.5 py-0.5 text-right font-semibold text-gray-800">{formatNumber(r._bal)}</td>
+                        <td className="px-1.5 py-0.5 text-right text-gray-600">{formatCurrency(r._avg)}</td>
+                        <td className="px-1.5 py-0.5 text-right text-gray-600">{formatCurrency(r._val)}</td>
+                        <td className="px-1.5 py-0.5 text-center">{r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : '-'}</td>
+                        <td className="px-1.5 py-0.5 text-gray-500 whitespace-nowrap">{r.users?.full_name || r.users?.username || '-'}</td>
+                        <td className="px-1.5 py-0.5 whitespace-nowrap">
+                          {r.reference_number ? (
+                            <button onClick={(e) => { e.stopPropagation(); setDocDetailMovement(r); }} className="text-primary-600 hover:text-primary-800 hover:underline font-medium">
+                              {r.reference_number}
+                            </button>
+                          ) : '-'}{' '}
+                          <span className="text-gray-400">{r.reference_type || ''}</span>
+                        </td>
+                        <td className="px-1.5 py-0.5 text-gray-500 max-w-[150px] truncate" title={r.notes || ''}>{r.notes || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {docDetailMovement && <DocDetailModal movement={docDetailMovement} onClose={() => setDocDetailMovement(null)} />}
     </div>
   );
 }
@@ -5621,6 +6791,7 @@ function BinCardPage() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterItem, setFilterItem] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [docDetailMovement, setDocDetailMovement] = useState(null);
   const [periodPreset, setPeriodPreset] = useState('mtd');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -5687,9 +6858,9 @@ function BinCardPage() {
   // Load master data (items, warehouses, categories) - once
   async function loadMasterData() {
     const [itemRes, whRes, catRes] = await Promise.all([
-      supabase.from('items').select('id, code, name, category_id, default_warehouse_id').eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, category_id, default_warehouse_id').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
-      supabase.from('item_categories').select('id, code, name').eq('is_active', true).order('name'),
+      supabase.from('item_categories').select('id, code, name').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
     ]);
     setAllItems(itemRes.data || []);
     setWarehouses(whRes.data || []);
@@ -5957,7 +7128,14 @@ function BinCardPage() {
                   <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_total_value)}</td>
                   <td className="px-2 py-1 text-center">{r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : <span className="text-gray-300">-</span>}</td>
                   <td className="px-2 py-1 text-gray-500 whitespace-nowrap">{r.users?.full_name || r.users?.username || '-'}</td>
-                  <td className="px-2 py-1 whitespace-nowrap">{r.reference_number || '-'} <span className="text-gray-400">{r.reference_type || ''}</span></td>
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    {r.reference_number ? (
+                      <button onClick={(e) => { e.stopPropagation(); setDocDetailMovement(r); }} className="text-primary-600 hover:text-primary-800 hover:underline font-medium">
+                        {r.reference_number}
+                      </button>
+                    ) : '-'}{' '}
+                    <span className="text-gray-400">{r.reference_type || ''}</span>
+                  </td>
                   <td className="px-2 py-1 text-gray-500 max-w-[200px] truncate" title={r.notes || ''}>{r.notes || '-'}</td>
                 </tr>
               ))}
@@ -5965,6 +7143,7 @@ function BinCardPage() {
           </table>
         </div>
       </div>
+      {docDetailMovement && <DocDetailModal movement={docDetailMovement} onClose={() => setDocDetailMovement(null)} />}
     </div>
   );
 }
@@ -5998,10 +7177,10 @@ function PurchaseRequestPage() {
     const [prRes, deptRes, itemRes, unitRes, userRes, catRes] = await Promise.all([
       supabase.from('purchase_requests').select('*, departments(name, code), item_categories:category_id(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('departments').select('*').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
-      supabase.from('items').select('id, code, name, unit_id, category_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, unit_id, category_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
       supabase.from('units').select('*').order('name'),
       supabase.from('users').select('id, full_name').order('full_name'),
-      supabase.from('item_categories').select('id, code, name').order('name'),
+      supabase.from('item_categories').select('id, code, name').eq('organization_id', selectedOrg?.id).order('name'),
     ]);
     const allPrs = prRes.data || [];
     setPrs(allPrs);
@@ -6442,7 +7621,7 @@ function PurchaseOrderPage() {
     const [poRes, vendorRes, itemRes, userRes, prRes] = await Promise.all([
       supabase.from('purchase_orders').select('*, vendors(name, code), pr_reference_id').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('vendors').select('*').eq('is_active', true).order('name'),
-      supabase.from('items').select('id, code, name, unit_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, unit_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
       supabase.from('users').select('id, full_name').order('full_name'),
       supabase.from('purchase_requests').select('id, pr_number, request_date, needed_date, priority, notes, departments(name, code)').eq('organization_id', selectedOrg.id).in('status', ['APPROVED', 'PARTIAL_ORDERED']).order('created_at', { ascending: false }),
     ]);
@@ -6722,7 +7901,7 @@ function PurchaseOrderPage() {
             { header: t('po.orderDate'), render: r => formatDateSys(r.order_date) },
             { header: t('po.vendor'), render: r => r.vendors?.name || '-' },
             { header: t('po.expectedDelivery'), render: r => r.expected_delivery ? formatDateSys(r.expected_delivery) : '-' },
-            { header: t('po.totalAmount'), render: r => formatCurrency(r.total_amount) },
+            { header: t('po.totalAmount'), align: 'right', render: r => formatCurrency(r.total_amount) },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
             { header: 'Invoice Status', render: r => {
               if (!['APPROVED','SENT','RECEIVED','PARTIAL_INVOICED','FULLY_INVOICED'].includes(r.status)) return <span className="text-xs text-gray-400">-</span>;
@@ -6953,8 +8132,8 @@ function StockOpnamePage() {
     try {
       const [opRes, catRes, itemRes, usrRes, deptRes] = await Promise.all([
         supabase.from('stock_opname').select('*').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
-        supabase.from('item_categories').select('*').eq('is_active', true).order('name'),
-        supabase.from('items').select('*').eq('is_active', true).order('code'),
+        supabase.from('item_categories').select('*').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
+        supabase.from('items').select('*').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
         supabase.from('users').select('*, roles:role_id(code, name)').eq('is_active', true).order('full_name'),
         supabase.from('departments').select('*').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
       ]);
@@ -7270,7 +8449,7 @@ function StockOpnamePage() {
             { header: t('opname.date'), render: r => formatDateSys(r.opname_date) },
             { header: 'Category', render: r => catMap[r.category_id]?.name || '-' },
             { header: 'Assigned To', render: r => userMap[r.assigned_to]?.full_name || '-' },
-            { header: t('opname.totalVariance'), render: r => <span className={r.total_variance_value < 0 ? 'text-red-600' : r.total_variance_value > 0 ? 'text-green-600' : ''}>{formatCurrency(r.total_variance_value || 0)}</span> },
+            { header: t('opname.totalVariance'), align: 'right', render: r => <span className={r.total_variance_value < 0 ? 'text-red-600' : r.total_variance_value > 0 ? 'text-green-600' : ''}>{formatCurrency(r.total_variance_value || 0)}</span> },
             { header: t('common.status'), render: r => {
               const opnameStatusMap = {
                 PENDING: { color: 'yellow', label: t('opname.statusPending') },
@@ -7497,7 +8676,7 @@ function WriteOffPage() {
     const [woRes, deptRes, itemRes, sbRes] = await Promise.all([
       supabase.from('write_offs').select('*, departments(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('departments').select('*').eq('is_active', true).order('name'),
-      supabase.from('items').select('id, code, name').eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
       supabase.from('stock_balance').select('item_id, quantity').eq('organization_id', selectedOrg.id).gt('quantity', 0),
     ]);
     setWriteoffs(woRes.data || []);
@@ -7783,7 +8962,7 @@ function PurchaseInvoicePage() {
     const [piRes, vendorRes, itemRes, poRes, userRes] = await Promise.all([
       supabase.from('purchase_invoices').select('*, vendors(name, code), purchase_orders(po_number)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('vendors').select('*').eq('is_active', true).order('name'),
-      supabase.from('items').select('id, code, name, unit_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, unit_id, purchase_unit_id, purchase_unit:units!items_purchase_unit_id_fkey(abbreviation, name)').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
       supabase.from('purchase_orders').select('id, po_number, vendor_id, status').eq('organization_id', selectedOrg.id).in('status', ['APPROVED','SENT','RECEIVED','PARTIAL_INVOICED']).order('po_number'),
       supabase.from('users').select('id, full_name').order('full_name'),
     ]);
@@ -7988,7 +9167,7 @@ function PurchaseInvoicePage() {
             { header: t('pi.invoiceDate'), render: r => formatDateSys(r.invoice_date) },
             { header: t('pi.vendor'), render: r => r.vendors?.name || '-' },
             { header: t('pi.fromPO'), render: r => r.purchase_orders?.po_number ? <Badge color="blue">{r.purchase_orders.po_number}</Badge> : '-' },
-            { header: t('pi.totalAmount'), render: r => formatCurrency(r.total_amount) },
+            { header: t('pi.totalAmount'), align: 'right', render: r => formatCurrency(r.total_amount) },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
             { header: t('approval.info'), render: r => r.approved_by ? (
               <div className="text-xs">
@@ -8199,7 +9378,7 @@ function PurchaseReceivedPage() {
     const [grRes, piRes, itemRes, whRes, deptRes] = await Promise.all([
       supabase.from('purchase_received').select('*, vendors(name, code), purchase_invoices(pi_number, invoice_number), departments(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('purchase_invoices').select('*, vendors(name, code)').eq('organization_id', selectedOrg.id).eq('status', 'APPROVED').order('pi_number'),
-      supabase.from('items').select('id, code, name, default_warehouse_id').eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, default_warehouse_id').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
       supabase.from('warehouses').select('*').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
       supabase.from('departments').select('id, code, name').eq('is_active', true).order('name'),
     ]);
@@ -8713,7 +9892,7 @@ function ReportsPage() {
   useEffect(() => {
     if (selectedOrg) {
       Promise.all([
-        supabase.from('item_categories').select('id, code, name').order('code'),
+        supabase.from('item_categories').select('id, code, name').eq('organization_id', selectedOrg?.id).order('code'),
         supabase.from('departments').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
       ]).then(([catRes, deptRes]) => {
         setCategories(catRes.data || []);
@@ -8972,8 +10151,8 @@ function ReportsPage() {
             { header: t('items.category'), render: r => <Badge color="purple">{r.items?.item_categories?.code}</Badge> },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
             { header: t('dashboard.qty'), render: r => formatNumber(r.quantity) },
-            { header: t('stock.avgCost'), render: r => formatCurrency(r.avg_cost) },
-            { header: t('stock.totalValue'), render: r => <span className="font-semibold">{formatCurrency(r.total_value)}</span> },
+            { header: t('stock.avgCost'), align: 'right', render: r => formatCurrency(r.avg_cost) },
+            { header: t('stock.totalValue'), align: 'right', render: r => <span className="font-semibold">{formatCurrency(r.total_value)}</span> },
           ]} data={arrData} />
         )}
 
@@ -8996,7 +10175,7 @@ function ReportsPage() {
               { header: t('common.date'), render: r => formatDateSys(r.order_date) },
               { header: t('reports.vendorName'), render: r => r.vendors?.name || '-' },
               { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
-              { header: t('po.totalAmount'), render: r => <span className="font-semibold">{formatCurrency(r.total_amount)}</span> },
+              { header: t('po.totalAmount'), align: 'right', render: r => <span className="font-semibold">{formatCurrency(r.total_amount)}</span> },
             ]} data={data.pos} />
             <div className="p-3 bg-gray-50 border-b border-t"><span className="font-semibold text-sm">Purchase Invoices ({data.pis.length})</span></div>
             <DataTable loading={false} columns={[
@@ -9006,7 +10185,7 @@ function ReportsPage() {
               { header: t('pi.fromPO'), render: r => r.purchase_orders?.po_number ? <Badge color="blue">{r.purchase_orders.po_number}</Badge> : '-' },
               { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
               { header: t('pi.paymentStatus'), render: r => <Badge color={r.payment_status==='PAID'?'green':r.payment_status==='PARTIAL'?'yellow':'red'}>{r.payment_status}</Badge> },
-              { header: t('pi.totalAmount'), render: r => <span className="font-semibold">{formatCurrency(r.total_amount)}</span> },
+              { header: t('pi.totalAmount'), align: 'right', render: r => <span className="font-semibold">{formatCurrency(r.total_amount)}</span> },
             ]} data={data.pis} />
           </div>
         )}
@@ -9029,7 +10208,7 @@ function ReportsPage() {
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
             { header: t('opname.type'), render: r => <Badge color={r.opname_type==='annual'?'purple':r.opname_type==='spot'?'orange':'gray'}>{r.opname_type}</Badge> },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
-            { header: t('reports.varianceValue'), render: r => <span className={r.total_variance_value < 0 ? 'text-red-600 font-semibold' : r.total_variance_value > 0 ? 'text-green-600 font-semibold' : ''}>{formatCurrency(r.total_variance_value)}</span> },
+            { header: t('reports.varianceValue'), align: 'right', render: r => <span className={r.total_variance_value < 0 ? 'text-red-600 font-semibold' : r.total_variance_value > 0 ? 'text-green-600 font-semibold' : ''}>{formatCurrency(r.total_variance_value)}</span> },
           ]} data={arrData} />
         )}
 
@@ -10588,8 +11767,8 @@ function OpeningBalancePage() {
     setLoading(true);
     try {
       const [catsRes, itemsRes, locksRes, detailsRes, deptRes, unitsRes, whRes, roomsRes] = await Promise.all([
-        supabase.from('item_categories').select('*').order('name'),
-        supabase.from('items').select('*').eq('is_active', true).order('code'),
+        supabase.from('item_categories').select('*').eq('organization_id', selectedOrg?.id).order('name'),
+        supabase.from('items').select('*').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
         supabase.from('opening_balance_locks').select('*').eq('organization_id', selectedOrg.id),
         supabase.from('opening_balance_details').select('*').eq('organization_id', selectedOrg.id),
         supabase.from('departments').select('*').eq('organization_id', selectedOrg.id).order('name'),
@@ -11333,10 +12512,10 @@ function OpeningBalancePage() {
                       <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20 bg-blue-50">{t('ob.totalPcs')}</th>
                     )}
                     <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Purchase Unit</th>
-                    <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost/Purchase Unit</th>
+                    <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost/Purchase Unit</th>
                     <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Usage Unit</th>
                     <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Conversion</th>
-                    <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost/Usage Unit</th>
+                    <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost/Usage Unit</th>
                     <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3 w-36">{t('ob.totalValue')}</th>
                   </tr>
                 </thead>
@@ -11424,7 +12603,7 @@ function OpeningBalancePage() {
                         <td className="px-2 py-2 text-center">
                           <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{conversionRate}</span>
                         </td>
-                        <td className="px-2 py-2 text-center">
+                        <td className="px-2 py-2 text-right">
                           <span className={`text-sm font-medium ${costPerUsage > 0 ? 'text-primary-700' : 'text-gray-400'}`}>
                             {costPerUsage > 0 ? formatCurrency(Math.round(costPerUsage)) : '-'}
                           </span>
@@ -11690,7 +12869,7 @@ function RoomMakeUpPage() {
       supabase.from('rooms').select('id, room_number, floor, warehouse_id, room_types(name)')
         .eq('organization_id', selectedOrg.id).order('room_number'),
       supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
-      supabase.from('items').select('id, code, name, brand, category_id, item_categories(code)').eq('is_active', true).order('name'),
+      supabase.from('items').select('id, code, name, brand, category_id, item_categories(code)').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
       supabase.from('makeup_activity_templates').select('*')
         .eq('organization_id', selectedOrg.id).eq('is_active', true).order('sort_order'),
     ]);
@@ -12871,7 +14050,7 @@ function DirectPurchasePage() {
         .select('*, departments(name, code), direct_purchase_items(*, items(code, name, brand, units:unit_id(abbreviation)))')
         .eq('organization_id', selectedOrg.id)
         .order('created_at', { ascending: false }),
-      supabase.from('items').select('id, code, name, brand, default_warehouse_id, allow_direct_purchase').eq('is_active', true).order('name'),
+      supabase.from('items').select('id, code, name, brand, default_warehouse_id, allow_direct_purchase').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
       supabase.from('departments').select('id, code, name').eq('is_active', true).order('name'),
     ]);
@@ -13290,7 +14469,7 @@ function DirectPurchasePage() {
                   <tr>
                     <th className="text-left px-3 py-2 font-medium text-gray-600">{t('dp.selectItem')}</th>
                     <th className="text-center px-3 py-2 font-medium text-gray-600 w-24">{t('dp.qty')}</th>
-                    <th className="text-center px-3 py-2 font-medium text-gray-600 w-32">{t('dp.unitPrice')}</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600 w-32">{t('dp.unitPrice')}</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-600 w-32">{t('dp.totalPrice')}</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-600 w-40">{t('dp.warehouse')}</th>
                     <th className="text-center px-3 py-2 font-medium text-gray-600 w-16"></th>
@@ -14140,7 +15319,7 @@ function SingleItemUsagePage() {
     try {
       const [recRes, itemRes, whRes, deptRes] = await Promise.all([
         supabase.from('single_item_usage').select('*, items:item_id(code, name, brand), warehouses:warehouse_id(code, name), departments:department_id(code, name)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
-        supabase.from('items').select('id, code, name, brand, allow_single_usage').eq('is_active', true).eq('allow_single_usage', true).order('name'),
+        supabase.from('items').select('id, code, name, brand, allow_single_usage').eq('organization_id', selectedOrg?.id).eq('is_active', true).eq('allow_single_usage', true).order('name'),
         supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
         supabase.from('departments').select('id, code, name').eq('is_active', true).order('name'),
       ]);
@@ -14286,6 +15465,7 @@ function SingleItemUsagePage() {
         balance_after: siuBalAfter,
         reference_type: 'USAGE',
         reference_id: record.id,
+        reference_number: record.usage_number,
         notes: `Single usage: ${record.usage_number} - Dept: ${deptName}`,
         created_by: currentUser?.id || null,
       });
@@ -14550,7 +15730,7 @@ function TransferPage() {
         .eq('organization_id', selectedOrg.id)
         .order('created_at', { ascending: false }),
       supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
-      supabase.from('items').select('id, code, name, brand').eq('is_active', true).order('name'),
+      supabase.from('items').select('id, code, name, brand').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
     ]);
     setTransfers(trRes.data || []);
     setWarehouses(whRes.data || []);
