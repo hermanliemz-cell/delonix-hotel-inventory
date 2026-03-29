@@ -68,11 +68,11 @@ const ROLE_PAGE_ACCESS = {
   superadmin: '*', // all pages
   gm: '*',
   warehouse: ['dashboard','items','categories','vendors','warehouses','stock','movements','pr','po','pi','gr','transfer','direct-purchase','opening-balance','writeoff','opname','single-usage','in-use-warehouse','reports','change-password'],
-  housekeeping: ['dashboard','room-makeup','rooms','room-types','bed-formations','in-use-warehouse','single-usage','movements','change-password'],
+  housekeeping: ['dashboard','room-makeup','room-makeup-new','rooms','room-types','bed-formations','in-use-warehouse','single-usage','movements','change-password'],
   engineering: ['dashboard','items','stock','movements','pr','single-usage','in-use-warehouse','change-password'],
   fnb: ['dashboard','items','stock','movements','pr','single-usage','in-use-warehouse','change-password'],
   frontoffice: ['dashboard','rooms','room-types','stock','movements','change-password'],
-  opdir: ['dashboard','items','stock','movements','reports','rooms','room-makeup','pr','po','pi','gr','transfer','opname','hotels','change-password'],
+  opdir: ['dashboard','items','stock','movements','reports','rooms','room-makeup','room-makeup-new','pr','po','pi','gr','transfer','opname','hotels','change-password'],
   branddir: ['dashboard','items','stock','movements','reports','hotels','change-password'],
   finhotel: ['dashboard','stock','movements','reports','pi','opname','writeoff','hotels','change-password'],
   findir: ['dashboard','stock','movements','reports','pi','hotels','approval','opname','change-password'],
@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.2',
+    'app.version': 'v1.0.3',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
 
@@ -160,6 +160,7 @@ const translations = {
     'menu.group.stock': 'Stock Management',
     'menu.group.settings': 'Settings',
     'menu.roomMakeup': 'Room Make Up',
+    'menu.roomMakeupNew': 'Room Make Up (New)',
     'menu.transfer': 'Transfer',
     'menu.directPurchase': 'Direct Purchase',
     'menu.hotels': 'Hotels',
@@ -1066,7 +1067,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.2',
+    'app.version': 'v1.0.3',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
 
@@ -1114,6 +1115,7 @@ const translations = {
     'menu.group.stock': '库存管理',
     'menu.group.settings': '设置',
     'menu.roomMakeup': '客房整理',
+    'menu.roomMakeupNew': '客房整理 (新)',
     'menu.transfer': '调拨',
     'menu.directPurchase': '直接采购',
     'menu.hotels': '酒店',
@@ -2334,6 +2336,7 @@ function App() {
     ]},
     { type: 'group', label: 'HOUSEKEEPING', icon: Icons.ClipboardList, children: [
       { id: 'room-makeup', label: t('menu.roomMakeup'), icon: Icons.ClipboardList },
+      { id: 'room-makeup-new', label: t('menu.roomMakeupNew'), icon: Icons.ClipboardList },
       { id: 'laundry', label: 'Laundry', icon: Icons.Truck },
       { id: 'room-consumption', label: 'Room Consumption', icon: Icons.Package },
       { id: 'item-lost-in-room', label: 'Item Lost in Room', icon: Icons.Trash },
@@ -2673,7 +2676,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.2 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.3 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -2748,6 +2751,7 @@ function PageRouter({ page }) {
     case 'bed-formations': return <BedFormationsPage />;
     case 'rooms': return <RoomsPage />;
     case 'room-makeup': return <RoomMakeUpPage />;
+    case 'room-makeup-new': return <RoomMakeUpPageNew />;
     case 'opening-balance': return <OpeningBalancePage />;
     case 'stock': return <StockBalancePage />;
     case 'movements': return <BinCardPage />;
@@ -3774,7 +3778,7 @@ function PeriodLocksManagement({ hotels, canEdit, currentUser }) {
 // ============================================================
 function ItemsPage() {
   const { t } = useTranslation();
-  const { showNotification, selectedOrg } = useApp();
+  const { showNotification, showConfirm, selectedOrg } = useApp();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [units, setUnits] = useState([]);
@@ -3800,6 +3804,91 @@ function ItemsPage() {
   const [importChecked, setImportChecked] = useState({});
   const [importLoading, setImportLoading] = useState(false);
   const [importSaving, setImportSaving] = useState(false);
+
+  // Duplicate checker states
+  const [showDupModal, setShowDupModal] = useState(false);
+  const [dupLoading, setDupLoading] = useState(false);
+  const [dupResults, setDupResults] = useState({ exact: [], likely: [] });
+
+  function normalizeStr(s) {
+    return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function similarity(a, b) {
+    const na = normalizeStr(a);
+    const nb = normalizeStr(b);
+    if (!na || !nb) return 0;
+    if (na === nb) return 1;
+    // Simple Levenshtein-based similarity
+    const len = Math.max(na.length, nb.length);
+    if (len === 0) return 1;
+    const matrix = Array.from({ length: na.length + 1 }, (_, i) => {
+      const row = Array(nb.length + 1).fill(0);
+      row[0] = i;
+      return row;
+    });
+    for (let j = 0; j <= nb.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= na.length; i++) {
+      for (let j = 1; j <= nb.length; j++) {
+        const cost = na[i - 1] === nb[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+      }
+    }
+    return 1 - matrix[na.length][nb.length] / len;
+  }
+
+  async function checkDuplicates() {
+    setDupLoading(true);
+    setShowDupModal(true);
+    setDupResults({ exact: [], likely: [] });
+
+    try {
+      const allItems = items;
+      const exactGroups = {};
+      const likelyPairs = [];
+      const exactKeySet = new Set();
+
+      // Exact duplicates: same name, category, unit, brand, size (case-insensitive, trimmed)
+      allItems.forEach(item => {
+        const key = [
+          (item.name || '').trim().toLowerCase(),
+          item.category_id || '',
+          item.unit_id || '',
+          (item.brand || '').trim().toLowerCase(),
+          (item.size || '').trim().toLowerCase(),
+        ].join('|');
+        if (!exactGroups[key]) exactGroups[key] = [];
+        exactGroups[key].push(item);
+      });
+
+      const exactDups = Object.values(exactGroups).filter(g => g.length > 1);
+      // Track items in exact groups for exclusion from likely
+      exactDups.forEach(group => {
+        group.forEach(item => exactKeySet.add(item.id));
+      });
+
+      // Likely duplicates: similar name (>= 0.8 similarity) + same category
+      for (let i = 0; i < allItems.length; i++) {
+        if (exactKeySet.has(allItems[i].id)) continue;
+        for (let j = i + 1; j < allItems.length; j++) {
+          if (exactKeySet.has(allItems[j].id)) continue;
+          const a = allItems[i];
+          const b = allItems[j];
+          // Same category
+          if (a.category_id !== b.category_id) continue;
+          const sim = similarity(a.name, b.name);
+          if (sim >= 0.8 && sim < 1) {
+            likelyPairs.push({ items: [a, b], similarity: Math.round(sim * 100) });
+          }
+        }
+      }
+
+      setDupResults({ exact: exactDups, likely: likelyPairs });
+    } catch (err) {
+      showNotification('Error checking duplicates: ' + err.message, 'error');
+    }
+    setDupLoading(false);
+  }
 
   async function openImportModal() {
     setShowImportModal(true);
@@ -4046,6 +4135,54 @@ function ItemsPage() {
   }
 
 
+  async function handleDeleteItem(item) {
+    try {
+      // Check relations before showing confirm dialog
+      const reasons = [];
+
+      // Check stock movements
+      const { count: smCount } = await supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('item_id', item.id);
+      if (smCount > 0) reasons.push(`${smCount} stock movement di bincard`);
+
+      // Check stock balance with quantity > 0
+      const { count: sbCount } = await supabase.from('stock_balance').select('id', { count: 'exact', head: true }).eq('item_id', item.id).gt('quantity', 0);
+      if (sbCount > 0) reasons.push('masih memiliki stock balance');
+
+      // Check room makeup items
+      const { count: rmuCount } = await supabase.from('room_makeup_items').select('id', { count: 'exact', head: true }).eq('item_id', item.id);
+      if (rmuCount > 0) reasons.push(`${rmuCount} room makeup items`);
+
+      // Check room consumption items
+      const { count: rcCount } = await supabase.from('room_consumption_items').select('id', { count: 'exact', head: true }).eq('item_id', item.id);
+      if (rcCount > 0) reasons.push(`${rcCount} room consumption items`);
+
+      if (reasons.length > 0) {
+        showNotification(`Item "${item.name}" (${item.code}) tidak dapat dihapus karena sudah memiliki:\n- ${reasons.join('\n- ')}`, 'error');
+        return;
+      }
+
+      // Check room_items (standard room config) — these will be cleaned up on delete
+      const { count: riCount } = await supabase.from('room_items').select('id', { count: 'exact', head: true }).eq('item_id', item.id);
+
+      // No relations — confirm delete
+      const confirmMsg = riCount > 0
+        ? `Hapus item "${item.name}" (${item.code})?\n\nItem ini memiliki ${riCount} konfigurasi room standar yang juga akan dihapus.`
+        : `Hapus item "${item.name}" (${item.code})?`;
+      if (!(await showConfirm(confirmMsg, { variant: 'danger' }))) return;
+
+      // Clean up related data that can be safely removed
+      await supabase.from('stock_balance').delete().eq('item_id', item.id).eq('quantity', 0);
+      if (riCount > 0) await supabase.from('room_items').delete().eq('item_id', item.id);
+
+      const { error } = await supabase.from('items').delete().eq('id', item.id);
+      if (error) throw error;
+      showNotification(`Item "${item.name}" berhasil dihapus.`);
+      loadData();
+    } catch (err) {
+      showNotification('Error: ' + err.message, 'error');
+    }
+  }
+
   const filtered = items.filter(i => {
     const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase()) ||
       i.code.toLowerCase().includes(search.toLowerCase()) ||
@@ -4070,6 +4207,7 @@ function ItemsPage() {
     <div>
       <PageHeader title={t('items.title')} subtitle={`${items.length} ${t('items.registered')}`}
         actions={<div className="flex gap-2">
+          <Button variant="secondary" onClick={checkDuplicates}><Icons.Search /> Check Duplicate Items</Button>
           <Button variant="secondary" onClick={openImportModal}><Icons.Package /> Import from Hotel</Button>
           <Button onClick={openCreate}><Icons.Plus /> {t('items.addItem')}</Button>
         </div>} />
@@ -4127,6 +4265,7 @@ function ItemsPage() {
           actions={(row) => (
             <>
               <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><Icons.Edit /></button>
+              <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(row); }} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400" title="Delete"><Icons.Trash /></button>
             </>
           )}
         />
@@ -4334,6 +4473,111 @@ function ItemsPage() {
               {importSaving ? 'Importing...' : `Import ${Object.values(importChecked).filter(Boolean).length} Items`}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Check Duplicate Items Modal */}
+      <Modal open={showDupModal} onClose={() => setShowDupModal(false)} title="Check Duplicate Items" size="xl">
+        {dupLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <span className="spinner-sm mr-2"></span>
+            <span className="text-gray-500">Scanning {items.length} items for duplicates...</span>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Summary */}
+            <div className="flex gap-4">
+              <div className={`flex-1 p-4 rounded-lg border ${dupResults.exact.length > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                <div className={`text-2xl font-bold ${dupResults.exact.length > 0 ? 'text-red-600' : 'text-green-600'}`}>{dupResults.exact.length}</div>
+                <div className="text-sm text-gray-600">Exact Duplicates</div>
+              </div>
+              <div className={`flex-1 p-4 rounded-lg border ${dupResults.likely.length > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
+                <div className={`text-2xl font-bold ${dupResults.likely.length > 0 ? 'text-orange-600' : 'text-green-600'}`}>{dupResults.likely.length}</div>
+                <div className="text-sm text-gray-600">Likely Duplicates</div>
+              </div>
+            </div>
+
+            {dupResults.exact.length === 0 && dupResults.likely.length === 0 && (
+              <div className="text-center py-8 text-green-600">
+                <Icons.Check />
+                <p className="mt-2 font-medium">No duplicate items found!</p>
+                <p className="text-sm text-gray-500 mt-1">All {items.length} items are unique.</p>
+              </div>
+            )}
+
+            {/* Exact Duplicates */}
+            {dupResults.exact.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-red-700 mb-3 flex items-center gap-2">
+                  <Icons.AlertTriangle /> Exact Duplicates ({dupResults.exact.length} groups)
+                </h3>
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {dupResults.exact.map((group, gi) => (
+                    <div key={gi} className="border border-red-200 rounded-lg overflow-hidden">
+                      <div className="bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700">
+                        Group {gi + 1} — {group.length} identical items
+                      </div>
+                      <table className="w-full text-sm">
+                        <thead><tr className="bg-gray-50 text-left text-xs text-gray-500">
+                          <th className="px-3 py-1.5">Code</th><th className="px-3 py-1.5">Name</th><th className="px-3 py-1.5">Brand</th><th className="px-3 py-1.5">Size</th><th className="px-3 py-1.5">Category</th><th className="px-3 py-1.5">Unit</th>
+                        </tr></thead>
+                        <tbody>
+                          {group.map(item => (
+                            <tr key={item.id} className="border-t border-gray-100">
+                              <td className="px-3 py-1.5 font-mono text-xs">{item.code}</td>
+                              <td className="px-3 py-1.5 font-medium">{item.name}</td>
+                              <td className="px-3 py-1.5 text-gray-500">{item.brand || '-'}</td>
+                              <td className="px-3 py-1.5 text-gray-500">{item.size || '-'}</td>
+                              <td className="px-3 py-1.5 text-xs text-gray-500">{item.item_categories?.name || '-'}</td>
+                              <td className="px-3 py-1.5 text-xs">{item.units?.abbreviation || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Likely Duplicates */}
+            {dupResults.likely.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-orange-700 mb-3 flex items-center gap-2">
+                  <Icons.AlertTriangle /> Likely Duplicates ({dupResults.likely.length} pairs)
+                </h3>
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {dupResults.likely.map((pair, pi) => (
+                    <div key={pi} className="border border-orange-200 rounded-lg overflow-hidden">
+                      <div className="bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700">
+                        Pair {pi + 1} — {pair.similarity}% similar
+                      </div>
+                      <table className="w-full text-sm">
+                        <thead><tr className="bg-gray-50 text-left text-xs text-gray-500">
+                          <th className="px-3 py-1.5">Code</th><th className="px-3 py-1.5">Name</th><th className="px-3 py-1.5">Brand</th><th className="px-3 py-1.5">Size</th><th className="px-3 py-1.5">Category</th><th className="px-3 py-1.5">Unit</th>
+                        </tr></thead>
+                        <tbody>
+                          {pair.items.map(item => (
+                            <tr key={item.id} className="border-t border-gray-100">
+                              <td className="px-3 py-1.5 font-mono text-xs">{item.code}</td>
+                              <td className="px-3 py-1.5 font-medium">{item.name}</td>
+                              <td className="px-3 py-1.5 text-gray-500">{item.brand || '-'}</td>
+                              <td className="px-3 py-1.5 text-gray-500">{item.size || '-'}</td>
+                              <td className="px-3 py-1.5 text-xs text-gray-500">{item.item_categories?.name || '-'}</td>
+                              <td className="px-3 py-1.5 text-xs">{item.units?.abbreviation || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex justify-end mt-6 pt-4 border-t">
+          <Button variant="secondary" onClick={() => setShowDupModal(false)}>Close</Button>
         </div>
       </Modal>
     </div>
@@ -12274,13 +12518,15 @@ function OpeningBalancePage() {
       });
       setDetails(detMap);
 
-      // Reconstruct room assignments from stock_balance (per room warehouse)
+      // Reconstruct room assignments from OPENING_BALANCE stock_movements only
+      // (NOT from stock_balance, which includes transfers and other documents)
       const roomsList = roomsRes.data || [];
       const roomWhIds = roomsList.map(r => r.warehouse_id).filter(Boolean);
       if (roomWhIds.length > 0) {
-        const { data: roomBalances } = await supabase.from('stock_balance')
+        const { data: obRoomMovements } = await supabase.from('stock_movements')
           .select('item_id, warehouse_id, quantity')
           .eq('organization_id', selectedOrg.id)
+          .eq('reference_type', 'OPENING_BALANCE')
           .in('warehouse_id', roomWhIds)
           .gt('quantity', 0);
 
@@ -12290,7 +12536,7 @@ function OpeningBalancePage() {
 
         // Rebuild roomAssignments: { itemId: { roomId: qty } }
         const rAssign = {};
-        (roomBalances || []).forEach(rb => {
+        (obRoomMovements || []).forEach(rb => {
           const roomId = whToRoom[rb.warehouse_id];
           if (roomId) {
             if (!rAssign[rb.item_id]) rAssign[rb.item_id] = {};
@@ -12420,45 +12666,47 @@ function OpeningBalancePage() {
           const qty = parseFloat(d.quantity) || 0;
           totalQty += qty;
 
-          if (qty > 0 || unitCost > 0) {
-            detailUpserts.push({
-              organization_id: selectedOrg.id,
-              item_id: item.id,
-              status_type: st,
-              quantity: qty,
-              unit_cost: unitCost,
-              updated_at: new Date().toISOString()
-            });
-          }
+          // Always upsert detail (including qty=0) so edits to zero are persisted
+          detailUpserts.push({
+            organization_id: selectedOrg.id,
+            item_id: item.id,
+            status_type: st,
+            quantity: qty,
+            unit_cost: unitCost,
+            updated_at: new Date().toISOString()
+          });
 
-          // For linen: create separate balance per status/warehouse
-          if (isLinen && qty > 0) {
+          // For linen: create separate balance per status/warehouse (including qty=0)
+          if (isLinen) {
             const whType = LINEN_STATUS_WAREHOUSE_MAP[st];
 
             if (st === 'in_use') {
-              // In-use: create balance per room from roomAssignments
-              const itemAssignments = roomAssignments[item.id] || {};
-              for (const [roomId, roomQty] of Object.entries(itemAssignments)) {
-                const rQty = parseFloat(roomQty) || 0;
-                if (rQty <= 0) continue;
-                const room = rooms.find(r => r.id === roomId);
-                if (!room?.warehouse_id) continue;
-                balanceUpserts.push({
-                  organization_id: selectedOrg.id,
-                  department_id: defaultDepartment.id,
-                  item_id: item.id,
-                  warehouse_id: room.warehouse_id,
-                  quantity: rQty,
-                  avg_cost: unitCost,
-                  total_value: rQty * unitCost,
-                  last_movement_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                  _status: st,
-                  _is_room: true
-                });
+              if (qty > 0) {
+                // In-use: create balance per room from roomAssignments
+                const itemAssignments = roomAssignments[item.id] || {};
+                for (const [roomId, roomQty] of Object.entries(itemAssignments)) {
+                  const rQty = parseFloat(roomQty) || 0;
+                  if (rQty <= 0) continue;
+                  const room = rooms.find(r => r.id === roomId);
+                  if (!room?.warehouse_id) continue;
+                  balanceUpserts.push({
+                    organization_id: selectedOrg.id,
+                    department_id: defaultDepartment.id,
+                    item_id: item.id,
+                    warehouse_id: room.warehouse_id,
+                    quantity: rQty,
+                    avg_cost: unitCost,
+                    total_value: rQty * unitCost,
+                    last_movement_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    _status: st,
+                    _is_room: true
+                  });
+                }
               }
+              // When in_use qty=0: old room balances will be zeroed out via _zeroLinenItems below
             } else {
-              // Other statuses: map to specific warehouse type
+              // Other statuses: always upsert to warehouse (including qty=0)
               const wh = getWarehouseByType(whType);
               if (wh) {
                 balanceUpserts.push({
@@ -12478,8 +12726,8 @@ function OpeningBalancePage() {
           }
         }
 
-        // For non-linen: single balance as before
-        if (!isLinen && totalQty > 0) {
+        // For non-linen: single balance — always upsert so qty=0 edits are persisted
+        if (!isLinen) {
           const totalValue = totalQty * unitCost;
           balanceUpserts.push({
             organization_id: selectedOrg.id,
@@ -12514,6 +12762,50 @@ function OpeningBalancePage() {
         const { error } = await supabase.from('opening_balance_details')
           .upsert(detailUpserts, { onConflict: 'organization_id,item_id,status_type' });
         if (error) throw error;
+      }
+
+      // For linen items where all qty became 0: zero out old OB room balances
+      if (isLinen) {
+        const zeroLinenItemIds = catItems
+          .filter(item => {
+            const itemDetails = details[item.id] || {};
+            const totalQ = Object.entries(itemDetails)
+              .filter(([k]) => k !== '_purchase_cost')
+              .reduce((s, [, v]) => s + (parseFloat(v.quantity) || 0), 0);
+            return totalQ === 0;
+          })
+          .map(item => item.id);
+
+        if (zeroLinenItemIds.length > 0) {
+          // Find existing OB movements in room warehouses for these items and zero their balances
+          const roomWhIds = rooms.map(r => r.warehouse_id).filter(Boolean);
+          if (roomWhIds.length > 0) {
+            // Get all warehouses (room + status warehouses) that had OB for these items
+            const { data: oldOBMov } = await supabase.from('stock_movements')
+              .select('item_id, warehouse_id')
+              .eq('organization_id', selectedOrg.id)
+              .eq('reference_type', 'OPENING_BALANCE')
+              .in('item_id', zeroLinenItemIds);
+
+            if (oldOBMov && oldOBMov.length > 0) {
+              // Zero out stock_balance for each old OB item+warehouse combo
+              for (const mov of oldOBMov) {
+                await supabase.from('stock_balance')
+                  .update({ quantity: 0, total_value: 0, updated_at: new Date().toISOString() })
+                  .eq('organization_id', selectedOrg.id)
+                  .eq('item_id', mov.item_id)
+                  .eq('warehouse_id', mov.warehouse_id);
+              }
+            }
+
+            // Delete old OB stock_movements for these zero-qty items
+            await supabase.from('stock_movements')
+              .delete()
+              .eq('organization_id', selectedOrg.id)
+              .eq('reference_type', 'OPENING_BALANCE')
+              .in('item_id', zeroLinenItemIds);
+          }
+        }
       }
 
       // Upsert stock_balance - for linen, use warehouse constraint
@@ -12556,6 +12848,7 @@ function OpeningBalancePage() {
       // Insert/replace stock_movements for opening balance
       if (balanceUpserts.length > 0) {
         const movItemIds = [...new Set(balanceUpserts.map(b => b.item_id))];
+        // Delete old OB movements for all affected items (including those now qty=0)
         await supabase.from('stock_movements')
           .delete()
           .eq('organization_id', selectedOrg.id)
@@ -12564,7 +12857,8 @@ function OpeningBalancePage() {
 
         // Use obDate as created_at so OB always sorts first chronologically
         const obTimestamp = obDate ? new Date(obDate + 'T00:00:00').toISOString() : new Date().toISOString();
-        const movementInserts = balanceUpserts.map(b => ({
+        // Only insert movements for items with qty > 0 (skip zero qty)
+        const movementInserts = balanceUpserts.filter(b => b.quantity > 0).map(b => ({
           organization_id: b.organization_id,
           item_id: b.item_id,
           movement_type: 'IN',
@@ -12580,8 +12874,10 @@ function OpeningBalancePage() {
           created_by: currentUser?.id || null,
           created_at: obTimestamp,
         }));
-        const { error: smErr } = await supabase.from('stock_movements').insert(movementInserts);
-        if (smErr) console.warn('Stock movements warning:', smErr.message);
+        if (movementInserts.length > 0) {
+          const { error: smErr } = await supabase.from('stock_movements').insert(movementInserts);
+          if (smErr) console.warn('Stock movements warning:', smErr.message);
+        }
       }
 
       // FIFO entries (same as before)
@@ -14335,7 +14631,7 @@ function RoomMakeUpPage() {
                                   return (
                                     <tr key={stock.id} className={`${actionColor || 'bg-white'}`}>
                                       <td className="px-3 py-2">
-                                        <p className="font-medium text-gray-900 truncate">{stock.items?.name}</p>
+                                        <p className="font-medium text-gray-900 truncate">{stock.items?.code} - {stock.items?.name}</p>
                                         {stock.items?.brand && <p className="text-xs text-gray-400">{stock.items.brand}</p>}
                                       </td>
                                       <td className="text-center px-2 py-2">
@@ -14425,7 +14721,7 @@ function RoomMakeUpPage() {
                                       className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white min-h-[44px]">
                                       <option value="">-- Select Item --</option>
                                       {selectableItems.map(it => (
-                                        <option key={it.id} value={it.id}>{it.name}{it.brand ? ` (${it.brand})` : ''} - {it.code}</option>
+                                        <option key={it.id} value={it.id}>{it.code} - {it.name}{it.brand ? ` (${it.brand})` : ''}</option>
                                       ))}
                                     </select>
                                     <div className="flex items-center gap-3">
@@ -14443,7 +14739,7 @@ function RoomMakeUpPage() {
                                   </div>
                                 ) : (
                                   <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium">{allItems.find(i => i.id === row.itemId)?.name || '-'}</span>
+                                    <span className="text-sm font-medium">{(() => { const it = allItems.find(i => i.id === row.itemId); return it ? `${it.code} - ${it.name}` : '-'; })()}</span>
                                     <span className="text-sm font-semibold text-blue-700">{row.qty} pcs</span>
                                   </div>
                                 )}
@@ -14511,7 +14807,7 @@ function RoomMakeUpPage() {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white min-h-[40px]">
                             <option value="">-- Select Item --</option>
                             {items.map(it => (
-                              <option key={it.id} value={it.id}>{it.name}{it.brand ? ` (${it.brand})` : ''} - {it.code}</option>
+                              <option key={it.id} value={it.id}>{it.code} - {it.name}{it.brand ? ` (${it.brand})` : ''}</option>
                             ))}
                           </select>
                         </div>
@@ -14532,9 +14828,8 @@ function RoomMakeUpPage() {
                       entry.itemId && entry.qty > 0 ? (
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="font-medium text-sm text-gray-900">{selectedItem?.name || '-'}</p>
+                            <p className="font-medium text-sm text-gray-900">{selectedItem ? `${selectedItem.code} - ${selectedItem.name}` : '-'}</p>
                             {selectedItem?.brand && <p className="text-xs text-gray-400">{selectedItem.brand}</p>}
-                            <p className="text-xs text-gray-400">{selectedItem?.code}</p>
                           </div>
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">{entry.qty}</span>
                         </div>
@@ -14643,6 +14938,1249 @@ function RoomMakeUpPage() {
           </Button>
           {!isView && selectedRoom && (
             <Button onClick={handleSaveDraft} disabled={saving}>
+              {saving ? 'Saving...' : (isEditMode ? 'Update Draft' : 'Save Draft')}
+            </Button>
+          )}
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// ROOM MAKE UP PAGE NEW (Mobile-Friendly Version)
+// ============================================================
+function RoomMakeUpPageNew() {
+  const { t } = useTranslation();
+  const { selectedOrg, showNotification, showConfirm, currentUser } = useApp();
+
+  // List state
+  const [makeups, setMakeups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+
+  // Form state
+  const [showModal, setShowModal] = useState(false);
+  const [viewing, setViewing] = useState(null);
+  const [selectedRoom, setSelectedRoom] = useState('');
+  const [makeupDate, setMakeupDate] = useState(getLocalDateString());
+  const [activeTab, setActiveTab] = useState('linen');
+  const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState('');
+
+  // Master data
+  const [rooms, setRooms] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [allItems, setAllItems] = useState([]);
+
+  // Tab 1: Linen
+  const [linenCategories, setLinenCategories] = useState([]);
+  const [linenRoomStock, setLinenRoomStock] = useState([]);
+  const [linenActions, setLinenActions] = useState({});
+  const [replaceRows, setReplaceRows] = useState({});
+  const [collapsedSections, setCollapsedSections] = useState({});
+  const [userDept, setUserDept] = useState(null);
+
+  // Tab 2: Guest Amenities
+  const [amenityCategories, setAmenityCategories] = useState([]);
+  const [amenityAvailableItems, setAmenityAvailableItems] = useState([]);
+  const [amenityQty, setAmenityQty] = useState({});
+
+  // Tab 3: Activity List
+  const [activityList, setActivityList] = useState([]);
+  const [activityChecks, setActivityChecks] = useState({});
+
+  // Edit mode
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  // ==================== LOAD DATA ====================
+  useEffect(() => { if (selectedOrg) loadAll(); }, [selectedOrg]);
+
+  async function loadAll() {
+    setLoading(true);
+    try {
+      const [muRes, roomRes, whRes, itemRes] = await Promise.all([
+        supabase.from('room_makeups')
+          .select('*, rooms!left(room_number, floor)')
+          .eq('organization_id', selectedOrg.id)
+          .order('created_at', { ascending: false }),
+        supabase.from('rooms').select('id, room_number, floor, warehouse_id, room_types(name)')
+          .eq('organization_id', selectedOrg.id).order('room_number'),
+        supabase.from('warehouses').select('id, code, name, warehouse_type')
+          .eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
+        supabase.from('items').select('id, code, name, brand, category_id, unit_id, default_warehouse_id, item_categories(id, code, name, parent_id), units:unit_id(abbreviation)')
+          .eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
+      ]);
+      setMakeups(muRes.data || []);
+      setRooms(roomRes.data || []);
+      setWarehouses(whRes.data || []);
+      setAllItems(itemRes.data || []);
+
+      if (currentUser?.id) {
+        const { data: userData } = await supabase.from('users')
+          .select('department_id, departments(id, code, name)')
+          .eq('id', currentUser.id).single();
+        if (userData?.departments) setUserDept(userData.departments);
+      }
+    } catch (err) {
+      showNotification('Error loading data: ' + err.message, 'error');
+    }
+    setLoading(false);
+  }
+
+  // ==================== NUMBER GENERATORS ====================
+  async function generateNumber(table, field, prefix) {
+    const code = selectedOrg.code || 'ORG';
+    const pattern = `${prefix}-${code}-%`;
+    const { data } = await supabase.from(table).select(field)
+      .eq('organization_id', selectedOrg.id).like(field, pattern)
+      .order('created_at', { ascending: false }).limit(1);
+    let next = 1;
+    if (data && data.length > 0) {
+      const last = parseInt(data[0][field].split('-').pop()) || 0;
+      next = last + 1;
+    }
+    return `${prefix}-${code}-${String(next).padStart(4, '0')}`;
+  }
+
+  // ==================== ROOM SELECT ====================
+  async function handleRoomSelect(roomId) {
+    setSelectedRoom(roomId);
+    setLinenActions({});
+    setReplaceRows({});
+    setAmenityQty({});
+    setActivityChecks({});
+    setCollapsedSections({});
+
+    if (!roomId) {
+      setLinenCategories([]);
+      setLinenRoomStock([]);
+      setAmenityCategories([]);
+      setAmenityAvailableItems([]);
+      setActivityList([]);
+      return;
+    }
+
+    const room = rooms.find(r => r.id === roomId);
+
+    try {
+      const { data: standards } = await supabase.from('room_category_standards')
+        .select('*, item_categories(id, code, name)')
+        .eq('room_id', roomId).order('sort_order');
+
+      const linenStds = (standards || []).filter(s => s.standard_type === 'linen');
+      const amenityStds = (standards || []).filter(s => s.standard_type === 'guest_amenities');
+
+      setLinenCategories(linenStds.map(s => ({ ...s.item_categories, maxQty: s.quantity || 1 })).filter(c => c.id));
+      setAmenityCategories(amenityStds.map(s => ({ ...s.item_categories, maxQty: s.quantity || 1 })).filter(c => c.id));
+
+      if (room?.warehouse_id) {
+        const { data: roomStock } = await supabase.from('stock_balance')
+          .select('id, item_id, quantity, avg_cost, items(id, code, name, brand, category_id, units:unit_id(abbreviation))')
+          .eq('organization_id', selectedOrg.id)
+          .eq('warehouse_id', room.warehouse_id)
+          .gt('quantity', 0);
+        setLinenRoomStock(roomStock || []);
+      } else {
+        setLinenRoomStock([]);
+      }
+
+      const amenityCatIds = amenityStds.map(s => s.category_id).filter(Boolean);
+      if (amenityCatIds.length > 0) {
+        setAmenityAvailableItems((allItems || []).filter(item => amenityCatIds.includes(item.category_id)));
+      } else {
+        setAmenityAvailableItems([]);
+      }
+
+      const { data: activities } = await supabase.from('room_activity_checklist')
+        .select('*').eq('room_id', roomId).eq('is_active', true).order('sort_order');
+      setActivityList(activities || []);
+
+      const checks = {};
+      (activities || []).forEach(a => { checks[a.id] = { isDone: false, notes: '' }; });
+      setActivityChecks(checks);
+
+      // Mobile: default all sections collapsed except first
+      if (isMobile && linenStds.length > 1) {
+        const collapsed = {};
+        linenStds.forEach((s, idx) => { if (idx > 0) collapsed['linen_' + s.item_categories?.id] = true; });
+        setCollapsedSections(collapsed);
+      }
+
+    } catch (err) {
+      showNotification('Error loading room data: ' + err.message, 'error');
+    }
+  }
+
+  // ==================== FORM OPEN/CLOSE ====================
+  function openNew() {
+    setViewing(null);
+    setIsEditing(false);
+    setSelectedRoom('');
+    setMakeupDate(getLocalDateString());
+    setActiveTab('linen');
+    setLinenActions({});
+    setReplaceRows({});
+    setAmenityQty({});
+    setActivityChecks({});
+    setNotes('');
+    setShowModal(true);
+  }
+
+  async function openView(mu) {
+    setViewing(mu);
+    setIsEditing(false);
+    setSelectedRoom(mu.room_id);
+    setMakeupDate(mu.makeup_date);
+    setNotes(mu.notes || '');
+    setActiveTab('linen');
+    setShowModal(true);
+
+    const room = rooms.find(r => r.id === mu.room_id);
+
+    try {
+      const { data: standards } = await supabase.from('room_category_standards')
+        .select('*, item_categories(id, code, name)')
+        .eq('room_id', mu.room_id).order('sort_order');
+      const linenStds = (standards || []).filter(s => s.standard_type === 'linen');
+      const amenityStds = (standards || []).filter(s => s.standard_type === 'guest_amenities');
+      setLinenCategories(linenStds.map(s => ({ ...s.item_categories, maxQty: s.quantity || 1 })).filter(c => c.id));
+      setAmenityCategories(amenityStds.map(s => ({ ...s.item_categories, maxQty: s.quantity || 1 })).filter(c => c.id));
+
+      if (room?.warehouse_id) {
+        const { data: roomStock } = await supabase.from('stock_balance')
+          .select('id, item_id, quantity, avg_cost, items(id, code, name, brand, category_id, units:unit_id(abbreviation))')
+          .eq('organization_id', selectedOrg.id).eq('warehouse_id', room.warehouse_id).gt('quantity', 0);
+        setLinenRoomStock(roomStock || []);
+      }
+
+      const amenityCatIds = amenityStds.map(s => s.category_id).filter(Boolean);
+      setAmenityAvailableItems((allItems || []).filter(item => amenityCatIds.includes(item.category_id)));
+
+      const { data: muItems } = await supabase.from('room_makeup_items')
+        .select('*, items(id, code, name, brand, units:unit_id(abbreviation))').eq('makeup_id', mu.id);
+      const actions = {};
+      const rRows = {};
+      (muItems || []).forEach(mi => {
+        if (mi.type === 'replace') {
+          const item = allItems.find(i => i.id === mi.item_id);
+          const catId = item?.category_id || 'unknown';
+          if (!rRows[catId]) rRows[catId] = [];
+          rRows[catId].push({ id: mi.id || Date.now() + Math.random(), itemId: mi.item_id, qty: mi.actual_qty });
+        } else if (mi.type === 'move_to_dirty') {
+          actions[mi.item_id] = { action: 'MOVE_TO_DIRTY', qty: mi.actual_qty };
+        } else if (mi.type === 'damage') {
+          actions[mi.item_id] = { action: 'DAMAGE', qty: mi.actual_qty };
+        } else if (mi.type === 'lost') {
+          actions[mi.item_id] = { action: 'LOST', qty: mi.actual_qty };
+        }
+      });
+      setLinenActions(actions);
+      setReplaceRows(rRows);
+
+      const { data: consumption } = await supabase.from('room_consumption')
+        .select('*, room_consumption_items(*)').eq('makeup_id', mu.id);
+      const aqty = {};
+      if (consumption && consumption.length > 0) {
+        (consumption[0].room_consumption_items || []).forEach(ci => {
+          const catId = ci.category_id || (allItems.find(i => i.id === ci.item_id)?.category_id);
+          if (catId) aqty[catId] = { itemId: ci.item_id, qty: ci.quantity };
+        });
+      }
+      setAmenityQty(aqty);
+
+      const { data: actHistory } = await supabase.from('rmu_activity_history')
+        .select('*, rmu_activity_history_items(*)').eq('makeup_id', mu.id);
+      const { data: activities } = await supabase.from('room_activity_checklist')
+        .select('*').eq('room_id', mu.room_id).eq('is_active', true).order('sort_order');
+      setActivityList(activities || []);
+
+      const checks = {};
+      if (actHistory && actHistory.length > 0) {
+        (actHistory[0].rmu_activity_history_items || []).forEach(hi => {
+          const matchAct = (activities || []).find(a => a.name === hi.activity_name);
+          if (matchAct) checks[matchAct.id] = { isDone: hi.is_done, notes: hi.notes || '' };
+        });
+      }
+      (activities || []).forEach(a => { if (!checks[a.id]) checks[a.id] = { isDone: false, notes: '' }; });
+      setActivityChecks(checks);
+
+      // Mobile: collapse all except first
+      if (isMobile) {
+        const collapsed = {};
+        linenStds.forEach((s, idx) => { if (idx > 0) collapsed['linen_' + s.item_categories?.id] = true; });
+        setCollapsedSections(collapsed);
+      }
+    } catch (err) {
+      showNotification('Error loading makeup details: ' + err.message, 'error');
+    }
+  }
+
+  // ==================== OPEN EDIT (Draft) ====================
+  async function openEdit(mu) {
+    setViewing(mu);
+    setIsEditing(true);
+    setSelectedRoom(mu.room_id);
+    setMakeupDate(mu.makeup_date);
+    setNotes(mu.notes || '');
+    setActiveTab('linen');
+    setShowModal(true);
+
+    const room = rooms.find(r => r.id === mu.room_id);
+    try {
+      const { data: standards } = await supabase.from('room_category_standards')
+        .select('*, item_categories(id, code, name)')
+        .eq('room_id', mu.room_id).order('sort_order');
+      const linenStds = (standards || []).filter(s => s.standard_type === 'linen');
+      const amenityStds = (standards || []).filter(s => s.standard_type === 'guest_amenities');
+      setLinenCategories(linenStds.map(s => ({ ...s.item_categories, maxQty: s.quantity || 1 })).filter(c => c.id));
+      setAmenityCategories(amenityStds.map(s => ({ ...s.item_categories, maxQty: s.quantity || 1 })).filter(c => c.id));
+
+      if (room?.warehouse_id) {
+        const { data: roomStock } = await supabase.from('stock_balance')
+          .select('id, item_id, quantity, avg_cost, items(id, code, name, brand, category_id, units:unit_id(abbreviation))')
+          .eq('organization_id', selectedOrg.id).eq('warehouse_id', room.warehouse_id).gt('quantity', 0);
+        setLinenRoomStock(roomStock || []);
+      }
+
+      const amenityCatIds = amenityStds.map(s => s.category_id).filter(Boolean);
+      setAmenityAvailableItems((allItems || []).filter(item => amenityCatIds.includes(item.category_id)));
+
+      const { data: muItems } = await supabase.from('room_makeup_items')
+        .select('*, items(id, code, name, brand, units:unit_id(abbreviation))').eq('makeup_id', mu.id);
+      const actions = {};
+      const rRows = {};
+      (muItems || []).forEach(mi => {
+        if (mi.type === 'replace') {
+          const item = allItems.find(i => i.id === mi.item_id);
+          const catId = item?.category_id || 'unknown';
+          if (!rRows[catId]) rRows[catId] = [];
+          rRows[catId].push({ id: Date.now() + Math.random(), itemId: mi.item_id, qty: mi.actual_qty });
+        } else if (mi.type === 'move_to_dirty') {
+          actions[mi.item_id] = { action: 'MOVE_TO_DIRTY', qty: mi.actual_qty };
+        } else if (mi.type === 'damage') {
+          actions[mi.item_id] = { action: 'DAMAGE', qty: mi.actual_qty };
+        } else if (mi.type === 'lost') {
+          actions[mi.item_id] = { action: 'LOST', qty: mi.actual_qty };
+        }
+      });
+      setLinenActions(actions);
+      setReplaceRows(rRows);
+
+      const { data: consumption } = await supabase.from('room_consumption')
+        .select('*, room_consumption_items(*)').eq('makeup_id', mu.id);
+      const aqty = {};
+      if (consumption && consumption.length > 0) {
+        (consumption[0].room_consumption_items || []).forEach(ci => {
+          const catId = ci.category_id || (allItems.find(i => i.id === ci.item_id)?.category_id);
+          if (catId) aqty[catId] = { itemId: ci.item_id, qty: ci.quantity };
+        });
+      }
+      setAmenityQty(aqty);
+
+      const { data: actHistory } = await supabase.from('rmu_activity_history')
+        .select('*, rmu_activity_history_items(*)').eq('makeup_id', mu.id);
+      const { data: activities } = await supabase.from('room_activity_checklist')
+        .select('*').eq('room_id', mu.room_id).eq('is_active', true).order('sort_order');
+      setActivityList(activities || []);
+
+      const checks = {};
+      if (actHistory && actHistory.length > 0) {
+        (actHistory[0].rmu_activity_history_items || []).forEach(hi => {
+          const matchAct = (activities || []).find(a => a.name === hi.activity_name);
+          if (matchAct) checks[matchAct.id] = { isDone: hi.is_done, notes: hi.notes || '' };
+        });
+      }
+      (activities || []).forEach(a => { if (!checks[a.id]) checks[a.id] = { isDone: false, notes: '' }; });
+      setActivityChecks(checks);
+
+      // Mobile: collapse all except first
+      if (isMobile) {
+        const collapsed = {};
+        linenStds.forEach((s, idx) => { if (idx > 0) collapsed['linen_' + s.item_categories?.id] = true; });
+        setCollapsedSections(collapsed);
+      }
+    } catch (err) {
+      showNotification('Error loading makeup for edit: ' + err.message, 'error');
+    }
+  }
+
+  // ==================== SAVE DRAFT ====================
+  async function handleSaveDraft() {
+    if (!selectedRoom) { showNotification('Please select a room', 'error'); return; }
+
+    const invalidActs = activityList.filter(a => {
+      const check = activityChecks[a.id];
+      return !check?.isDone && !(check?.notes || '').trim();
+    });
+    if (invalidActs.length > 0) {
+      showNotification('Please provide notes for incomplete activities: ' + invalidActs.map(a => a.name).join(', '), 'error');
+      setActiveTab('activity');
+      return;
+    }
+
+    const hasLinenActions = Object.values(linenActions).some(a => a.qty > 0);
+    const hasReplaceRows = Object.values(replaceRows).some(rows => rows.some(r => r.itemId && r.qty > 0));
+    const hasAmenities = Object.values(amenityQty).some(a => a.itemId && a.qty > 0);
+    const hasActivities = activityList.length > 0;
+
+    if (!hasLinenActions && !hasReplaceRows && !hasAmenities && !hasActivities) {
+      showNotification('No actions to save', 'error');
+      return;
+    }
+
+    const lockCheck = await checkPeriodLock(selectedOrg.id, makeupDate);
+    if (lockCheck.locked) {
+      showNotification('Period is locked (' + lockCheck.month + '/' + lockCheck.year + ')', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const room = rooms.find(r => r.id === selectedRoom);
+      const hkStore = warehouses.find(w => w.warehouse_type === 'store' && w.code === 'HK') || warehouses.find(w => w.warehouse_type === 'store' && w.name?.toLowerCase().includes('housekeeping'));
+
+      let muId;
+      let makeupNumber;
+
+      if (isEditing && viewing) {
+        muId = viewing.id;
+        makeupNumber = viewing.makeup_number;
+        const { error: upErr } = await supabase.from('room_makeups').update({ notes, makeup_date: makeupDate }).eq('id', muId);
+        if (upErr) throw upErr;
+        await supabase.from('room_makeup_items').delete().eq('makeup_id', muId);
+        const { data: oldCon } = await supabase.from('room_consumption').select('id').eq('makeup_id', muId);
+        if (oldCon && oldCon.length > 0) {
+          for (const con of oldCon) { await supabase.from('room_consumption_items').delete().eq('consumption_id', con.id); }
+          await supabase.from('room_consumption').delete().eq('makeup_id', muId);
+        }
+        const { data: oldAh } = await supabase.from('rmu_activity_history').select('id').eq('makeup_id', muId);
+        if (oldAh && oldAh.length > 0) {
+          for (const ah of oldAh) { await supabase.from('rmu_activity_history_items').delete().eq('history_id', ah.id); }
+          await supabase.from('rmu_activity_history').delete().eq('makeup_id', muId);
+        }
+      } else {
+        makeupNumber = await generateNumber('room_makeups', 'makeup_number', 'MU');
+        const { data: mu, error: muErr } = await supabase.from('room_makeups').insert({
+          organization_id: selectedOrg.id, room_id: selectedRoom, makeup_number: makeupNumber,
+          makeup_date: makeupDate, status: 'DRAFT', notes,
+        }).select().single();
+        if (muErr) throw muErr;
+        muId = mu.id;
+      }
+
+      // SAVE LINEN ITEMS
+      const linenMuItems = [];
+      for (const [catId, rows] of Object.entries(replaceRows)) {
+        for (const row of rows) {
+          if (!row.itemId || row.qty <= 0) continue;
+          const stockItem = linenRoomStock.find(s => s.item_id === row.itemId);
+          linenMuItems.push({ makeup_id: muId, item_id: row.itemId, type: 'replace', default_qty: stockItem?.quantity || 0, actual_qty: parseFloat(row.qty), dirty_qty: 0, warehouse_id: hkStore?.id, notes: 'Replace - HK Store to Room' });
+        }
+      }
+      for (const [itemId, actionData] of Object.entries(linenActions)) {
+        if (!actionData || actionData.qty <= 0) continue;
+        const stockItem = linenRoomStock.find(s => s.item_id === itemId);
+        const typeMap = { MOVE_TO_DIRTY: 'move_to_dirty', DAMAGE: 'damage', LOST: 'lost' };
+        linenMuItems.push({
+          makeup_id: muId, item_id: itemId, type: typeMap[actionData.action] || actionData.action.toLowerCase(),
+          default_qty: stockItem?.quantity || 0, actual_qty: parseFloat(actionData.qty),
+          dirty_qty: actionData.action === 'MOVE_TO_DIRTY' ? parseFloat(actionData.qty) : 0,
+          warehouse_id: room?.warehouse_id, notes: actionData.action,
+        });
+      }
+      if (linenMuItems.length > 0) {
+        const { error: miErr } = await supabase.from('room_makeup_items').insert(linenMuItems);
+        if (miErr) throw miErr;
+      }
+
+      // SAVE GUEST AMENITIES
+      const amenityEntries = Object.entries(amenityQty).filter(([_, a]) => a.itemId && a.qty > 0);
+      if (amenityEntries.length > 0 && hkStore) {
+        const consumptionNumber = await generateNumber('room_consumption', 'consumption_number', 'RC');
+        const { data: conDoc, error: conErr } = await supabase.from('room_consumption').insert({
+          organization_id: selectedOrg.id, room_id: selectedRoom, makeup_id: muId,
+          consumption_number: consumptionNumber, consumption_date: makeupDate,
+          warehouse_id: hkStore.id, notes: '', created_by: currentUser?.id,
+        }).select().single();
+        if (conErr) throw conErr;
+        for (const [catId, entry] of amenityEntries) {
+          const itemId = entry.itemId;
+          const numQty = parseFloat(entry.qty);
+          const item = allItems.find(i => i.id === itemId);
+          const itemWarehouseId = item?.default_warehouse_id || hkStore.id;
+          const { data: sb } = await supabase.from('stock_balance')
+            .select('avg_cost').eq('item_id', itemId).eq('warehouse_id', itemWarehouseId)
+            .eq('organization_id', selectedOrg.id).maybeSingle();
+          const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
+          await supabase.from('room_consumption_items').insert({
+            consumption_id: conDoc.id, item_id: itemId, category_id: item?.category_id,
+            quantity: numQty, unit_cost: unitCost, total_cost: unitCost * numQty, notes: '',
+          });
+        }
+      }
+
+      // SAVE ACTIVITY CHECKLIST
+      if (activityList.length > 0) {
+        const historyNumber = await generateNumber('rmu_activity_history', 'history_number', 'AH');
+        const { data: ahDoc, error: ahErr } = await supabase.from('rmu_activity_history').insert({
+          organization_id: selectedOrg.id, room_id: selectedRoom, makeup_id: muId,
+          history_number: historyNumber, history_date: makeupDate, created_by: currentUser?.id,
+        }).select().single();
+        if (ahErr) throw ahErr;
+        const ahItems = activityList.map((act, i) => {
+          const check = activityChecks[act.id] || { isDone: false, notes: '' };
+          return { history_id: ahDoc.id, activity_name: act.name, is_done: check.isDone, notes: check.notes || '', sort_order: act.sort_order || i };
+        });
+        const { error: ahiErr } = await supabase.from('rmu_activity_history_items').insert(ahItems);
+        if (ahiErr) throw ahiErr;
+      }
+
+      showNotification(isEditing ? 'Draft updated successfully!' : 'Room makeup saved as draft!');
+      setShowModal(false);
+      setIsEditing(false);
+      loadAll();
+    } catch (err) {
+      showNotification('Error: ' + err.message, 'error');
+    }
+    setSaving(false);
+  }
+
+  // ==================== CONFIRM MAKEUP ====================
+  async function handleConfirmMakeup(mu) {
+    if (saving) { showNotification('Proses confirm sedang berjalan, harap tunggu...', 'error'); return; }
+    if (mu.status === 'CONFIRMED') { showNotification('Room Makeup ini sudah dikonfirmasi.', 'error'); return; }
+    if (mu.status === 'PROCESSING') { showNotification('Room Makeup sedang diproses, harap tunggu hingga selesai.', 'error'); return; }
+
+    if (!(await showConfirm('PERHATIAN!\n\nProses confirm akan memproses stock movements.\nJANGAN REFRESH atau TUTUP HALAMAN sampai selesai.\n\nLanjutkan confirm?', { variant: 'warning' }))) return;
+
+    const lockCheck = await checkPeriodLock(selectedOrg.id, mu.makeup_date);
+    if (lockCheck.locked) { showNotification('Period is locked (' + lockCheck.month + '/' + lockCheck.year + ')', 'error'); return; }
+
+    setSaving(true);
+    try {
+      const { data: freshMu } = await supabase.from('room_makeups').select('status').eq('id', mu.id).single();
+      if (freshMu?.status === 'CONFIRMED') { showNotification('Sudah dikonfirmasi.', 'error'); setSaving(false); loadAll(); return; }
+      if (freshMu?.status === 'PROCESSING') { showNotification('Sedang diproses oleh sesi lain.', 'error'); setSaving(false); loadAll(); return; }
+
+      const { error: procErr } = await supabase.from('room_makeups').update({ status: 'PROCESSING' }).eq('id', mu.id).eq('status', 'DRAFT');
+      if (procErr) throw procErr;
+
+      const room = rooms.find(r => r.id === mu.room_id);
+      const hkStore = warehouses.find(w => w.warehouse_type === 'store' && w.code === 'HK') || warehouses.find(w => w.warehouse_type === 'store' && w.name?.toLowerCase().includes('housekeeping'));
+      const dirtyWh = warehouses.find(w => w.warehouse_type === 'dirty');
+      const damageWh = warehouses.find(w => w.warehouse_type === 'damage');
+      const dept = currentUser?.department_id || null;
+      const makeupNumber = mu.makeup_number;
+
+      let roomStock = [];
+      if (room?.warehouse_id) {
+        const { data: rs } = await supabase.from('stock_balance')
+          .select('id, item_id, quantity, avg_cost, items(id, code, name, brand, category_id)')
+          .eq('organization_id', selectedOrg.id).eq('warehouse_id', room.warehouse_id);
+        roomStock = rs || [];
+      }
+
+      const { data: muItems } = await supabase.from('room_makeup_items').select('*').eq('makeup_id', mu.id);
+      for (const mi of (muItems || [])) {
+        const numQty = parseFloat(mi.actual_qty);
+        if (numQty <= 0) continue;
+        if (mi.type === 'replace') {
+          const linenItem = allItems.find(i => i.id === mi.item_id);
+          const linenOutWh = linenItem?.default_warehouse_id || hkStore?.id;
+          if (linenOutWh) await doStockMovement(mi.item_id, 'OUT', numQty, linenOutWh, 'MAKEUP-LINEN REPLACE', makeupNumber, 'OUT from Store', dept, mu.id);
+          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'IN', numQty, room.warehouse_id, 'MAKEUP-LINEN REPLACE', makeupNumber, 'IN to Room ' + (room.room_number || ''), dept, mu.id);
+        } else if (mi.type === 'move_to_dirty') {
+          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'MAKEUP-DIRTY', makeupNumber, 'OUT from Room', dept, mu.id);
+          if (dirtyWh) await doStockMovement(mi.item_id, 'IN', numQty, dirtyWh.id, 'MAKEUP-DIRTY', makeupNumber, 'IN to Dirty', dept, mu.id);
+        } else if (mi.type === 'damage') {
+          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'DAMAGE', makeupNumber, 'Damage OUT', dept, mu.id);
+          if (damageWh) await doStockMovement(mi.item_id, 'IN', numQty, damageWh.id, 'DAMAGE', makeupNumber, 'Damage IN', dept, mu.id);
+        } else if (mi.type === 'lost') {
+          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'ITEM_LOST', makeupNumber, 'Lost OUT', dept, mu.id);
+          const stockItem = roomStock.find(s => s.item_id === mi.item_id);
+          const unitCost = stockItem ? parseFloat(stockItem.avg_cost) || 0 : 0;
+          const lostNumber = await generateNumber('item_lost_in_room', 'lost_number', 'IL');
+          const { data: lostDoc, error: lostErr } = await supabase.from('item_lost_in_room').insert({
+            organization_id: selectedOrg.id, room_id: mu.room_id, makeup_id: mu.id,
+            lost_number: lostNumber, lost_date: mu.makeup_date, notes: 'Item lost during room makeup',
+            created_by: currentUser?.id, created_at: new Date().toISOString(),
+          }).select().single();
+          if (lostErr) throw lostErr;
+          await supabase.from('item_lost_in_room_details').insert({
+            lost_id: lostDoc.id, item_id: mi.item_id, quantity: numQty,
+            unit_cost: unitCost, total_cost: unitCost * numQty, notes: '',
+          });
+          showNotification('Laporkan ke Front Office: ' + (stockItem?.items?.name || 'Item') + ' hilang ' + numQty + ' pcs!', 'error');
+        }
+      }
+
+      const { data: consumption } = await supabase.from('room_consumption')
+        .select('*, room_consumption_items(*)').eq('makeup_id', mu.id);
+      if (consumption && consumption.length > 0) {
+        const con = consumption[0];
+        for (const ci of (con.room_consumption_items || [])) {
+          const item = allItems.find(i => i.id === ci.item_id);
+          const itemWarehouseId = item?.default_warehouse_id || hkStore?.id;
+          if (itemWarehouseId) await doStockMovement(ci.item_id, 'OUT', parseFloat(ci.quantity), itemWarehouseId, 'CONSUMPTION', con.consumption_number, 'Guest amenity consumed', dept, con.id);
+        }
+      }
+
+      const { error: statusErr } = await supabase.from('room_makeups').update({ status: 'CONFIRMED' }).eq('id', mu.id);
+      if (statusErr) throw statusErr;
+      showNotification('Room makeup confirmed! Stock movements processed.');
+      loadAll();
+    } catch (err) {
+      try { await supabase.from('room_makeups').update({ status: 'DRAFT' }).eq('id', mu.id).eq('status', 'PROCESSING'); } catch (e) {}
+      showNotification('Error: ' + err.message + '. Status dikembalikan ke DRAFT.', 'error');
+      loadAll();
+    }
+    setSaving(false);
+  }
+
+  // ==================== STOCK MOVEMENT HELPER ====================
+  async function doStockMovement(itemId, movementType, qty, warehouseId, refType, refNumber, notesText, dept, refId) {
+    const { data: sb } = await supabase.from('stock_balance')
+      .select('id, quantity, avg_cost, total_value')
+      .eq('organization_id', selectedOrg.id).eq('item_id', itemId).eq('warehouse_id', warehouseId).maybeSingle();
+    const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
+    const totalCost = qty * unitCost;
+    const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty);
+    await supabase.from('stock_movements').insert({
+      organization_id: selectedOrg.id, item_id: itemId, movement_type: movementType, quantity: qty,
+      unit_cost: unitCost, total_cost: totalCost, balance_after: balAfter, reference_type: refType,
+      reference_number: refNumber, reference_id: refId || null, warehouse_id: warehouseId,
+      notes: notesText, created_by: currentUser?.id, department_id: dept || null,
+    });
+    if (movementType === 'OUT') {
+      if (sb) {
+        const newQty = Math.max(0, parseFloat(sb.quantity) - qty);
+        await supabase.from('stock_balance').update({ quantity: newQty, total_value: newQty * unitCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', sb.id);
+      }
+    } else {
+      if (sb) {
+        const newQty = parseFloat(sb.quantity) + qty;
+        await supabase.from('stock_balance').update({ quantity: newQty, avg_cost: unitCost, total_value: newQty * unitCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', sb.id);
+      } else {
+        await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, department_id: dept || null, item_id: itemId, warehouse_id: warehouseId, quantity: qty, avg_cost: unitCost, total_value: qty * unitCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      }
+    }
+  }
+
+  function toggleSection(key) { setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] })); }
+
+  const filtered = makeups.filter(mu => {
+    if (filterStatus && mu.status !== filterStatus) return false;
+    if (search) { const s = search.toLowerCase(); return mu.makeup_number?.toLowerCase().includes(s) || mu.rooms?.room_number?.toLowerCase().includes(s); }
+    return true;
+  });
+
+  const isView = !!viewing && !isEditing;
+  const isEditMode = !!viewing && isEditing;
+  const room = rooms.find(r => r.id === selectedRoom);
+
+  function getLinenItemsForCategory(catId) { return linenRoomStock.filter(s => s.items && s.items.category_id === catId); }
+  function getAmenityItemsForCategory(catId) { return amenityAvailableItems.filter(i => i.category_id === catId); }
+
+  const replaceRowCount = Object.values(replaceRows).reduce((sum, rows) => sum + rows.filter(r => r.itemId && r.qty > 0).length, 0);
+  const linenActionCount = Object.values(linenActions).filter(a => a.qty > 0).length + replaceRowCount;
+  const amenityCount = Object.values(amenityQty).filter(a => a.itemId && a.qty > 0).length;
+  const activityDoneCount = Object.values(activityChecks).filter(c => c.isDone).length;
+
+  // ==================== STEPPER COMPONENT ====================
+  function QtyStepper({ value, min, max, onChange, color = 'gray' }) {
+    const colors = {
+      gray: { btn: 'bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-700', ring: 'border-gray-300' },
+      blue: { btn: 'bg-blue-100 hover:bg-blue-200 active:bg-blue-300 text-blue-700', ring: 'border-blue-300' },
+      green: { btn: 'bg-green-100 hover:bg-green-200 active:bg-green-300 text-green-700', ring: 'border-green-300' },
+    };
+    const c = colors[color] || colors.gray;
+    return (
+      <div className="inline-flex items-center border rounded-lg overflow-hidden" style={{borderColor: color === 'blue' ? '#93c5fd' : color === 'green' ? '#86efac' : '#d1d5db'}}>
+        <button type="button" onClick={() => onChange(Math.max(min, value - 1))}
+          className={`w-11 h-11 flex items-center justify-center text-lg font-bold ${c.btn} transition-colors select-none`}>−</button>
+        <span className="w-12 h-11 flex items-center justify-center text-sm font-bold bg-white border-l border-r" style={{borderColor: color === 'blue' ? '#93c5fd' : color === 'green' ? '#86efac' : '#d1d5db'}}>{value}</span>
+        <button type="button" onClick={() => onChange(Math.min(max, value + 1))}
+          className={`w-11 h-11 flex items-center justify-center text-lg font-bold ${c.btn} transition-colors select-none`}>+</button>
+      </div>
+    );
+  }
+
+  // ==================== ACTION BUTTON GROUP (Mobile) ====================
+  function ActionButtonGroup({ value, onChange }) {
+    const actions = [
+      { id: 'MOVE_TO_DIRTY', label: 'Dirty', color: 'bg-yellow-100 border-yellow-400 text-yellow-800', activeColor: 'bg-yellow-400 border-yellow-500 text-yellow-900' },
+      { id: 'DAMAGE', label: 'Damage', color: 'bg-orange-100 border-orange-400 text-orange-800', activeColor: 'bg-orange-400 border-orange-500 text-orange-900' },
+      { id: 'LOST', label: 'Lost', color: 'bg-red-100 border-red-400 text-red-800', activeColor: 'bg-red-400 border-red-500 text-red-900' },
+    ];
+    return (
+      <div className="flex gap-1.5">
+        {actions.map(a => (
+          <button key={a.id} type="button"
+            onClick={() => onChange(value === a.id ? '' : a.id)}
+            className={`flex-1 px-2 py-2 rounded-lg border-2 text-xs font-bold transition-all min-h-[40px] ${value === a.id ? a.activeColor + ' shadow-sm' : a.color + ' opacity-60'}`}>
+            {a.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  // ==================== RENDER ====================
+  return (
+    <div>
+      <PageHeader title="Room Make Up (New)" subtitle={`Housekeeping - ${selectedOrg?.name || ''}`}
+        actions={<Button onClick={openNew}>+ New Makeup</Button>} />
+
+      {/* LIST VIEW */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="p-4 border-b border-gray-100 flex flex-wrap gap-3 items-center">
+          <input type="text" placeholder="Search room or number..." value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">{t('common.all')}</option>
+            <option value="DRAFT">{t('status.draft')}</option>
+            <option value="CONFIRMED">Confirmed</option>
+          </select>
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden sm:block">
+          <DataTable loading={loading} columns={[
+            { header: 'Number', render: r => <button onClick={() => r.status === 'DRAFT' ? openEdit(r) : openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.makeup_number}</button> },
+            { header: t('common.date'), render: r => formatDateSys(r.makeup_date) },
+            { header: 'Room', render: r => <span className="font-medium">{r.rooms?.room_number || '-'}</span> },
+            { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
+            { header: t('common.actions'), render: r => (
+              <div className="flex gap-1">
+                {r.status === 'DRAFT' ? (
+                  <React.Fragment>
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(r)} disabled={saving}>Edit</Button>
+                    <Button size="sm" variant="ghost" className="text-green-600 hover:text-green-800" onClick={() => handleConfirmMakeup(r)} disabled={saving}>
+                      {saving ? <span className="flex items-center gap-1"><span className="spinner-sm"></span>Processing...</span> : 'Confirm'}
+                    </Button>
+                  </React.Fragment>
+                ) : r.status === 'PROCESSING' ? (
+                  <span className="flex items-center gap-1 text-xs text-orange-600 font-medium"><span className="spinner-sm"></span>Sedang diproses...</span>
+                ) : (
+                  <Button size="sm" variant="ghost" onClick={() => openView(r)}>View</Button>
+                )}
+              </div>
+            )},
+          ]} data={filtered} />
+        </div>
+
+        {/* Mobile card list */}
+        <div className="sm:hidden">
+          {loading ? <div className="p-6 text-center text-gray-400"><div className="spinner mx-auto mb-2"></div></div> :
+           filtered.length === 0 ? <div className="p-6 text-center text-gray-400 text-sm">No data</div> :
+           <div className="divide-y divide-gray-100">
+            {filtered.map(r => (
+              <div key={r.id} className="p-4 hover:bg-gray-50 active:bg-gray-100 cursor-pointer" onClick={() => r.status === 'DRAFT' ? openEdit(r) : openView(r)}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-semibold text-primary-700 text-sm">{r.makeup_number}</span>
+                  <StatusBadge status={r.status} />
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Room: <span className="font-medium text-gray-700">{r.rooms?.room_number || '-'}</span></span>
+                  <span>{formatDateSys(r.makeup_date)}</span>
+                </div>
+                {r.status === 'DRAFT' && (
+                  <div className="flex gap-2 mt-2">
+                    <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); openEdit(r); }} disabled={saving}>Edit</Button>
+                    <Button size="sm" variant="ghost" className="text-green-600" onClick={e => { e.stopPropagation(); handleConfirmMakeup(r); }} disabled={saving}>
+                      {saving ? 'Processing...' : 'Confirm'}
+                    </Button>
+                  </div>
+                )}
+                {r.status === 'PROCESSING' && (
+                  <div className="flex items-center gap-1 mt-2 text-xs text-orange-600 font-medium">
+                    <span className="spinner-sm"></span>Sedang diproses...
+                  </div>
+                )}
+              </div>
+            ))}
+           </div>}
+        </div>
+      </div>
+
+      {/* ==================== FORM MODAL ==================== */}
+      <Modal open={showModal} onClose={() => { setShowModal(false); setIsEditing(false); }} title={isView ? `${viewing?.makeup_number}` : (isEditMode ? `Edit ${viewing?.makeup_number}` : 'New Room Makeup')} size="xl">
+        <div className="pb-20 sm:pb-0">
+        {/* Room, Date, User & Department */}
+        {!isView && (
+          <div className="mb-4 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Room" required>
+                {isEditMode ? (
+                  <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                    {rooms.find(r => r.id === selectedRoom)?.room_number || '-'} {rooms.find(r => r.id === selectedRoom)?.room_types?.name ? `(${rooms.find(r => r.id === selectedRoom).room_types.name})` : ''}
+                  </div>
+                ) : (
+                  <Select value={selectedRoom} onChange={e => handleRoomSelect(e.target.value)}>
+                    <option value="">Select Room</option>
+                    {rooms.map(r => <option key={r.id} value={r.id}>{r.room_number} {r.room_types?.name ? `(${r.room_types.name})` : ''}</option>)}
+                  </Select>
+                )}
+              </FormField>
+              <FormField label="Date">
+                <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                  {formatDateSys(makeupDate)}
+                </div>
+              </FormField>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="User">
+                <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                  {currentUser?.full_name || currentUser?.username || '-'}
+                </div>
+              </FormField>
+              <FormField label="Department">
+                <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                  {userDept ? `${userDept.code} - ${userDept.name}` : '-'}
+                </div>
+              </FormField>
+            </div>
+            <div className="mt-2 p-3 bg-red-50 border border-red-300 rounded-lg">
+              <p className="text-red-600 text-xs font-semibold leading-relaxed">Dilarang menggunakan akun pengguna lain saat Make Up Room, dan dilarang memberikan username dan password login kepada pengguna lain, pelanggar akan dikenakan sanksi dari management.</p>
+            </div>
+          </div>
+        )}
+        {isView && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 bg-gray-50 rounded-lg p-3 text-sm">
+            <div><p className="text-xs text-gray-500">Date</p><p className="font-medium">{formatDateSys(viewing?.makeup_date)}</p></div>
+            <div><p className="text-xs text-gray-500">Room</p><p className="font-medium">{viewing?.rooms?.room_number}</p></div>
+            <div><p className="text-xs text-gray-500">User</p><p className="font-medium">{currentUser?.full_name || '-'}</p></div>
+            <div><p className="text-xs text-gray-500">Status</p><StatusBadge status={viewing?.status} /></div>
+          </div>
+        )}
+
+        {/* TAB NAVIGATION - sticky, snap scroll */}
+        {selectedRoom && (
+          <div className="sticky top-0 z-10 bg-white -mx-6 px-6 border-b border-gray-200 mb-4">
+            <div className="flex overflow-x-auto no-scrollbar" style={{scrollSnapType: 'x mandatory'}}>
+              {[
+                { id: 'linen', label: 'Linen', color: 'blue', count: linenActionCount },
+                { id: 'amenities', label: 'Amenities', color: 'green', count: amenityCount },
+                { id: 'activity', label: 'Activity', color: 'purple', count: `${activityDoneCount}/${activityList.length}` },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  style={{scrollSnapAlign: 'start'}}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors min-h-[48px] ${
+                    activeTab === tab.id
+                      ? `border-${tab.color}-500 text-${tab.color}-700`
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}>
+                  {tab.label}
+                  {tab.count !== 0 && tab.count !== '0/0' && (
+                    <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold ${
+                      activeTab === tab.id ? `bg-${tab.color}-100 text-${tab.color}-700` : 'bg-gray-100 text-gray-600'
+                    }`}>{tab.count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ========== TAB 1: LINEN ========== */}
+        {selectedRoom && activeTab === 'linen' && (
+          <div className="space-y-4">
+            {linenCategories.length === 0 && (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                No linen categories assigned to this room.<br/>
+                <span className="text-xs">Configure in Room Master - Category Standards</span>
+              </div>
+            )}
+            {linenCategories.map(cat => {
+              const roomItems = getLinenItemsForCategory(cat.id);
+              const catReplaceRows = replaceRows[cat.id] || [];
+              const selectableItems = allItems.filter(i => i.category_id === cat.id);
+              const isCollapsed = collapsedSections['linen_' + cat.id];
+              return (
+                <div key={cat.id} className="bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+                  <button onClick={() => toggleSection('linen_' + cat.id)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors min-h-[48px]">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                      <span className="font-semibold text-blue-900 text-sm">{cat.name}</span>
+                      <span className="text-xs text-blue-600">({roomItems.length} in room)</span>
+                    </div>
+                    <span className="text-blue-400 text-lg">{isCollapsed ? '+' : '−'}</span>
+                  </button>
+                  {!isCollapsed && (
+                    <div>
+                      {/* Current Room Stock */}
+                      {roomItems.length > 0 && (
+                        <div className="px-4 pt-3 pb-1">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Current in Room</p>
+
+                          {/* DESKTOP TABLE */}
+                          <div className="hidden sm:block overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-gray-100 text-gray-600">
+                                  <th className="text-left px-3 py-2 font-semibold text-xs">Item Name</th>
+                                  <th className="text-center px-2 py-2 font-semibold text-xs w-16">Qty</th>
+                                  {!isView && <th className="text-center px-2 py-2 font-semibold text-xs w-40">Action</th>}
+                                  {!isView && <th className="text-center px-2 py-2 font-semibold text-xs w-24">Action Qty</th>}
+                                  {isView && <th className="text-center px-2 py-2 font-semibold text-xs w-32">Action</th>}
+                                  {isView && <th className="text-center px-2 py-2 font-semibold text-xs w-20">Qty</th>}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {roomItems.map(stock => {
+                                  const action = linenActions[stock.item_id];
+                                  const actionColor = action?.action === 'MOVE_TO_DIRTY' ? 'text-yellow-700 bg-yellow-50' :
+                                    action?.action === 'DAMAGE' ? 'text-orange-700 bg-orange-50' :
+                                    action?.action === 'LOST' ? 'text-red-700 bg-red-50' : '';
+                                  return (
+                                    <tr key={stock.id} className={`${actionColor || 'bg-white'}`}>
+                                      <td className="px-3 py-2">
+                                        <p className="font-medium text-gray-900 truncate">{stock.items?.code} - {stock.items?.name}</p>
+                                        {stock.items?.brand && <p className="text-xs text-gray-400">{stock.items.brand}</p>}
+                                      </td>
+                                      <td className="text-center px-2 py-2">
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{formatNumber(stock.quantity)}</span>
+                                      </td>
+                                      {!isView && (
+                                        <td className="text-center px-2 py-2">
+                                          <select value={action?.action || ''}
+                                            onChange={e => {
+                                              const val = e.target.value;
+                                              if (!val) { const na = { ...linenActions }; delete na[stock.item_id]; setLinenActions(na); }
+                                              else { setLinenActions(prev => ({ ...prev, [stock.item_id]: { action: val, qty: prev[stock.item_id]?.qty || 1 } })); }
+                                            }}
+                                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white min-h-[36px]">
+                                            <option value="">-- No Action --</option>
+                                            <option value="MOVE_TO_DIRTY">Move to Dirty</option>
+                                            <option value="DAMAGE">Damage</option>
+                                            <option value="LOST">Lost</option>
+                                          </select>
+                                        </td>
+                                      )}
+                                      {!isView && (
+                                        <td className="text-center px-2 py-2">
+                                          {action ? (
+                                            <input type="number" min="1" max={stock.quantity} value={action.qty}
+                                              onChange={e => setLinenActions(prev => ({ ...prev, [stock.item_id]: { ...prev[stock.item_id], qty: Math.min(parseInt(e.target.value) || 0, stock.quantity) } }))}
+                                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs text-center font-semibold min-h-[36px]" />
+                                          ) : <span className="text-gray-300 text-xs">-</span>}
+                                        </td>
+                                      )}
+                                      {isView && <td className="text-center px-2 py-2 text-xs font-semibold">{action ? (action.action === 'MOVE_TO_DIRTY' ? 'Move to Dirty' : action.action === 'DAMAGE' ? 'Damage' : 'Lost') : '-'}</td>}
+                                      {isView && <td className="text-center px-2 py-2 text-xs font-semibold">{action?.qty || '-'}</td>}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* MOBILE CARD LIST */}
+                          <div className="sm:hidden space-y-2">
+                            {roomItems.map(stock => {
+                              const action = linenActions[stock.item_id];
+                              const borderColor = action?.action === 'MOVE_TO_DIRTY' ? 'border-yellow-400 bg-yellow-50' :
+                                action?.action === 'DAMAGE' ? 'border-orange-400 bg-orange-50' :
+                                action?.action === 'LOST' ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white';
+                              return (
+                                <div key={stock.id} className={`border-2 rounded-xl p-3 space-y-2.5 ${borderColor}`}>
+                                  {/* Item name + qty */}
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1 min-w-0 mr-2">
+                                      <p className="font-semibold text-gray-900 text-sm leading-tight">{stock.items?.code} - {stock.items?.name}</p>
+                                      {stock.items?.brand && <p className="text-xs text-gray-400 mt-0.5">{stock.items.brand}</p>}
+                                    </div>
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 shrink-0">
+                                      {formatNumber(stock.quantity)}
+                                    </span>
+                                  </div>
+                                  {/* Action buttons */}
+                                  {!isView && (
+                                    <ActionButtonGroup
+                                      value={action?.action || ''}
+                                      onChange={val => {
+                                        if (!val) { const na = { ...linenActions }; delete na[stock.item_id]; setLinenActions(na); }
+                                        else { setLinenActions(prev => ({ ...prev, [stock.item_id]: { action: val, qty: prev[stock.item_id]?.qty || 1 } })); }
+                                      }}
+                                    />
+                                  )}
+                                  {/* Qty stepper (only if action selected) */}
+                                  {!isView && action && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-medium text-gray-600">Action Qty:</span>
+                                      <QtyStepper value={action.qty} min={1} max={stock.quantity}
+                                        onChange={val => setLinenActions(prev => ({ ...prev, [stock.item_id]: { ...prev[stock.item_id], qty: val } }))}
+                                      />
+                                    </div>
+                                  )}
+                                  {/* View mode */}
+                                  {isView && action && (
+                                    <div className="flex items-center justify-between text-sm">
+                                      <span className="font-medium">{action.action === 'MOVE_TO_DIRTY' ? 'Move to Dirty' : action.action === 'DAMAGE' ? 'Damage' : 'Lost'}</span>
+                                      <span className="font-bold">{action.qty}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {roomItems.length === 0 && (
+                        <div className="px-4 pt-3 pb-1">
+                          <p className="text-xs text-gray-400 italic">No items in room for this category</p>
+                        </div>
+                      )}
+
+                      {/* REPLACE SECTION */}
+                      <div className="px-4 pt-3 pb-4 border-t border-blue-100 mt-2">
+                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Replacement (Item Move to this Room)</p>
+                        <p className="text-xs text-blue-500 mb-3">Housekeeping Store - Room</p>
+                        {catReplaceRows.length > 0 && (
+                          <div className="space-y-2 mb-3">
+                            {catReplaceRows.map((row, idx) => (
+                              <div key={row.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-xs font-semibold text-blue-600 shrink-0">#{idx + 1}</span>
+                                  {!isView && (
+                                    <button onClick={() => setReplaceRows(prev => ({ ...prev, [cat.id]: (prev[cat.id] || []).filter(r => r.id !== row.id) }))}
+                                      className="ml-auto text-red-400 hover:text-red-600 text-lg font-bold min-w-[32px] min-h-[32px] flex items-center justify-center">x</button>
+                                  )}
+                                </div>
+                                {!isView ? (
+                                  <div className="space-y-2">
+                                    <select value={row.itemId}
+                                      onChange={e => setReplaceRows(prev => ({ ...prev, [cat.id]: (prev[cat.id] || []).map(r => r.id === row.id ? { ...r, itemId: e.target.value } : r) }))}
+                                      className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white min-h-[44px]">
+                                      <option value="">-- Select Item --</option>
+                                      {selectableItems.map(it => (
+                                        <option key={it.id} value={it.id}>{it.code} - {it.name}{it.brand ? ` (${it.brand})` : ''}</option>
+                                      ))}
+                                    </select>
+                                    <div className="flex items-center justify-between">
+                                      <label className="text-xs font-medium text-blue-700 shrink-0">Qty:</label>
+                                      <QtyStepper value={row.qty} min={1} max={cat.maxQty || 999} color="blue"
+                                        onChange={val => setReplaceRows(prev => ({ ...prev, [cat.id]: (prev[cat.id] || []).map(r => r.id === row.id ? { ...r, qty: val } : r) }))}
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium">{(() => { const it = allItems.find(i => i.id === row.itemId); return it ? `${it.code} - ${it.name}` : '-'; })()}</span>
+                                    <span className="text-sm font-semibold text-blue-700">{row.qty} pcs</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!isView && (
+                          <button onClick={() => setReplaceRows(prev => ({ ...prev, [cat.id]: [...(prev[cat.id] || []), { id: Date.now() + Math.random(), itemId: '', qty: 1 }] }))}
+                            className="w-full py-2.5 px-4 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 text-sm font-semibold hover:bg-blue-50 hover:border-blue-400 transition-colors min-h-[44px]">
+                            + Add Replace Item
+                          </button>
+                        )}
+                        {catReplaceRows.length === 0 && isView && (
+                          <p className="text-xs text-gray-400 italic">No replacements</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ========== TAB 2: GUEST AMENITIES ========== */}
+        {selectedRoom && activeTab === 'amenities' && (
+          <div className="space-y-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+              Silahkan input Amenities yang anda Refill di kamar ini.
+            </div>
+            {amenityCategories.length === 0 && (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                No amenity categories assigned to this room.<br/>
+                <span className="text-xs">Configure in Room Master - Category Standards</span>
+              </div>
+            )}
+            {amenityCategories.map(cat => {
+              const items = getAmenityItemsForCategory(cat.id);
+              const entry = amenityQty[cat.id] || { itemId: '', qty: 0 };
+              const selectedItem = entry.itemId ? allItems.find(i => i.id === entry.itemId) : null;
+              return (
+                <div key={cat.id} className="bg-white border border-green-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-4 py-3 bg-green-50 border-b border-green-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                      <span className="font-semibold text-green-900 text-sm">{cat.name}</span>
+                      <span className="text-xs text-green-600">(max {cat.maxQty || 1})</span>
+                      {entry.itemId && entry.qty > 0 && (
+                        <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                          {entry.qty} selected
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    {!isView ? (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">Select Item</label>
+                          <select value={entry.itemId}
+                            onChange={e => setAmenityQty(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], itemId: e.target.value, qty: e.target.value ? (prev[cat.id]?.qty || 1) : 0 } }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white min-h-[40px]">
+                            <option value="">-- Select Item --</option>
+                            {items.map(it => (
+                              <option key={it.id} value={it.id}>{it.code} - {it.name}{it.brand ? ` (${it.brand})` : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {entry.itemId && (
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-medium text-gray-600 shrink-0">Qty:</label>
+                            <QtyStepper value={entry.qty || 1} min={1} max={cat.maxQty || 1} color="green"
+                              onChange={val => setAmenityQty(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], qty: val } }))}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      entry.itemId && entry.qty > 0 ? (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-sm text-gray-900">{selectedItem ? `${selectedItem.code} - ${selectedItem.name}` : '-'}</p>
+                            {selectedItem?.brand && <p className="text-xs text-gray-400">{selectedItem.brand}</p>}
+                          </div>
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">{entry.qty}</span>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">No amenity selected for this category</p>
+                      )
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {amenityCount > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+                <strong>{amenityCount}</strong> amenity categories filled. Stock will be deducted on confirm.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========== TAB 3: ACTIVITY LIST ========== */}
+        {selectedRoom && activeTab === 'activity' && (
+          <div className="space-y-3">
+            {activityList.length === 0 && (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                No activities assigned to this room.<br/>
+                <span className="text-xs">Configure in Room Master - Activity Checklist</span>
+              </div>
+            )}
+            {activityList.map(act => {
+              const check = activityChecks[act.id] || { isDone: false, notes: '' };
+              return (
+                <div key={act.id} className={`bg-white border rounded-xl p-4 transition-colors ${
+                  check.isDone ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    {!isView ? (
+                      <button onClick={() => setActivityChecks(prev => ({ ...prev, [act.id]: { ...prev[act.id], isDone: !check.isDone } }))}
+                        className={`shrink-0 w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-colors mt-0.5 ${
+                          check.isDone ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-green-400'
+                        }`}>
+                        {check.isDone && <span className="text-sm font-bold">✓</span>}
+                      </button>
+                    ) : (
+                      <div className={`shrink-0 w-8 h-8 rounded-lg border-2 flex items-center justify-center mt-0.5 ${
+                        check.isDone ? 'bg-green-500 border-green-500 text-white' : 'bg-red-50 border-red-300 text-red-500'
+                      }`}>
+                        <span className="text-sm font-bold">{check.isDone ? '✓' : '✕'}</span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-medium text-sm ${check.isDone ? 'text-green-800 line-through' : 'text-gray-900'}`}>{act.name}</p>
+                      {act.description && <p className="text-xs text-gray-500 mt-0.5">{act.description}</p>}
+                    </div>
+                  </div>
+                  {!check.isDone && (
+                    <div className="mt-3 ml-11">
+                      <textarea
+                        value={check.notes}
+                        onChange={e => setActivityChecks(prev => ({ ...prev, [act.id]: { ...prev[act.id], notes: e.target.value } }))}
+                        placeholder="Required: explain why not done..."
+                        rows="2"
+                        disabled={isView}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm min-h-[60px] ${
+                          !check.notes?.trim() && !isView ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                        }`} />
+                      {!check.notes?.trim() && !isView && (
+                        <p className="text-xs text-red-500 mt-1">Notes required for incomplete activities</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {activityList.length > 0 && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm text-purple-800">
+                <strong>{activityDoneCount}</strong> of <strong>{activityList.length}</strong> activities completed.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Notes */}
+        {selectedRoom && !isView && (
+          <div className="mt-4">
+            <FormField label="Notes">
+              <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="Additional notes..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm min-h-[60px]" rows="2" />
+            </FormField>
+          </div>
+        )}
+        {isView && viewing?.notes && (
+          <div className="mt-4 bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500 mb-1">Notes</p>
+            <p className="text-sm">{viewing.notes}</p>
+          </div>
+        )}
+
+        {/* DESKTOP ACTIONS (non-sticky) */}
+        <div className="hidden sm:flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+          <Button variant="secondary" onClick={() => { setShowModal(false); setIsEditing(false); }}>
+            {isView ? 'Close' : 'Cancel'}
+          </Button>
+          {!isView && selectedRoom && (
+            <Button onClick={handleSaveDraft} disabled={saving}>
+              {saving ? 'Saving...' : (isEditMode ? 'Update Draft' : 'Save Draft')}
+            </Button>
+          )}
+        </div>
+        </div>
+
+        {/* MOBILE STICKY FOOTER */}
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-3 z-50 shadow-lg" style={{backdropFilter: 'blur(8px)', background: 'rgba(255,255,255,0.95)'}}>
+          <Button variant="secondary" className="flex-1" onClick={() => { setShowModal(false); setIsEditing(false); }}>
+            {isView ? 'Close' : 'Cancel'}
+          </Button>
+          {!isView && selectedRoom && (
+            <Button className="flex-1" onClick={handleSaveDraft} disabled={saving}>
               {saving ? 'Saving...' : (isEditMode ? 'Update Draft' : 'Save Draft')}
             </Button>
           )}
