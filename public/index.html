@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.1',
+    'app.version': 'v1.0.2',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
 
@@ -1066,7 +1066,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.1',
+    'app.version': 'v1.0.2',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
 
@@ -2673,7 +2673,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.1 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.2 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -13903,7 +13903,8 @@ function RoomMakeUpPage() {
     if (mu.status === 'CONFIRMED') { showNotification('Room Makeup ini sudah dikonfirmasi.', 'error'); return; }
     if (mu.status === 'PROCESSING') { showNotification('Room Makeup sedang diproses, harap tunggu hingga selesai. Jangan refresh halaman.', 'error'); return; }
 
-    if (!(await showConfirm('Confirm Room Makeup? This will create stock movements and update inventory.\n\nPROSES INI MEMBUTUHKAN WAKTU, JANGAN REFRESH HALAMAN sampai selesai.', { variant: 'warning' }))) return;
+    // Step 1: Warning — jangan refresh
+    if (!(await showConfirm('⚠️ PERHATIAN!\n\nProses confirm akan memproses stock movements untuk seluruh item.\nProses ini membutuhkan waktu, JANGAN REFRESH atau TUTUP HALAMAN sampai selesai.\n\nLanjutkan confirm?', { variant: 'warning' }))) return;
 
     const lockCheck = await checkPeriodLock(selectedOrg.id, mu.makeup_date);
     if (lockCheck.locked) {
