@@ -2094,15 +2094,23 @@ function App() {
 
   // Refresh role permissions from DB when app loads with saved user
   async function refreshRolePermissions(user) {
-    if (!user?.role?.id) return;
+    if (!user?.id) return;
     try {
-      const { data: role } = await supabase.from('roles').select('permissions').eq('id', user.role.id).single();
-      if (role && role.permissions !== undefined) {
-        const updated = { ...user, role: { ...user.role, permissions: role.permissions } };
-        setCurrentUser(updated);
-        localStorage.setItem('inventory_user', JSON.stringify(updated));
+      // Refresh role permissions
+      if (user.role?.id) {
+        const { data: role } = await supabase.from('roles').select('permissions').eq('id', user.role.id).single();
+        if (role && role.permissions !== undefined) {
+          user = { ...user, role: { ...user.role, permissions: role.permissions } };
+        }
       }
-    } catch (err) { console.error('Error refreshing permissions:', err); }
+      // Always refresh department_id and department info from DB
+      const { data: dbUser } = await supabase.from('users').select('department_id, departments:department_id(id, code, name)').eq('id', user.id).single();
+      if (dbUser) {
+        user = { ...user, department_id: dbUser.department_id || null, department: dbUser.departments || null };
+      }
+      setCurrentUser(user);
+      localStorage.setItem('inventory_user', JSON.stringify(user));
+    } catch (err) { console.error('Error refreshing user data:', err); }
   }
 
   useEffect(() => {
@@ -2120,7 +2128,7 @@ function App() {
     const defaultCheck = 'default_' + password;
     const hashedPassword = await hashPassword(password);
 
-    const { data: user, error } = await supabase.from('users').select('*, roles:role_id(id, code, name, permissions)').eq('username', username).eq('is_active', true).single();
+    const { data: user, error } = await supabase.from('users').select('*, roles:role_id(id, code, name, permissions), departments:department_id(id, code, name)').eq('username', username).eq('is_active', true).single();
     if (error || !user) return false;
 
     // Check password: either default format or hashed
@@ -2133,7 +2141,7 @@ function App() {
     const { data: accessData } = await supabase.from('user_hotel_access').select('organization_id').eq('user_id', user.id);
     user.hotel_access = (accessData || []).map(a => a.organization_id);
 
-    const userData = { id: user.id, username: user.username, full_name: user.full_name, role: { ...user.roles, permissions: user.roles?.permissions || null }, must_change_password: user.must_change_password, hotel_access: user.hotel_access, organization_id: user.organization_id };
+    const userData = { id: user.id, username: user.username, full_name: user.full_name, role: { ...user.roles, permissions: user.roles?.permissions || null }, must_change_password: user.must_change_password, hotel_access: user.hotel_access, organization_id: user.organization_id, department_id: user.department_id || null, department: user.departments || null };
     setCurrentUser(userData);
     localStorage.setItem('inventory_user', JSON.stringify(userData));
     if (user.must_change_password) setShowForceChangePassword(true);
@@ -6723,12 +6731,45 @@ function StockBalancePage() {
           const tz = window.__systemSettings?.timezone || 'Asia/Bangkok';
           return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(utcStr));
         }
-        // Running balance
+        // Identify transfer-like pairs and merge
+        const bcIsTransferLike = (refType) => ['TRANSFER', 'MAKEUP-LINEN REPLACE', 'MAKEUP-DIRTY', 'DAMAGE'].includes(refType);
+        const bcTransferPairs = {};
+        bincardMovements.forEach(m => {
+          if (bcIsTransferLike(m.reference_type)) {
+            const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
+            if (!bcTransferPairs[key]) bcTransferPairs[key] = {};
+            if (m.movement_type === 'OUT') bcTransferPairs[key].out = m;
+            else if (m.movement_type === 'IN') bcTransferPairs[key].in = m;
+          }
+        });
+        const bcSkipIds = new Set();
+        Object.values(bcTransferPairs).forEach(pair => {
+          if (pair.out && pair.in) bcSkipIds.add(pair.in.id);
+        });
+        const bcMerged = [];
+        bincardMovements.forEach(m => {
+          if (bcSkipIds.has(m.id)) return;
+          if (bcIsTransferLike(m.reference_type)) {
+            const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
+            const pair = bcTransferPairs[key] || {};
+            const transferQty = pair.out ? (pair.out.quantity || 0) : (m.quantity || 0);
+            bcMerged.push({ ...m, _is_transfer: true, _transfer_qty: transferQty,
+              _from_wh: pair.out ? pair.out.warehouse_id : m.warehouse_id,
+              _to_wh: pair.in ? pair.in.warehouse_id : m.warehouse_id,
+            });
+          } else {
+            bcMerged.push({ ...m, _is_transfer: false, _transfer_qty: 0 });
+          }
+        });
+        // Running balance — transfers don't affect balance
         const balanceMap = {};
-        const withBalance = bincardMovements.map(m => {
+        const withBalance = bcMerged.map(m => {
           const key = m.item_id || '';
           if (!(key in balanceMap)) balanceMap[key] = { qty: 0, avg_cost: 0 };
           const b = balanceMap[key];
+          if (m._is_transfer) {
+            return { ...m, _bal: b.qty, _avg: b.avg_cost, _val: b.qty * b.avg_cost };
+          }
           const qty = m.quantity || 0;
           const unitCost = m.unit_cost || 0;
           if (m.movement_type === 'IN') {
@@ -6749,8 +6790,8 @@ function StockBalancePage() {
           if (bcDateRange.to && ld > bcDateRange.to) return false;
           return true;
         });
-        const bcTotalIn = bcFiltered.filter(m => m.movement_type === 'IN').reduce((s, m) => s + (m.quantity || 0), 0);
-        const bcTotalOut = bcFiltered.filter(m => m.movement_type === 'OUT').reduce((s, m) => s + (m.quantity || 0), 0);
+        const bcTotalIn = bcFiltered.filter(m => m.movement_type === 'IN' && !m._is_transfer).reduce((s, m) => s + (m.quantity || 0), 0);
+        const bcTotalOut = bcFiltered.filter(m => m.movement_type === 'OUT' && !m._is_transfer).reduce((s, m) => s + (m.quantity || 0), 0);
         // Beginning = balance of last row before filtered range
         const bcBeginning = (() => {
           if (!bcDateRange.from) return 0;
@@ -6822,7 +6863,8 @@ function StockBalancePage() {
                       <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">Warehouse</th>
                       <th className="px-1.5 py-1 text-center font-semibold text-gray-600 uppercase">Type</th>
                       <th className="px-1.5 py-1 text-center font-semibold text-gray-600 uppercase">Unit</th>
-                      <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Qty</th>
+                      <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Transfer Qty</th>
+                      <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">IN/OUT Qty</th>
                       <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Cost</th>
                       <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Balance</th>
                       <th className="px-1.5 py-1 text-right font-semibold text-gray-600 uppercase">Avg Cost</th>
@@ -6830,7 +6872,6 @@ function StockBalancePage() {
                       <th className="px-1.5 py-1 text-center font-semibold text-gray-600 uppercase">Dept</th>
                       <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">User</th>
                       <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">Ref</th>
-                      <th className="px-1.5 py-1 text-left font-semibold text-gray-600 uppercase">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6841,11 +6882,12 @@ function StockBalancePage() {
                     ) : bcFiltered.map((r, idx) => (
                       <tr key={r.id || idx} className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="px-1.5 py-0.5 whitespace-nowrap text-gray-600">{formatDateSys(r.created_at, { includeTime: true })}</td>
-                        <td className="px-1.5 py-0.5 whitespace-nowrap text-gray-600">{bcGetWhName(r.warehouse_id)}</td>
-                        <td className="px-1.5 py-0.5 text-center"><Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'blue'}>{r.movement_type}</Badge></td>
+                        <td className="px-1.5 py-0.5 whitespace-nowrap">{r._is_transfer ? <span className="text-gray-600">{bcGetWhName(r._from_wh)} → {bcGetWhName(r._to_wh)}</span> : r.movement_type === 'IN' && r.reference_type === 'OPENING_BALANCE' ? <span className="font-bold text-blue-600">Opening Balance</span> : r.movement_type === 'IN' && r.reference_type === 'GR' ? <span className="font-bold text-green-600">Purchase Received</span> : r.movement_type === 'IN' && r.reference_type === 'DIRECT_PURCHASE' ? <span className="font-bold text-green-600">Direct Purchased</span> : r.movement_type === 'OUT' && r.reference_type === 'USAGE' ? <span className="font-bold text-red-600">Single Item Usage</span> : r.movement_type === 'OUT' && r.reference_type === 'WRITEOFF' ? <span className="font-bold text-red-600">Write Off</span> : r.movement_type === 'OUT' && (r.reference_type === 'DEPLETED' || r.reference_type === 'CONSUMPTION') ? <span className="font-bold text-red-600">Makeup Consumption</span> : <span className="text-gray-600">{bcGetWhName(r.warehouse_id)}</span>}</td>
+                        <td className="px-1.5 py-0.5 text-center">{r._is_transfer ? <Badge color="blue">TRANSFER</Badge> : <Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'blue'}>{r.movement_type}</Badge>}</td>
                         <td className="px-1.5 py-0.5 text-center text-gray-500">{r.items?.units?.abbreviation || '-'}</td>
-                        <td className={'px-1.5 py-0.5 text-right font-semibold ' + (r.movement_type==='IN'?'text-green-600':'text-red-600')}>{r.movement_type==='IN'?'+':'-'}{formatNumber(r.quantity)}</td>
-                        <td className="px-1.5 py-0.5 text-right text-gray-600">{formatCurrency(r.unit_cost)}</td>
+                        <td className={'px-1.5 py-0.5 text-right font-semibold ' + (r._is_transfer ? 'text-blue-600' : 'text-gray-400')}>{r._is_transfer ? formatNumber(r._transfer_qty) : '0'}</td>
+                        <td className={'px-1.5 py-0.5 text-right font-semibold ' + (r._is_transfer ? 'text-gray-400' : r.movement_type==='IN' ? 'text-green-600' : 'text-red-600')}>{r._is_transfer ? '0' : (r.movement_type==='IN'?'+':'-') + formatNumber(r.quantity)}</td>
+                        <td className="px-1.5 py-0.5 text-right text-gray-600">{formatCurrency(r._is_transfer && !r.unit_cost ? r._avg : r.unit_cost)}</td>
                         <td className="px-1.5 py-0.5 text-right font-semibold text-gray-800">{formatNumber(r._bal)}</td>
                         <td className="px-1.5 py-0.5 text-right text-gray-600">{formatCurrency(r._avg)}</td>
                         <td className="px-1.5 py-0.5 text-right text-gray-600">{formatCurrency(r._val)}</td>
@@ -6859,7 +6901,6 @@ function StockBalancePage() {
                           ) : '-'}{' '}
                           <span className="text-gray-400">{r.reference_type || ''}</span>
                         </td>
-                        <td className="px-1.5 py-0.5 text-gray-500 max-w-[150px] truncate" title={r.notes || ''}>{r.notes || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -6985,7 +7026,65 @@ function BinCardPage() {
     // For safety, cap at 10000 (still very fast)
     query = query.limit(10000);
     const { data } = await query;
-    setMovements(data || []);
+
+    // Resolve from/to warehouse by finding counterpart movements
+    // Each movement is paired with its counterpart (opposite direction, same ref+item, closest created_at)
+    const movs = data || [];
+    const refNumbers = [...new Set(movs.filter(m => m.reference_number).map(m => m.reference_number))];
+    let allCounterparts = []; // all movements sharing same reference_numbers
+    if (refNumbers.length > 0) {
+      for (let i = 0; i < refNumbers.length; i += 50) {
+        const batch = refNumbers.slice(i, i + 50);
+        const { data: counterparts } = await supabase.from('stock_movements')
+          .select('id, reference_number, item_id, warehouse_id, movement_type, created_at')
+          .eq('organization_id', selectedOrg.id)
+          .in('reference_number', batch);
+        allCounterparts = allCounterparts.concat(counterparts || []);
+      }
+    }
+    // Build lookup: reference_number|item_id -> array of movements
+    const refItemMap = {};
+    allCounterparts.forEach(c => {
+      const key = c.reference_number + '|' + c.item_id;
+      if (!refItemMap[key]) refItemMap[key] = [];
+      refItemMap[key].push(c);
+    });
+    // Enrich each movement with _from_warehouse_id and _to_warehouse_id
+    // Logic: for OUT movement, from=self warehouse, to=nearest IN counterpart's warehouse
+    //        for IN movement, to=self warehouse, from=nearest OUT counterpart's warehouse
+    movs.forEach(m => {
+      if (!m.reference_number) {
+        m._from_warehouse_id = null;
+        m._to_warehouse_id = null;
+        return;
+      }
+      const key = m.reference_number + '|' + m.item_id;
+      const siblings = refItemMap[key] || [];
+      const mTime = new Date(m.created_at).getTime();
+      if (m.movement_type === 'OUT') {
+        m._from_warehouse_id = m.warehouse_id; // FROM = this warehouse (stock leaves here)
+        // Find closest IN counterpart by created_at
+        const inSiblings = siblings.filter(s => s.movement_type === 'IN' && s.id !== m.id);
+        if (inSiblings.length > 0) {
+          inSiblings.sort((a, b) => Math.abs(new Date(a.created_at).getTime() - mTime) - Math.abs(new Date(b.created_at).getTime() - mTime));
+          m._to_warehouse_id = inSiblings[0].warehouse_id; // TO = where the paired IN goes
+        } else {
+          m._to_warehouse_id = null; // No counterpart (e.g. WRITEOFF, USAGE — stock disappears)
+        }
+      } else if (m.movement_type === 'IN') {
+        m._to_warehouse_id = m.warehouse_id; // TO = this warehouse (stock arrives here)
+        // Find closest OUT counterpart by created_at
+        const outSiblings = siblings.filter(s => s.movement_type === 'OUT' && s.id !== m.id);
+        if (outSiblings.length > 0) {
+          outSiblings.sort((a, b) => Math.abs(new Date(a.created_at).getTime() - mTime) - Math.abs(new Date(b.created_at).getTime() - mTime));
+          m._from_warehouse_id = outSiblings[0].warehouse_id; // FROM = where the paired OUT was
+        } else {
+          m._from_warehouse_id = null; // No counterpart (e.g. OB, GR — stock appears)
+        }
+      }
+    });
+
+    setMovements(movs);
     setLoading(false);
   }
 
@@ -7017,12 +7116,84 @@ function BinCardPage() {
   // Step 1: Calculate running balance AND running avg_cost from ALL movements (sorted ascending)
   // Single-item Bin Card: key = item_id only, running balance is cumulative across all warehouses
   // OB should have earliest created_at so it sorts first, then all other movements accumulate on top
+  // Helper: reference types that create paired OUT+IN movements (treated as transfers)
+  const isTransferLike = (refType) => ['TRANSFER', 'MAKEUP-LINEN REPLACE', 'MAKEUP-DIRTY', 'DAMAGE'].includes(refType);
+
+  // Helper: Doc Type chip color mapping
+  const getDocTypeChip = (refType) => {
+    const rt = (refType || '').toUpperCase();
+    const map = {
+      'OPENING_BALANCE': { label: 'Opening Balance', bg: 'bg-gray-100', text: 'text-gray-700' },
+      'GR': { label: 'Goods Received', bg: 'bg-emerald-100', text: 'text-emerald-700' },
+      'DIRECT_PURCHASE': { label: 'Direct Purchase', bg: 'bg-teal-100', text: 'text-teal-700' },
+      'WRITEOFF': { label: 'Write Off', bg: 'bg-red-100', text: 'text-red-700' },
+      'USAGE': { label: 'Single Item Usage', bg: 'bg-orange-100', text: 'text-orange-700' },
+      'TRANSFER': { label: 'Transfer', bg: 'bg-blue-100', text: 'text-blue-700' },
+      'LAUNDRY_SEND': { label: 'Laundry Send', bg: 'bg-indigo-100', text: 'text-indigo-700' },
+      'LAUNDRY_RECEIVE': { label: 'Laundry Receive', bg: 'bg-violet-100', text: 'text-violet-700' },
+      'MAKEUP-LINEN REPLACE': { label: 'Makeup Linen Replace', bg: 'bg-pink-100', text: 'text-pink-700' },
+      'MAKEUP-DIRTY': { label: 'Makeup Linen Dirty', bg: 'bg-rose-100', text: 'text-rose-700' },
+      'DAMAGE': { label: 'Damage', bg: 'bg-red-100', text: 'text-red-700' },
+      'ITEM_LOST': { label: 'Item Lost', bg: 'bg-red-100', text: 'text-red-800' },
+      'DEPLETED': { label: 'Makeup Consumption', bg: 'bg-lime-100', text: 'text-lime-700' },
+      'CONSUMPTION': { label: 'Makeup Consumption', bg: 'bg-lime-100', text: 'text-lime-700' },
+      'REPLACEMENT': { label: 'Replacement', bg: 'bg-cyan-100', text: 'text-cyan-700' },
+      'LOST_BREAKAGE': { label: 'Lost & Breakage', bg: 'bg-red-100', text: 'text-red-700' },
+      'MAKEUP': { label: 'Makeup', bg: 'bg-pink-100', text: 'text-pink-700' },
+    };
+    const chip = map[rt];
+    if (chip) return chip;
+    // Fallback: use the reference_type text directly
+    return { label: rt.replace(/_/g, ' '), bg: 'bg-gray-100', text: 'text-gray-600' };
+  };
+
   const movementsWithBalance = React.useMemo(() => {
+    // Step A: Identify transfer-like pairs (same reference_number + item_id + reference_type, one OUT + one IN)
+    const transferPairs = {}; // key -> { out: movement, in: movement }
+    movements.forEach(m => {
+      if (isTransferLike(m.reference_type)) {
+        const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
+        if (!transferPairs[key]) transferPairs[key] = {};
+        if (m.movement_type === 'OUT') transferPairs[key].out = m;
+        else if (m.movement_type === 'IN') transferPairs[key].in = m;
+      }
+    });
+    // Build set of transfer IN ids to skip (merged into the OUT row)
+    const skipIds = new Set();
+    Object.values(transferPairs).forEach(pair => {
+      if (pair.out && pair.in) skipIds.add(pair.in.id);
+    });
+
+    // Step B: Build merged movement list
+    const merged = [];
+    movements.forEach(m => {
+      if (skipIds.has(m.id)) return; // skip transfer IN (merged into OUT row)
+      if (isTransferLike(m.reference_type)) {
+        const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
+        const pair = transferPairs[key] || {};
+        const transferQty = pair.out ? (pair.out.quantity || 0) : (m.quantity || 0);
+        merged.push({
+          ...m,
+          _is_transfer: true,
+          _transfer_qty: transferQty,
+          _from_warehouse_id: pair.out ? pair.out.warehouse_id : m._from_warehouse_id,
+          _to_warehouse_id: pair.in ? pair.in.warehouse_id : m._to_warehouse_id,
+        });
+      } else {
+        merged.push({ ...m, _is_transfer: false, _transfer_qty: 0 });
+      }
+    });
+
+    // Step C: Calculate running balance — transfers do NOT affect balance
     const balanceMap = {}; // key → { qty, avg_cost, total_value }
-    return movements.map(m => {
+    return merged.map(m => {
       const key = (m.item_id || '');
       if (!(key in balanceMap)) balanceMap[key] = { qty: 0, avg_cost: 0, total_value: 0 };
       const b = balanceMap[key];
+      if (m._is_transfer) {
+        // Transfer: balance unchanged
+        return { ...m, _running_balance: b.qty, _running_avg_cost: b.avg_cost, _running_total_value: b.total_value };
+      }
       const qty = m.quantity || 0;
       const unitCost = m.unit_cost || 0;
       if (m.movement_type === 'IN') {
@@ -7063,8 +7234,8 @@ function BinCardPage() {
   // Display oldest to newest (chronological order, same as running balance)
   const filteredWithBalance = filtered;
 
-  const totalIn = filtered.filter(m => m.movement_type === 'IN').reduce((s, m) => s + (m.quantity || 0), 0);
-  const totalOut = filtered.filter(m => m.movement_type === 'OUT').reduce((s, m) => s + (m.quantity || 0), 0);
+  const totalIn = filtered.filter(m => m.movement_type === 'IN' && !m._is_transfer).reduce((s, m) => s + (m.quantity || 0), 0);
+  const totalOut = filtered.filter(m => m.movement_type === 'OUT' && !m._is_transfer).reduce((s, m) => s + (m.quantity || 0), 0);
 
   const periodOptions = [
     { value: 'today', label: 'Today' },
@@ -7098,8 +7269,17 @@ function BinCardPage() {
     <div>
       <PageHeader title={t('bincard.title')} subtitle={t('bincard.subtitle')} />
 
-      {filterItem && (
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      {filterItem && (() => {
+        const selectedItem = filteredItems.find(i => i.id === filterItem);
+        return (
+        <div className="mb-6">
+          {selectedItem && (
+            <div className="mb-4 flex items-baseline gap-3">
+              <span className="text-lg font-bold text-primary-700">{selectedItem.code}</span>
+              <span className="text-lg text-gray-700">{selectedItem.name}</span>
+            </div>
+          )}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <p className="text-xs text-gray-500 uppercase">{t('bincard.totalMovements')}</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(filtered.length)}</p>
@@ -7113,7 +7293,9 @@ function BinCardPage() {
           <p className="text-2xl font-bold text-red-600 mt-1">-{formatNumber(totalOut)}</p>
         </div>
       </div>
-      )}
+      </div>
+        );
+      })()}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-4 border-b border-gray-100">
@@ -7189,54 +7371,58 @@ function BinCardPage() {
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Date</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Warehouse</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Item</th>
-                <th className="px-2 py-1.5 text-center font-semibold text-gray-600 uppercase whitespace-nowrap">Type</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Reference</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Date & Time</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Doc Type</th>
+                <th className="px-2 py-1.5 text-center font-semibold text-gray-600 uppercase whitespace-nowrap">User Dept</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">User</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">From</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">To</th>
+                <th className="px-2 py-1.5 text-center font-semibold text-gray-600 uppercase whitespace-nowrap">Direction</th>
                 <th className="px-2 py-1.5 text-center font-semibold text-gray-600 uppercase whitespace-nowrap">Unit</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Qty</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Transfer Qty</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">IN/OUT Qty</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Cost</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Balance</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Avg Cost</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Total Value</th>
-                <th className="px-2 py-1.5 text-center font-semibold text-gray-600 uppercase whitespace-nowrap">Dept</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">User</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Reference</th>
-                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 uppercase whitespace-nowrap">Notes</th>
               </tr>
             </thead>
             <tbody>
               {!filterItem ? (
-                <tr><td colSpan="14" className="px-2 py-8 text-center text-gray-400">Pilih item terlebih dahulu untuk melihat Bin Card</td></tr>
+                <tr><td colSpan="15" className="px-2 py-8 text-center text-gray-400">Pilih item terlebih dahulu untuk melihat Bin Card</td></tr>
               ) : loading ? (
-                <tr><td colSpan="14" className="px-2 py-8 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan="15" className="px-2 py-8 text-center text-gray-400">Loading...</td></tr>
               ) : filteredWithBalance.length === 0 ? (
-                <tr><td colSpan="14" className="px-2 py-8 text-center text-gray-400">{t('bincard.empty')}</td></tr>
-              ) : filteredWithBalance.map((r, idx) => (
+                <tr><td colSpan="15" className="px-2 py-8 text-center text-gray-400">{t('bincard.empty')}</td></tr>
+              ) : filteredWithBalance.map((r, idx) => {
+                const docType = (r.reference_type || '').replace(/_/g, ' ');
+                return (
                 <tr key={r.id || idx} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-2 py-1 whitespace-nowrap text-gray-600">{formatDateSys(r.created_at, { includeTime: true })}</td>
-                  <td className="px-2 py-1 whitespace-nowrap text-gray-600">{getWarehouseName(r.warehouse_id) || '-'}</td>
-                  <td className="px-2 py-1 max-w-[180px]"><span className="font-medium text-gray-800 text-xs block truncate" title={r.items?.name}>{r.items?.name}</span><span className="text-gray-400" style={{fontSize:'10px'}}>{r.items?.code}</span></td>
-                  <td className="px-2 py-1 text-center"><Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'blue'}>{r.movement_type}</Badge></td>
-                  <td className="px-2 py-1 text-center text-gray-500">{r.items?.units?.abbreviation || '-'}</td>
-                  <td className={'px-2 py-1 text-right font-semibold ' + (r.movement_type==='IN'?'text-green-600':'text-red-600')}>{r.movement_type==='IN'?'+':'-'}{formatNumber(r.quantity)}</td>
-                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r.unit_cost)}</td>
-                  <td className="px-2 py-1 text-right font-semibold text-gray-800">{formatNumber(r._running_balance)}</td>
-                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_avg_cost)}</td>
-                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_total_value)}</td>
-                  <td className="px-2 py-1 text-center">{r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : <span className="text-gray-300">-</span>}</td>
-                  <td className="px-2 py-1 text-gray-500 whitespace-nowrap">{r.users?.full_name || r.users?.username || '-'}</td>
                   <td className="px-2 py-1 whitespace-nowrap">
                     {r.reference_number ? (
                       <button onClick={(e) => { e.stopPropagation(); setDocDetailMovement(r); }} className="text-primary-600 hover:text-primary-800 hover:underline font-medium">
                         {r.reference_number}
                       </button>
-                    ) : '-'}{' '}
-                    <span className="text-gray-400">{r.reference_type || ''}</span>
+                    ) : <span className="text-gray-300">-</span>}
                   </td>
-                  <td className="px-2 py-1 text-gray-500 max-w-[200px] truncate" title={r.notes || ''}>{r.notes || '-'}</td>
+                  <td className="px-2 py-1 whitespace-nowrap text-gray-600">{formatDateSys(r.created_at, { includeTime: true })}</td>
+                  <td className="px-2 py-1 whitespace-nowrap">{(() => { const chip = getDocTypeChip(r.reference_type); return <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${chip.bg} ${chip.text}`}>{chip.label}</span>; })()}</td>
+                  <td className="px-2 py-1 text-center">{r.departments?.code ? <Badge color="blue">{r.departments.code}</Badge> : <span className="text-gray-300">-</span>}</td>
+                  <td className="px-2 py-1 text-gray-500 whitespace-nowrap">{r.users?.full_name || r.users?.username || '-'}</td>
+                  <td className="px-2 py-1 whitespace-nowrap">{r.movement_type === 'IN' && r.reference_type === 'OPENING_BALANCE' ? <span className="font-bold text-blue-600">Opening Balance</span> : r.movement_type === 'IN' && r.reference_type === 'GR' ? <span className="font-bold text-green-600">Purchase Received</span> : r.movement_type === 'IN' && r.reference_type === 'DIRECT_PURCHASE' ? <span className="font-bold text-green-600">Direct Purchased</span> : r._from_warehouse_id ? <span className="text-gray-500">{getWarehouseName(r._from_warehouse_id)}</span> : <span className="text-gray-300">-</span>}</td>
+                  <td className="px-2 py-1 whitespace-nowrap">{r.movement_type === 'OUT' && r.reference_type === 'USAGE' ? <span className="font-bold text-red-600">Single Item Usage</span> : r.movement_type === 'OUT' && r.reference_type === 'WRITEOFF' ? <span className="font-bold text-red-600">Write Off</span> : r.movement_type === 'OUT' && (r.reference_type === 'DEPLETED' || r.reference_type === 'CONSUMPTION') ? <span className="font-bold text-red-600">Makeup Consumption</span> : r._to_warehouse_id ? <span className="text-gray-500">{getWarehouseName(r._to_warehouse_id)}</span> : <span className="text-gray-300">-</span>}</td>
+                  <td className="px-2 py-1 text-center">{r._is_transfer ? <Badge color="blue">TRANSFER</Badge> : <Badge color={r.movement_type==='IN'?'green':r.movement_type==='OUT'?'red':'blue'}>{r.movement_type}</Badge>}</td>
+                  <td className="px-2 py-1 text-center text-gray-500">{r.items?.units?.abbreviation || '-'}</td>
+                  <td className={'px-2 py-1 text-right font-semibold ' + (r._is_transfer ? 'text-blue-600' : 'text-gray-400')}>{r._is_transfer ? formatNumber(r._transfer_qty) : '0'}</td>
+                  <td className={'px-2 py-1 text-right font-semibold ' + (r._is_transfer ? 'text-gray-400' : r.movement_type==='IN' ? 'text-green-600' : 'text-red-600')}>{r._is_transfer ? '0' : (r.movement_type==='IN'?'+':'-') + formatNumber(r.quantity)}</td>
+                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._is_transfer && !r.unit_cost ? r._running_avg_cost : r.unit_cost)}</td>
+                  <td className="px-2 py-1 text-right font-semibold text-gray-800">{formatNumber(r._running_balance)}</td>
+                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_avg_cost)}</td>
+                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_total_value)}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -7350,7 +7536,7 @@ function PurchaseRequestPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ department_id: departments[0]?.id || '', category_id: '', request_date: getLocalDateString(), needed_date: '', priority: 'NORMAL', notes: '' });
+    setForm({ department_id: currentUser?.department_id || departments[0]?.id || '', category_id: '', request_date: getLocalDateString(), needed_date: '', priority: 'NORMAL', notes: '' });
     setLineItems([{ item_id: '', quantity: 1, unit_id: '' }]);
     setShowModal(true);
   }
@@ -7523,13 +7709,19 @@ function PurchaseRequestPage() {
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit PR' : t('pr.create')} size="xl">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-          <FormField label={t('stock.dept')} required>
-            <Select value={form.department_id} onChange={e => setForm({...form, department_id: e.target.value})}>
-              <option value="">Select</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
-            </Select>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <FormField label="User">
+            <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+              {currentUser?.full_name || currentUser?.username || '-'}
+            </div>
           </FormField>
+          <FormField label={t('stock.dept')} required>
+            <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+              {currentUser?.department ? `${currentUser.department.code} - ${currentUser.department.name}` : '-'}
+            </div>
+          </FormField>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <FormField label="Item Category" required>
             <Select value={form.category_id} onChange={e => handleCategoryChange(e.target.value)}
               disabled={editing && lineItems.some(l => l.item_id)}>
@@ -8814,7 +9006,7 @@ function WriteOffPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ department_id: departments[0]?.id || '', write_off_date: getLocalDateString(), notes: '' });
+    setForm({ department_id: currentUser?.department_id || departments[0]?.id || '', write_off_date: getLocalDateString(), notes: '' });
     setLineItems([{ item_id: '', quantity: 1, reason: 'DAMAGED', notes: '' }]);
     setItemSearch({});
     setShowModal(true);
@@ -8964,11 +9156,15 @@ function WriteOffPage() {
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit Write-Off' : t('writeoff.create')} size="xl">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <FormField label="User">
+            <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+              {currentUser?.full_name || currentUser?.username || '-'}
+            </div>
+          </FormField>
           <FormField label={t('writeoff.department')} required>
-            <Select value={form.department_id} onChange={e => setForm({...form, department_id: e.target.value})}>
-              <option value="">Select</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
-            </Select>
+            <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+              {currentUser?.department ? `${currentUser.department.code} - ${currentUser.department.name}` : '-'}
+            </div>
           </FormField>
           <FormField label={t('writeoff.date')} required>
             <Input type="date" value={form.write_off_date} onChange={e => setForm({...form, write_off_date: e.target.value})} />
@@ -9652,7 +9848,7 @@ function PurchaseReceivedPage() {
   }
 
   function openCreate() {
-    setForm({ pi_id: '', received_date: getLocalDateString(), notes: '', department_id: '' });
+    setForm({ pi_id: '', received_date: getLocalDateString(), notes: '', department_id: currentUser?.department_id || '' });
     setLineItems([]);
     setSelectedPI(null);
     setShowModal(true);
@@ -9735,8 +9931,8 @@ function PurchaseReceivedPage() {
       if (grErr) throw new Error('Failed to load GR items: ' + grErr.message);
       if (!grItems || grItems.length === 0) throw new Error('No items in this receipt');
 
-      // Use department_id from GR record (set during creation), fallback to chain lookup
-      let grDepartmentId = gr.department_id || null;
+      // Use currentUser's department as primary source, fallback to GR record, then chain lookup
+      let grDepartmentId = currentUser?.department_id || gr.department_id || null;
       if (!grDepartmentId && gr.pi_id) {
         const { data: piData } = await supabase.from('purchase_invoices').select('po_id').eq('id', gr.pi_id).single();
         if (piData?.po_id) {
@@ -9957,6 +10153,18 @@ function PurchaseReceivedPage() {
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={t('gr.create')} size="xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <FormField label="User">
+            <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+              {currentUser?.full_name || currentUser?.username || '-'}
+            </div>
+          </FormField>
+          <FormField label={t('writeoff.department')}>
+            <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+              {currentUser?.department ? `${currentUser.department.code} - ${currentUser.department.name}` : '-'}
+            </div>
+          </FormField>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
           <FormField label={t('gr.selectPI')} required>
             <Select value={form.pi_id} onChange={e => loadPIItems(e.target.value)}>
@@ -9967,11 +10175,8 @@ function PurchaseReceivedPage() {
           <FormField label={t('gr.receivedDate')} required>
             <Input type="date" value={form.received_date} onChange={e => setForm({...form, received_date: e.target.value})} />
           </FormField>
-          <FormField label={t('writeoff.department')}>
-            <Select value={form.department_id} onChange={e => setForm({...form, department_id: e.target.value})}>
-              <option value="">-- Select Department --</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
-            </Select>
+          <FormField label="">
+            <div></div>
           </FormField>
           <FormField label={t('gr.notes')}>
             <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder={t('gr.notes')} />
@@ -13189,7 +13394,7 @@ function RoomMakeUpPage() {
           .eq('organization_id', selectedOrg.id).order('room_number'),
         supabase.from('warehouses').select('id, code, name, warehouse_type')
           .eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
-        supabase.from('items').select('id, code, name, brand, category_id, unit_id, item_categories(id, code, name, parent_id), units:unit_id(abbreviation)')
+        supabase.from('items').select('id, code, name, brand, category_id, unit_id, default_warehouse_id, item_categories(id, code, name, parent_id), units:unit_id(abbreviation)')
           .eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
       ]);
       setMakeups(muRes.data || []);
@@ -13444,7 +13649,7 @@ function RoomMakeUpPage() {
     setSaving(true);
     try {
       const room = rooms.find(r => r.id === selectedRoom);
-      const hkStore = warehouses.find(w => w.warehouse_type === 'store');
+      const hkStore = warehouses.find(w => w.warehouse_type === 'store' && w.code === 'HK') || warehouses.find(w => w.warehouse_type === 'store' && w.name?.toLowerCase().includes('housekeeping'));
       const dirtyWh = warehouses.find(w => w.warehouse_type === 'dirty');
       const damageWh = warehouses.find(w => w.warehouse_type === 'damage');
 
@@ -13463,8 +13668,7 @@ function RoomMakeUpPage() {
       if (muErr) throw muErr;
 
       // Get department for stock_balance upsert
-      const { data: dept } = await supabase.from('departments')
-        .select('id').eq('organization_id', selectedOrg.id).limit(1).maybeSingle();
+      const dept = currentUser?.department_id || null;
 
       // ========== PROCESS REPLACE ROWS (from replaceRows state) ==========
       // Replacement: HK Store → Room (move clean linen from store to room)
@@ -13475,13 +13679,15 @@ function RoomMakeUpPage() {
           const numQty = parseFloat(row.qty);
           const itemId = row.itemId;
 
-          // 1. OUT from HK Store (clean linen leaves store)
-          if (hkStore) {
-            await doStockMovement(itemId, 'OUT', numQty, hkStore.id, 'MAKEUP', makeupNumber, 'Replace linen - OUT from HK Store', dept);
+          // 1. OUT from item's stock warehouse (clean linen leaves store)
+          const linenItem = allItems.find(i => i.id === itemId);
+          const linenOutWh = linenItem?.default_warehouse_id || hkStore?.id;
+          if (linenOutWh) {
+            await doStockMovement(itemId, 'OUT', numQty, linenOutWh, 'MAKEUP-LINEN REPLACE', makeupNumber, 'OUT from Store', dept);
           }
           // 2. IN to Room (clean linen enters room)
           if (room?.warehouse_id) {
-            await doStockMovement(itemId, 'IN', numQty, room.warehouse_id, 'MAKEUP', makeupNumber, 'Replace linen - IN to room', dept);
+            await doStockMovement(itemId, 'IN', numQty, room.warehouse_id, 'MAKEUP-LINEN REPLACE', makeupNumber, 'IN to Room ' + (room.room_number || ''), dept);
           }
           const stockItem = linenRoomStock.find(s => s.item_id === itemId);
           linenMuItems.push({ makeup_id: mu.id, item_id: itemId, type: 'replace', default_qty: stockItem?.quantity || 0, actual_qty: numQty, dirty_qty: 0, warehouse_id: hkStore?.id, notes: 'Replace - HK Store to Room' });
@@ -13501,10 +13707,10 @@ function RoomMakeUpPage() {
         if (action === 'MOVE_TO_DIRTY') {
           // Move to Dirty: Room → Dirty warehouse
           if (room?.warehouse_id) {
-            await doStockMovement(itemId, 'OUT', numQty, room.warehouse_id, 'MAKEUP', makeupNumber, 'Move to Dirty - OUT from room', dept);
+            await doStockMovement(itemId, 'OUT', numQty, room.warehouse_id, 'MAKEUP-DIRTY', makeupNumber, 'OUT from Room ' + (room.room_number || ''), dept);
           }
           if (dirtyWh) {
-            await doStockMovement(itemId, 'IN', numQty, dirtyWh.id, 'MAKEUP', makeupNumber, 'Move to Dirty - IN to dirty warehouse', dept);
+            await doStockMovement(itemId, 'IN', numQty, dirtyWh.id, 'MAKEUP-DIRTY', makeupNumber, 'IN to Dirty Warehouse', dept);
           }
           linenMuItems.push({ makeup_id: mu.id, item_id: itemId, type: 'move_to_dirty', default_qty: stockItem?.quantity || 0, actual_qty: numQty, dirty_qty: numQty, warehouse_id: room?.warehouse_id, notes: 'Move to Dirty' });
         } else if (action === 'DAMAGE') {
@@ -13561,9 +13767,12 @@ function RoomMakeUpPage() {
           const numQty = parseFloat(qty);
           const item = allItems.find(i => i.id === itemId);
 
-          // Get cost from HK store balance
+          // Use item's default warehouse (where stock exists), fallback to HK store
+          const itemWarehouseId = item?.default_warehouse_id || hkStore.id;
+
+          // Get cost from item's stock warehouse balance
           const { data: sb } = await supabase.from('stock_balance')
-            .select('avg_cost').eq('item_id', itemId).eq('warehouse_id', hkStore.id)
+            .select('avg_cost').eq('item_id', itemId).eq('warehouse_id', itemWarehouseId)
             .eq('organization_id', selectedOrg.id).maybeSingle();
           const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
 
@@ -13572,8 +13781,8 @@ function RoomMakeUpPage() {
             quantity: numQty, unit_cost: unitCost, total_cost: unitCost * numQty, notes: '',
           });
 
-          // Stock OUT from HK Store
-          await doStockMovement(itemId, 'OUT', numQty, hkStore.id, 'CONSUMPTION', consumptionNumber, 'Guest amenity consumed', dept);
+          // Stock OUT from item's stock warehouse
+          await doStockMovement(itemId, 'OUT', numQty, itemWarehouseId, 'CONSUMPTION', consumptionNumber, 'Guest amenity consumed', dept);
         }
       }
 
@@ -13629,6 +13838,7 @@ function RoomMakeUpPage() {
       balance_after: balAfter, reference_type: refType,
       reference_number: refNumber, warehouse_id: warehouseId,
       notes: notesText, created_by: currentUser?.id,
+      department_id: dept || null,
     });
 
     // Update stock_balance
@@ -13649,7 +13859,7 @@ function RoomMakeUpPage() {
         }).eq('id', sb.id);
       } else {
         await supabase.from('stock_balance').insert({
-          organization_id: selectedOrg.id, department_id: dept?.id || null,
+          organization_id: selectedOrg.id, department_id: dept || null,
           item_id: itemId, warehouse_id: warehouseId,
           quantity: qty, avg_cost: unitCost, total_value: qty * unitCost,
           last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -13774,6 +13984,9 @@ function RoomMakeUpPage() {
                   {userDept ? `${userDept.code} - ${userDept.name}` : '-'}
                 </div>
               </FormField>
+            </div>
+            <div className="mt-2 p-3 bg-red-50 border border-red-300 rounded-lg">
+              <p className="text-red-600 text-xs font-semibold leading-relaxed">Dilarang menggunakan akun pengguna lain saat Make Up Room, dan dilarang memberikan username dan password login kepada pengguna lain, pelanggar akan dikenakan sanksi dari management.</p>
             </div>
           </div>
         )}
@@ -14541,7 +14754,7 @@ function DirectPurchasePage() {
     setEditingDp(null);
     setPurchaseDate(getLocalDateString());
     setPurchaseLocation('');
-    setDepartmentId('');
+    setDepartmentId(currentUser?.department_id || '');
     setPurchaseItems([{ item_id: '', quantity: 0, unit_price: 0, warehouse_id: '', notes: '' }]);
     setNotes('');
     setShowModal(true);
@@ -14897,6 +15110,18 @@ function DirectPurchasePage() {
       <Modal open={showModal} onClose={() => setShowModal(false)} title={isView ? viewing.purchase_number : (editingDp ? 'Edit ' + editingDp.purchase_number : t('dp.create'))} size="xl">
         {!isView ? (
           <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <FormField label="User">
+                <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                  {currentUser?.full_name || currentUser?.username || '-'}
+                </div>
+              </FormField>
+              <FormField label="Department">
+                <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                  {currentUser?.department ? `${currentUser.department.code} - ${currentUser.department.name}` : '-'}
+                </div>
+              </FormField>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <FormField label={t('dp.date')} required>
                 <Input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
@@ -14904,11 +15129,8 @@ function DirectPurchasePage() {
               <FormField label={t('dp.location')} required>
                 <Input value={purchaseLocation} onChange={e => setPurchaseLocation(e.target.value)} placeholder={t('dp.locationPlaceholder')} />
               </FormField>
-              <FormField label="Department">
-                <Select value={departmentId} onChange={e => setDepartmentId(e.target.value)}>
-                  <option value="">Select Department</option>
-                  {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
-                </Select>
+              <FormField label="">
+                <div></div>
               </FormField>
               <FormField label={t('dp.notes')}>
                 <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('dp.notes')} />
@@ -15161,12 +15383,8 @@ function LaundryPage() {
         return;
       }
 
-      // Get department
-      const { data: dept } = await supabase.from('departments')
-        .select('id')
-        .eq('organization_id', selectedOrg.id)
-        .limit(1)
-        .single();
+      // Use currentUser's department
+      const deptId = currentUser?.department_id || null;
 
       const refNumber = await generateSendNumber();
 
@@ -15180,7 +15398,7 @@ function LaundryPage() {
         // OUT from dirty warehouse
         await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
-          department_id: dept?.id || null,
+          department_id: deptId,
           item_id: item.item_id,
           movement_type: 'OUT',
           quantity: qty,
@@ -15200,7 +15418,7 @@ function LaundryPage() {
         const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
         await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
-          department_id: dept?.id || null,
+          department_id: deptId,
           item_id: item.item_id,
           movement_type: 'IN',
           quantity: qty,
@@ -15245,7 +15463,7 @@ function LaundryPage() {
         } else {
           await supabase.from('stock_balance').insert({
             organization_id: selectedOrg.id,
-            department_id: dept?.id || null,
+            department_id: deptId,
             item_id: item.item_id,
             warehouse_id: laundryWarehouse.id,
             quantity: qty,
@@ -15289,11 +15507,8 @@ function LaundryPage() {
       }
 
       // Get department
-      const { data: dept } = await supabase.from('departments')
-        .select('id')
-        .eq('organization_id', selectedOrg.id)
-        .limit(1)
-        .single();
+      // Use currentUser's department
+      const deptId = currentUser?.department_id || null;
 
       const refNumber = await generateReceiveNumber();
 
@@ -15307,7 +15522,7 @@ function LaundryPage() {
         // OUT from laundry warehouse
         await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
-          department_id: dept?.id || null,
+          department_id: deptId,
           item_id: item.item_id,
           movement_type: 'OUT',
           quantity: qty,
@@ -15327,7 +15542,7 @@ function LaundryPage() {
         const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
         await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
-          department_id: dept?.id || null,
+          department_id: deptId,
           item_id: item.item_id,
           movement_type: 'IN',
           quantity: qty,
@@ -15372,7 +15587,7 @@ function LaundryPage() {
         } else {
           await supabase.from('stock_balance').insert({
             organization_id: selectedOrg.id,
-            department_id: dept?.id || null,
+            department_id: deptId,
             item_id: item.item_id,
             warehouse_id: storeWarehouse.id,
             quantity: qty,
@@ -15714,6 +15929,7 @@ function InUseWarehousePage() {
         reference_id: item.item_id,
         notes: `Depleted from In-Use Warehouse: ${item.items?.name || ''}`,
         created_by: currentUser?.id || null,
+        department_id: currentUser?.department_id || null,
       });
 
       // Update stock balance to 0
@@ -15845,7 +16061,7 @@ function SingleItemUsagePage() {
 
   function openCreate() {
     setEditingId(null);
-    setForm({ usage_date: getLocalDateString(), item_id: '', warehouse_id: '', department_id: '', quantity: 1, notes: '' });
+    setForm({ usage_date: getLocalDateString(), item_id: '', warehouse_id: '', department_id: currentUser?.department_id || '', quantity: 1, notes: '' });
     setShowModal(true);
   }
 
@@ -16180,14 +16396,20 @@ function SingleItemUsagePage() {
       {/* Create/Edit Modal */}
       <Modal open={showModal} onClose={() => { setShowModal(false); setEditingId(null); }} title={editingId ? 'Edit SIU' : t('siu.create')} size="md">
         <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="User">
+              <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                {currentUser?.full_name || currentUser?.username || '-'}
+              </div>
+            </FormField>
+            <FormField label={t('siu.department')} required>
+              <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                {currentUser?.department ? `${currentUser.department.code} - ${currentUser.department.name}` : '-'}
+              </div>
+            </FormField>
+          </div>
           <FormField label={t('siu.date')} required>
             <Input type="date" value={form.usage_date} onChange={e => setForm({...form, usage_date: e.target.value})} />
-          </FormField>
-          <FormField label={t('siu.department')} required>
-            <Select value={form.department_id} onChange={e => setForm({...form, department_id: e.target.value})}>
-              <option value="">{t('siu.selectDepartment')}</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
-            </Select>
           </FormField>
           <FormField label={t('siu.warehouse')} required>
             <Select value={form.warehouse_id} onChange={e => setForm({...form, warehouse_id: e.target.value})}>
@@ -16419,6 +16641,7 @@ function TransferPage() {
           warehouse_id: tr.from_warehouse_id,
           notes: `Transfer to ${warehouses.find(w => w.id === tr.to_warehouse_id)?.code || 'warehouse'}`,
           created_by: currentUser?.id || null,
+          department_id: currentUser?.department_id || null,
         });
         if (outErr) throw new Error('OUT movement: ' + outErr.message);
 
@@ -16437,6 +16660,7 @@ function TransferPage() {
           warehouse_id: tr.to_warehouse_id,
           notes: `Transfer from ${warehouses.find(w => w.id === tr.from_warehouse_id)?.code || 'warehouse'}`,
           created_by: currentUser?.id || null,
+          department_id: currentUser?.department_id || null,
         });
         if (inErr) throw new Error('IN movement: ' + inErr.message);
 
@@ -16539,6 +16763,18 @@ function TransferPage() {
       <Modal open={showModal} onClose={() => setShowModal(false)} title={isView ? viewing.transfer_number : t('transfer.newTransfer')} size="xl">
         {!isView ? (
           <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <FormField label="User">
+                <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                  {currentUser?.full_name || currentUser?.username || '-'}
+                </div>
+              </FormField>
+              <FormField label="Department">
+                <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 min-h-[42px] flex items-center">
+                  {currentUser?.department ? `${currentUser.department.code} - ${currentUser.department.name}` : '-'}
+                </div>
+              </FormField>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               <FormField label={t('transfer.from')} required>
                 <Select value={fromWarehouse} onChange={e => setFromWarehouse(e.target.value)}>
