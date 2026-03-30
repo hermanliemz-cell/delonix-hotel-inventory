@@ -68,11 +68,11 @@ const ROLE_PAGE_ACCESS = {
   superadmin: '*', // all pages
   gm: '*',
   warehouse: ['dashboard','items','categories','vendors','warehouses','stock','movements','pr','po','pi','gr','transfer','direct-purchase','opening-balance','writeoff','opname','single-usage','in-use-warehouse','reports','change-password'],
-  housekeeping: ['dashboard','room-makeup','room-makeup-new','rooms','room-types','bed-formations','in-use-warehouse','single-usage','movements','change-password'],
+  housekeeping: ['dashboard','items','room-makeup','room-makeup-new','room-consumption','item-lost-in-room','rmu-activity-history','room-additional-request','rooms','room-types','bed-formations','in-use-warehouse','single-usage','movements','change-password'],
   engineering: ['dashboard','items','stock','movements','pr','single-usage','in-use-warehouse','change-password'],
   fnb: ['dashboard','items','stock','movements','pr','single-usage','in-use-warehouse','change-password'],
   frontoffice: ['dashboard','rooms','room-types','stock','movements','change-password'],
-  opdir: ['dashboard','items','stock','movements','reports','rooms','room-makeup','room-makeup-new','pr','po','pi','gr','transfer','opname','hotels','change-password'],
+  opdir: ['dashboard','items','stock','movements','reports','rooms','room-makeup','room-makeup-new','room-consumption','item-lost-in-room','rmu-activity-history','room-additional-request','pr','po','pi','gr','transfer','opname','hotels','change-password'],
   branddir: ['dashboard','items','stock','movements','reports','hotels','change-password'],
   finhotel: ['dashboard','stock','movements','reports','pi','opname','writeoff','hotels','change-password'],
   findir: ['dashboard','stock','movements','reports','pi','hotels','approval','opname','change-password'],
@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.3',
+    'app.version': 'v1.0.4',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
 
@@ -1067,7 +1067,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.3',
+    'app.version': 'v1.0.4',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
 
@@ -2676,7 +2676,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.3 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.4 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -11885,6 +11885,11 @@ const ALL_MENUS = [
   { id: 'bed-formations', label: 'Bed Formations' },
   { id: 'rooms', label: 'Rooms' },
   { id: 'room-makeup', label: 'Room Make Up' },
+  { id: 'room-makeup-new', label: 'Room Make Up (New)' },
+  { id: 'room-consumption', label: 'Room Consumption History' },
+  { id: 'item-lost-in-room', label: 'Item Lost in Room' },
+  { id: 'rmu-activity-history', label: 'RMU Activity History' },
+  { id: 'room-additional-request', label: 'Room Additional Request' },
   { id: 'opening-balance', label: 'Opening Balance' },
   { id: 'stock', label: 'Stock Balance' },
   { id: 'movements', label: 'Bin Card' },
@@ -11904,6 +11909,7 @@ const ALL_MENUS = [
   { id: 'user-mgmt', label: 'User Management' },
   { id: 'role-mgmt', label: 'Role Management' },
   { id: 'system-settings', label: 'System Settings' },
+  { id: 'change-password', label: 'Change Password' },
 ];
 
 const ALL_ACTIONS = [
@@ -15176,12 +15182,11 @@ function RoomMakeUpPageNew() {
           const catId = item?.category_id || 'unknown';
           if (!rRows[catId]) rRows[catId] = [];
           rRows[catId].push({ id: mi.id || Date.now() + Math.random(), itemId: mi.item_id, qty: mi.actual_qty });
-        } else if (mi.type === 'move_to_dirty') {
-          actions[mi.item_id] = { action: 'MOVE_TO_DIRTY', qty: mi.actual_qty };
-        } else if (mi.type === 'damage') {
-          actions[mi.item_id] = { action: 'DAMAGE', qty: mi.actual_qty };
-        } else if (mi.type === 'lost') {
-          actions[mi.item_id] = { action: 'LOST', qty: mi.actual_qty };
+        } else {
+          if (!actions[mi.item_id]) actions[mi.item_id] = { dirtyQty: 0, damageQty: 0, lostQty: 0 };
+          if (mi.type === 'move_to_dirty') actions[mi.item_id].dirtyQty = parseFloat(mi.actual_qty) || 0;
+          else if (mi.type === 'damage') actions[mi.item_id].damageQty = parseFloat(mi.actual_qty) || 0;
+          else if (mi.type === 'lost') actions[mi.item_id].lostQty = parseFloat(mi.actual_qty) || 0;
         }
       });
       setLinenActions(actions);
@@ -15265,12 +15270,11 @@ function RoomMakeUpPageNew() {
           const catId = item?.category_id || 'unknown';
           if (!rRows[catId]) rRows[catId] = [];
           rRows[catId].push({ id: Date.now() + Math.random(), itemId: mi.item_id, qty: mi.actual_qty });
-        } else if (mi.type === 'move_to_dirty') {
-          actions[mi.item_id] = { action: 'MOVE_TO_DIRTY', qty: mi.actual_qty };
-        } else if (mi.type === 'damage') {
-          actions[mi.item_id] = { action: 'DAMAGE', qty: mi.actual_qty };
-        } else if (mi.type === 'lost') {
-          actions[mi.item_id] = { action: 'LOST', qty: mi.actual_qty };
+        } else {
+          if (!actions[mi.item_id]) actions[mi.item_id] = { dirtyQty: 0, damageQty: 0, lostQty: 0 };
+          if (mi.type === 'move_to_dirty') actions[mi.item_id].dirtyQty = parseFloat(mi.actual_qty) || 0;
+          else if (mi.type === 'damage') actions[mi.item_id].damageQty = parseFloat(mi.actual_qty) || 0;
+          else if (mi.type === 'lost') actions[mi.item_id].lostQty = parseFloat(mi.actual_qty) || 0;
         }
       });
       setLinenActions(actions);
@@ -15328,7 +15332,7 @@ function RoomMakeUpPageNew() {
       return;
     }
 
-    const hasLinenActions = Object.values(linenActions).some(a => a.qty > 0);
+    const hasLinenActions = Object.values(linenActions).some(a => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0));
     const hasReplaceRows = Object.values(replaceRows).some(rows => rows.some(r => r.itemId && r.qty > 0));
     const hasAmenities = Object.values(amenityQty).some(a => a.itemId && a.qty > 0);
     const hasActivities = activityList.length > 0;
@@ -15388,15 +15392,33 @@ function RoomMakeUpPageNew() {
         }
       }
       for (const [itemId, actionData] of Object.entries(linenActions)) {
-        if (!actionData || actionData.qty <= 0) continue;
+        if (!actionData) continue;
         const stockItem = linenRoomStock.find(s => s.item_id === itemId);
-        const typeMap = { MOVE_TO_DIRTY: 'move_to_dirty', DAMAGE: 'damage', LOST: 'lost' };
-        linenMuItems.push({
-          makeup_id: muId, item_id: itemId, type: typeMap[actionData.action] || actionData.action.toLowerCase(),
-          default_qty: stockItem?.quantity || 0, actual_qty: parseFloat(actionData.qty),
-          dirty_qty: actionData.action === 'MOVE_TO_DIRTY' ? parseFloat(actionData.qty) : 0,
-          warehouse_id: room?.warehouse_id, notes: actionData.action,
-        });
+        const defaultQty = stockItem?.quantity || 0;
+        if (actionData.dirtyQty > 0) {
+          linenMuItems.push({
+            makeup_id: muId, item_id: itemId, type: 'move_to_dirty',
+            default_qty: defaultQty, actual_qty: parseFloat(actionData.dirtyQty),
+            dirty_qty: parseFloat(actionData.dirtyQty),
+            warehouse_id: room?.warehouse_id, notes: 'MOVE_TO_DIRTY',
+          });
+        }
+        if (actionData.damageQty > 0) {
+          linenMuItems.push({
+            makeup_id: muId, item_id: itemId, type: 'damage',
+            default_qty: defaultQty, actual_qty: parseFloat(actionData.damageQty),
+            dirty_qty: 0,
+            warehouse_id: room?.warehouse_id, notes: 'DAMAGE',
+          });
+        }
+        if (actionData.lostQty > 0) {
+          linenMuItems.push({
+            makeup_id: muId, item_id: itemId, type: 'lost',
+            default_qty: defaultQty, actual_qty: parseFloat(actionData.lostQty),
+            dirty_qty: 0,
+            warehouse_id: room?.warehouse_id, notes: 'LOST',
+          });
+        }
       }
       if (linenMuItems.length > 0) {
         const { error: miErr } = await supabase.from('room_makeup_items').insert(linenMuItems);
@@ -15451,6 +15473,47 @@ function RoomMakeUpPageNew() {
       loadAll();
     } catch (err) {
       showNotification('Error: ' + err.message, 'error');
+    }
+    setSaving(false);
+  }
+
+  // ==================== DELETE DRAFT MAKEUP ====================
+  async function handleDeleteMakeup(mu) {
+    if (saving) return;
+    if (mu.status !== 'DRAFT') { showNotification('Hanya dokumen DRAFT yang bisa dihapus.', 'error'); return; }
+    if (!(await showConfirm(`Hapus draft ${mu.makeup_number}?\n\nSemua data terkait (linen items, consumption, activity history) akan ikut terhapus.\n\nLanjutkan?`, { variant: 'danger' }))) return;
+    setSaving(true);
+    try {
+      // Delete room_makeup_items
+      await supabase.from('room_makeup_items').delete().eq('makeup_id', mu.id);
+
+      // Delete room_consumption_items & room_consumption
+      const { data: consumptions } = await supabase.from('room_consumption').select('id').eq('makeup_id', mu.id);
+      if (consumptions && consumptions.length > 0) {
+        for (const con of consumptions) {
+          await supabase.from('room_consumption_items').delete().eq('consumption_id', con.id);
+        }
+        await supabase.from('room_consumption').delete().eq('makeup_id', mu.id);
+      }
+
+      // Delete rmu_activity_history_items & rmu_activity_history
+      const { data: histories } = await supabase.from('rmu_activity_history').select('id').eq('makeup_id', mu.id);
+      if (histories && histories.length > 0) {
+        for (const hist of histories) {
+          await supabase.from('rmu_activity_history_items').delete().eq('history_id', hist.id);
+        }
+        await supabase.from('rmu_activity_history').delete().eq('makeup_id', mu.id);
+      }
+
+      // Delete parent record
+      const { error } = await supabase.from('room_makeups').delete().eq('id', mu.id);
+      if (error) throw error;
+
+      showNotification(`${mu.makeup_number} berhasil dihapus.`, 'success');
+      loadAll();
+    } catch (err) {
+      console.error('Delete makeup error:', err);
+      showNotification('Gagal menghapus: ' + err.message, 'error');
     }
     setSaving(false);
   }
@@ -15592,7 +15655,7 @@ function RoomMakeUpPageNew() {
   function getAmenityItemsForCategory(catId) { return amenityAvailableItems.filter(i => i.category_id === catId); }
 
   const replaceRowCount = Object.values(replaceRows).reduce((sum, rows) => sum + rows.filter(r => r.itemId && r.qty > 0).length, 0);
-  const linenActionCount = Object.values(linenActions).filter(a => a.qty > 0).length + replaceRowCount;
+  const linenActionCount = Object.values(linenActions).filter(a => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0)).length + replaceRowCount;
   const amenityCount = Object.values(amenityQty).filter(a => a.itemId && a.qty > 0).length;
   const activityDoneCount = Object.values(activityChecks).filter(c => c.isDone).length;
 
@@ -15669,6 +15732,7 @@ function RoomMakeUpPageNew() {
                     <Button size="sm" variant="ghost" className="text-green-600 hover:text-green-800" onClick={() => handleConfirmMakeup(r)} disabled={saving}>
                       {saving ? <span className="flex items-center gap-1"><span className="spinner-sm"></span>Processing...</span> : 'Confirm'}
                     </Button>
+                    <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => handleDeleteMakeup(r)} disabled={saving}>Delete</Button>
                   </React.Fragment>
                 ) : r.status === 'PROCESSING' ? (
                   <span className="flex items-center gap-1 text-xs text-orange-600 font-medium"><span className="spinner-sm"></span>Sedang diproses...</span>
@@ -15701,6 +15765,7 @@ function RoomMakeUpPageNew() {
                     <Button size="sm" variant="ghost" className="text-green-600" onClick={e => { e.stopPropagation(); handleConfirmMakeup(r); }} disabled={saving}>
                       {saving ? 'Processing...' : 'Confirm'}
                     </Button>
+                    <Button size="sm" variant="ghost" className="text-red-500" onClick={e => { e.stopPropagation(); handleDeleteMakeup(r); }} disabled={saving}>Delete</Button>
                   </div>
                 )}
                 {r.status === 'PROCESSING' && (
@@ -15831,21 +15896,28 @@ function RoomMakeUpPageNew() {
                               <thead>
                                 <tr className="bg-gray-100 text-gray-600">
                                   <th className="text-left px-3 py-2 font-semibold text-xs">Item Name</th>
-                                  <th className="text-center px-2 py-2 font-semibold text-xs w-16">Qty</th>
-                                  {!isView && <th className="text-center px-2 py-2 font-semibold text-xs w-40">Action</th>}
-                                  {!isView && <th className="text-center px-2 py-2 font-semibold text-xs w-24">Action Qty</th>}
-                                  {isView && <th className="text-center px-2 py-2 font-semibold text-xs w-32">Action</th>}
-                                  {isView && <th className="text-center px-2 py-2 font-semibold text-xs w-20">Qty</th>}
+                                  <th className="text-center px-2 py-2 font-semibold text-xs w-16">Stock</th>
+                                  <th className="text-center px-2 py-2 font-semibold text-xs w-20"><span className="text-yellow-700">Dirty</span></th>
+                                  <th className="text-center px-2 py-2 font-semibold text-xs w-20"><span className="text-orange-700">Damage</span></th>
+                                  <th className="text-center px-2 py-2 font-semibold text-xs w-20"><span className="text-red-700">Lost</span></th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-100">
                                 {roomItems.map(stock => {
-                                  const action = linenActions[stock.item_id];
-                                  const actionColor = action?.action === 'MOVE_TO_DIRTY' ? 'text-yellow-700 bg-yellow-50' :
-                                    action?.action === 'DAMAGE' ? 'text-orange-700 bg-orange-50' :
-                                    action?.action === 'LOST' ? 'text-red-700 bg-red-50' : '';
+                                  const act = linenActions[stock.item_id] || { dirtyQty: 0, damageQty: 0, lostQty: 0 };
+                                  const total = act.dirtyQty + act.damageQty + act.lostQty;
+                                  const hasAction = total > 0;
+                                  const rowBg = hasAction ? 'bg-gray-50' : 'bg-white';
+                                  const maxStock = stock.quantity;
+                                  const updateAction = (field, val) => {
+                                    const newAct = { ...act, [field]: val };
+                                    const newTotal = newAct.dirtyQty + newAct.damageQty + newAct.lostQty;
+                                    if (newTotal > maxStock) return;
+                                    if (newTotal === 0) { const na = { ...linenActions }; delete na[stock.item_id]; setLinenActions(na); }
+                                    else { setLinenActions(prev => ({ ...prev, [stock.item_id]: newAct })); }
+                                  };
                                   return (
-                                    <tr key={stock.id} className={`${actionColor || 'bg-white'}`}>
+                                    <tr key={stock.id} className={rowBg}>
                                       <td className="px-3 py-2">
                                         <p className="font-medium text-gray-900 truncate">{stock.items?.code} - {stock.items?.name}</p>
                                         {stock.items?.brand && <p className="text-xs text-gray-400">{stock.items.brand}</p>}
@@ -15853,33 +15925,34 @@ function RoomMakeUpPageNew() {
                                       <td className="text-center px-2 py-2">
                                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{formatNumber(stock.quantity)}</span>
                                       </td>
-                                      {!isView && (
-                                        <td className="text-center px-2 py-2">
-                                          <select value={action?.action || ''}
-                                            onChange={e => {
-                                              const val = e.target.value;
-                                              if (!val) { const na = { ...linenActions }; delete na[stock.item_id]; setLinenActions(na); }
-                                              else { setLinenActions(prev => ({ ...prev, [stock.item_id]: { action: val, qty: prev[stock.item_id]?.qty || 1 } })); }
-                                            }}
-                                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white min-h-[36px]">
-                                            <option value="">-- No Action --</option>
-                                            <option value="MOVE_TO_DIRTY">Move to Dirty</option>
-                                            <option value="DAMAGE">Damage</option>
-                                            <option value="LOST">Lost</option>
-                                          </select>
-                                        </td>
+                                      {!isView ? (
+                                        <>
+                                          <td className="text-center px-2 py-2">
+                                            <input type="number" min="0" max={maxStock - act.damageQty - act.lostQty} value={act.dirtyQty || ''}
+                                              onChange={e => updateAction('dirtyQty', Math.max(0, parseInt(e.target.value) || 0))}
+                                              placeholder="0"
+                                              className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.dirtyQty > 0 ? 'border-yellow-400 bg-yellow-50 text-yellow-800' : 'border-gray-300'}`} />
+                                          </td>
+                                          <td className="text-center px-2 py-2">
+                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.lostQty} value={act.damageQty || ''}
+                                              onChange={e => updateAction('damageQty', Math.max(0, parseInt(e.target.value) || 0))}
+                                              placeholder="0"
+                                              className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.damageQty > 0 ? 'border-orange-400 bg-orange-50 text-orange-800' : 'border-gray-300'}`} />
+                                          </td>
+                                          <td className="text-center px-2 py-2">
+                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.damageQty} value={act.lostQty || ''}
+                                              onChange={e => updateAction('lostQty', Math.max(0, parseInt(e.target.value) || 0))}
+                                              placeholder="0"
+                                              className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.lostQty > 0 ? 'border-red-400 bg-red-50 text-red-800' : 'border-gray-300'}`} />
+                                          </td>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <td className="text-center px-2 py-2 text-xs font-semibold">{act.dirtyQty > 0 ? <span className="text-yellow-700">{act.dirtyQty}</span> : <span className="text-gray-300">-</span>}</td>
+                                          <td className="text-center px-2 py-2 text-xs font-semibold">{act.damageQty > 0 ? <span className="text-orange-700">{act.damageQty}</span> : <span className="text-gray-300">-</span>}</td>
+                                          <td className="text-center px-2 py-2 text-xs font-semibold">{act.lostQty > 0 ? <span className="text-red-700">{act.lostQty}</span> : <span className="text-gray-300">-</span>}</td>
+                                        </>
                                       )}
-                                      {!isView && (
-                                        <td className="text-center px-2 py-2">
-                                          {action ? (
-                                            <input type="number" min="1" max={stock.quantity} value={action.qty}
-                                              onChange={e => setLinenActions(prev => ({ ...prev, [stock.item_id]: { ...prev[stock.item_id], qty: Math.min(parseInt(e.target.value) || 0, stock.quantity) } }))}
-                                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs text-center font-semibold min-h-[36px]" />
-                                          ) : <span className="text-gray-300 text-xs">-</span>}
-                                        </td>
-                                      )}
-                                      {isView && <td className="text-center px-2 py-2 text-xs font-semibold">{action ? (action.action === 'MOVE_TO_DIRTY' ? 'Move to Dirty' : action.action === 'DAMAGE' ? 'Damage' : 'Lost') : '-'}</td>}
-                                      {isView && <td className="text-center px-2 py-2 text-xs font-semibold">{action?.qty || '-'}</td>}
                                     </tr>
                                   );
                                 })}
@@ -15890,13 +15963,21 @@ function RoomMakeUpPageNew() {
                           {/* MOBILE CARD LIST */}
                           <div className="sm:hidden space-y-2">
                             {roomItems.map(stock => {
-                              const action = linenActions[stock.item_id];
-                              const borderColor = action?.action === 'MOVE_TO_DIRTY' ? 'border-yellow-400 bg-yellow-50' :
-                                action?.action === 'DAMAGE' ? 'border-orange-400 bg-orange-50' :
-                                action?.action === 'LOST' ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white';
+                              const act = linenActions[stock.item_id] || { dirtyQty: 0, damageQty: 0, lostQty: 0 };
+                              const total = act.dirtyQty + act.damageQty + act.lostQty;
+                              const hasAction = total > 0;
+                              const maxStock = stock.quantity;
+                              const borderColor = hasAction ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-white';
+                              const updateAction = (field, val) => {
+                                const newAct = { ...act, [field]: val };
+                                const newTotal = newAct.dirtyQty + newAct.damageQty + newAct.lostQty;
+                                if (newTotal > maxStock) return;
+                                if (newTotal === 0) { const na = { ...linenActions }; delete na[stock.item_id]; setLinenActions(na); }
+                                else { setLinenActions(prev => ({ ...prev, [stock.item_id]: newAct })); }
+                              };
                               return (
                                 <div key={stock.id} className={`border-2 rounded-xl p-3 space-y-2.5 ${borderColor}`}>
-                                  {/* Item name + qty */}
+                                  {/* Item name + stock qty */}
                                   <div className="flex items-start justify-between">
                                     <div className="flex-1 min-w-0 mr-2">
                                       <p className="font-semibold text-gray-900 text-sm leading-tight">{stock.items?.code} - {stock.items?.name}</p>
@@ -15906,30 +15987,35 @@ function RoomMakeUpPageNew() {
                                       {formatNumber(stock.quantity)}
                                     </span>
                                   </div>
-                                  {/* Action buttons */}
+                                  {/* 3 qty steppers for each action */}
                                   {!isView && (
-                                    <ActionButtonGroup
-                                      value={action?.action || ''}
-                                      onChange={val => {
-                                        if (!val) { const na = { ...linenActions }; delete na[stock.item_id]; setLinenActions(na); }
-                                        else { setLinenActions(prev => ({ ...prev, [stock.item_id]: { action: val, qty: prev[stock.item_id]?.qty || 1 } })); }
-                                      }}
-                                    />
-                                  )}
-                                  {/* Qty stepper (only if action selected) */}
-                                  {!isView && action && (
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs font-medium text-gray-600">Action Qty:</span>
-                                      <QtyStepper value={action.qty} min={1} max={stock.quantity}
-                                        onChange={val => setLinenActions(prev => ({ ...prev, [stock.item_id]: { ...prev[stock.item_id], qty: val } }))}
-                                      />
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-yellow-700 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>Dirty</span>
+                                        <QtyStepper value={act.dirtyQty} min={0} max={maxStock - act.damageQty - act.lostQty}
+                                          onChange={val => updateAction('dirtyQty', val)} color="gray" />
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-orange-700 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block"></span>Damage</span>
+                                        <QtyStepper value={act.damageQty} min={0} max={maxStock - act.dirtyQty - act.lostQty}
+                                          onChange={val => updateAction('damageQty', val)} color="gray" />
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-red-700 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"></span>Lost</span>
+                                        <QtyStepper value={act.lostQty} min={0} max={maxStock - act.dirtyQty - act.damageQty}
+                                          onChange={val => updateAction('lostQty', val)} color="gray" />
+                                      </div>
+                                      {hasAction && (
+                                        <p className="text-xs text-gray-500 text-right">Total: {total} / {maxStock}</p>
+                                      )}
                                     </div>
                                   )}
                                   {/* View mode */}
-                                  {isView && action && (
-                                    <div className="flex items-center justify-between text-sm">
-                                      <span className="font-medium">{action.action === 'MOVE_TO_DIRTY' ? 'Move to Dirty' : action.action === 'DAMAGE' ? 'Damage' : 'Lost'}</span>
-                                      <span className="font-bold">{action.qty}</span>
+                                  {isView && hasAction && (
+                                    <div className="space-y-1">
+                                      {act.dirtyQty > 0 && <div className="flex justify-between text-xs"><span className="font-medium text-yellow-700">Dirty</span><span className="font-bold">{act.dirtyQty}</span></div>}
+                                      {act.damageQty > 0 && <div className="flex justify-between text-xs"><span className="font-medium text-orange-700">Damage</span><span className="font-bold">{act.damageQty}</span></div>}
+                                      {act.lostQty > 0 && <div className="flex justify-between text-xs"><span className="font-medium text-red-700">Lost</span><span className="font-bold">{act.lostQty}</span></div>}
                                     </div>
                                   )}
                                 </div>
