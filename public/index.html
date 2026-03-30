@@ -5745,7 +5745,7 @@ function RoomCategoryStandardsModal({ room, open, onClose, standardType, parentC
       const allCats = catRes.data || [];
       const parentCat = allCats.find(c => !c.parent_id && c.code === parentCategoryCode);
       const children = parentCat ? allCats.filter(c => c.parent_id === parentCat.id) : [];
-      setCategories(children);
+      setCategories(parentCat ? [parentCat, ...children] : []);
     } catch (err) {
       console.error('Error loading room category standards:', err);
       setLocalItems([]);
@@ -6472,11 +6472,6 @@ function RoomsPage() {
           data={filtered}
           actions={(row) => (
             <div className="flex items-center gap-1">
-              <button onClick={(e) => { e.stopPropagation(); toggleWarehouse(row); }}
-                className={`p-1.5 rounded-lg text-xs font-medium ${row.warehouse_id ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
-                title={row.warehouse_id ? t('room.disableWarehouse') : t('room.enableWarehouse')}>
-                <Icons.Warehouse />
-              </button>
               <button onClick={(e) => { e.stopPropagation(); setItemsRoom(row); }}
                 className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100" title="Guest Amenities">
                 <Icons.Package />
@@ -14079,10 +14074,11 @@ function RoomMakeUpPageNew() {
           if (!rRows[catId]) rRows[catId] = [];
           rRows[catId].push({ id: mi.id || Date.now() + Math.random(), itemId: mi.item_id, qty: mi.actual_qty });
         } else {
-          if (!actions[mi.item_id]) actions[mi.item_id] = { dirtyQty: 0, damageQty: 0, lostQty: 0 };
+          if (!actions[mi.item_id]) actions[mi.item_id] = { dirtyQty: 0, damageQty: 0, lostQty: 0, toHkQty: 0 };
           if (mi.type === 'move_to_dirty') actions[mi.item_id].dirtyQty = parseFloat(mi.actual_qty) || 0;
           else if (mi.type === 'damage') actions[mi.item_id].damageQty = parseFloat(mi.actual_qty) || 0;
           else if (mi.type === 'lost') actions[mi.item_id].lostQty = parseFloat(mi.actual_qty) || 0;
+          else if (mi.type === 'to_hk_store') actions[mi.item_id].toHkQty = parseFloat(mi.actual_qty) || 0;
         }
       });
       setLinenActions(actions);
@@ -14167,10 +14163,11 @@ function RoomMakeUpPageNew() {
           if (!rRows[catId]) rRows[catId] = [];
           rRows[catId].push({ id: Date.now() + Math.random(), itemId: mi.item_id, qty: mi.actual_qty });
         } else {
-          if (!actions[mi.item_id]) actions[mi.item_id] = { dirtyQty: 0, damageQty: 0, lostQty: 0 };
+          if (!actions[mi.item_id]) actions[mi.item_id] = { dirtyQty: 0, damageQty: 0, lostQty: 0, toHkQty: 0 };
           if (mi.type === 'move_to_dirty') actions[mi.item_id].dirtyQty = parseFloat(mi.actual_qty) || 0;
           else if (mi.type === 'damage') actions[mi.item_id].damageQty = parseFloat(mi.actual_qty) || 0;
           else if (mi.type === 'lost') actions[mi.item_id].lostQty = parseFloat(mi.actual_qty) || 0;
+          else if (mi.type === 'to_hk_store') actions[mi.item_id].toHkQty = parseFloat(mi.actual_qty) || 0;
         }
       });
       setLinenActions(actions);
@@ -14228,7 +14225,7 @@ function RoomMakeUpPageNew() {
       return;
     }
 
-    const hasLinenActions = Object.values(linenActions).some(a => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0));
+    const hasLinenActions = Object.values(linenActions).some(a => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0 || a.toHkQty > 0));
     const hasReplaceRows = Object.values(replaceRows).some(rows => rows.some(r => r.itemId && r.qty > 0));
     const hasAmenities = Object.values(amenityQty).some(a => a.itemId && a.qty > 0);
     const hasActivities = activityList.length > 0;
@@ -14313,6 +14310,14 @@ function RoomMakeUpPageNew() {
             default_qty: defaultQty, actual_qty: parseFloat(actionData.lostQty),
             dirty_qty: 0,
             warehouse_id: room?.warehouse_id, notes: 'LOST',
+          });
+        }
+        if (actionData.toHkQty > 0) {
+          linenMuItems.push({
+            makeup_id: muId, item_id: itemId, type: 'to_hk_store',
+            default_qty: defaultQty, actual_qty: parseFloat(actionData.toHkQty),
+            dirty_qty: 0,
+            warehouse_id: room?.warehouse_id, notes: 'TO_HK_STORE',
           });
         }
       }
@@ -14480,6 +14485,9 @@ function RoomMakeUpPageNew() {
             unit_cost: unitCost, total_cost: unitCost * numQty, notes: '',
           });
           showNotification('Laporkan ke Front Office: ' + (stockItem?.items?.name || 'Item') + ' hilang ' + numQty + ' pcs!', 'error');
+        } else if (mi.type === 'to_hk_store') {
+          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'MAKEUP-TO-HK', makeupNumber, 'OUT from Room to HK Store', dept, mu.id);
+          if (hkStore) await doStockMovement(mi.item_id, 'IN', numQty, hkStore.id, 'MAKEUP-TO-HK', makeupNumber, 'IN to HK Store from Room', dept, mu.id);
         }
       }
 
@@ -14551,7 +14559,7 @@ function RoomMakeUpPageNew() {
   function getAmenityItemsForCategory(catId) { return amenityAvailableItems.filter(i => i.category_id === catId); }
 
   const replaceRowCount = Object.values(replaceRows).reduce((sum, rows) => sum + rows.filter(r => r.itemId && r.qty > 0).length, 0);
-  const linenActionCount = Object.values(linenActions).filter(a => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0)).length + replaceRowCount;
+  const linenActionCount = Object.values(linenActions).filter(a => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0 || a.toHkQty > 0)).length + replaceRowCount;
   const amenityCount = Object.values(amenityQty).filter(a => a.itemId && a.qty > 0).length;
   const activityDoneCount = Object.values(activityChecks).filter(c => c.isDone).length;
 
@@ -14580,6 +14588,7 @@ function RoomMakeUpPageNew() {
       { id: 'MOVE_TO_DIRTY', label: 'Dirty', color: 'bg-yellow-100 border-yellow-400 text-yellow-800', activeColor: 'bg-yellow-400 border-yellow-500 text-yellow-900' },
       { id: 'DAMAGE', label: 'Damage', color: 'bg-orange-100 border-orange-400 text-orange-800', activeColor: 'bg-orange-400 border-orange-500 text-orange-900' },
       { id: 'LOST', label: 'Lost', color: 'bg-red-100 border-red-400 text-red-800', activeColor: 'bg-red-400 border-red-500 text-red-900' },
+      { id: 'TO_HK_STORE', label: 'To HK', color: 'bg-teal-100 border-teal-400 text-teal-800', activeColor: 'bg-teal-400 border-teal-500 text-teal-900' },
     ];
     return (
       <div className="flex gap-1.5">
@@ -14796,18 +14805,19 @@ function RoomMakeUpPageNew() {
                                   <th className="text-center px-2 py-2 font-semibold text-xs w-20"><span className="text-yellow-700">Dirty</span></th>
                                   <th className="text-center px-2 py-2 font-semibold text-xs w-20"><span className="text-orange-700">Damage</span></th>
                                   <th className="text-center px-2 py-2 font-semibold text-xs w-20"><span className="text-red-700">Lost</span></th>
+                                  <th className="text-center px-2 py-2 font-semibold text-xs w-20"><span className="text-teal-700">To HK</span></th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-100">
                                 {roomItems.map(stock => {
-                                  const act = linenActions[stock.item_id] || { dirtyQty: 0, damageQty: 0, lostQty: 0 };
-                                  const total = act.dirtyQty + act.damageQty + act.lostQty;
+                                  const act = linenActions[stock.item_id] || { dirtyQty: 0, damageQty: 0, lostQty: 0, toHkQty: 0 };
+                                  const total = act.dirtyQty + act.damageQty + act.lostQty + (act.toHkQty || 0);
                                   const hasAction = total > 0;
                                   const rowBg = hasAction ? 'bg-gray-50' : 'bg-white';
                                   const maxStock = stock.quantity;
                                   const updateAction = (field, val) => {
                                     const newAct = { ...act, [field]: val };
-                                    const newTotal = newAct.dirtyQty + newAct.damageQty + newAct.lostQty;
+                                    const newTotal = newAct.dirtyQty + newAct.damageQty + newAct.lostQty + (newAct.toHkQty || 0);
                                     if (newTotal > maxStock) return;
                                     if (newTotal === 0) { const na = { ...linenActions }; delete na[stock.item_id]; setLinenActions(na); }
                                     else { setLinenActions(prev => ({ ...prev, [stock.item_id]: newAct })); }
@@ -14824,22 +14834,28 @@ function RoomMakeUpPageNew() {
                                       {!isView ? (
                                         <>
                                           <td className="text-center px-2 py-2">
-                                            <input type="number" min="0" max={maxStock - act.damageQty - act.lostQty} value={act.dirtyQty || ''}
+                                            <input type="number" min="0" max={maxStock - act.damageQty - act.lostQty - (act.toHkQty || 0)} value={act.dirtyQty || ''}
                                               onChange={e => updateAction('dirtyQty', Math.max(0, parseInt(e.target.value) || 0))}
                                               placeholder="0"
                                               className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.dirtyQty > 0 ? 'border-yellow-400 bg-yellow-50 text-yellow-800' : 'border-gray-300'}`} />
                                           </td>
                                           <td className="text-center px-2 py-2">
-                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.lostQty} value={act.damageQty || ''}
+                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.lostQty - (act.toHkQty || 0)} value={act.damageQty || ''}
                                               onChange={e => updateAction('damageQty', Math.max(0, parseInt(e.target.value) || 0))}
                                               placeholder="0"
                                               className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.damageQty > 0 ? 'border-orange-400 bg-orange-50 text-orange-800' : 'border-gray-300'}`} />
                                           </td>
                                           <td className="text-center px-2 py-2">
-                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.damageQty} value={act.lostQty || ''}
+                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.damageQty - (act.toHkQty || 0)} value={act.lostQty || ''}
                                               onChange={e => updateAction('lostQty', Math.max(0, parseInt(e.target.value) || 0))}
                                               placeholder="0"
                                               className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.lostQty > 0 ? 'border-red-400 bg-red-50 text-red-800' : 'border-gray-300'}`} />
+                                          </td>
+                                          <td className="text-center px-2 py-2">
+                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.damageQty - act.lostQty} value={act.toHkQty || ''}
+                                              onChange={e => updateAction('toHkQty', Math.max(0, parseInt(e.target.value) || 0))}
+                                              placeholder="0"
+                                              className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.toHkQty > 0 ? 'border-teal-400 bg-teal-50 text-teal-800' : 'border-gray-300'}`} />
                                           </td>
                                         </>
                                       ) : (
@@ -14847,6 +14863,7 @@ function RoomMakeUpPageNew() {
                                           <td className="text-center px-2 py-2 text-xs font-semibold">{act.dirtyQty > 0 ? <span className="text-yellow-700">{act.dirtyQty}</span> : <span className="text-gray-300">-</span>}</td>
                                           <td className="text-center px-2 py-2 text-xs font-semibold">{act.damageQty > 0 ? <span className="text-orange-700">{act.damageQty}</span> : <span className="text-gray-300">-</span>}</td>
                                           <td className="text-center px-2 py-2 text-xs font-semibold">{act.lostQty > 0 ? <span className="text-red-700">{act.lostQty}</span> : <span className="text-gray-300">-</span>}</td>
+                                          <td className="text-center px-2 py-2 text-xs font-semibold">{act.toHkQty > 0 ? <span className="text-teal-700">{act.toHkQty}</span> : <span className="text-gray-300">-</span>}</td>
                                         </>
                                       )}
                                     </tr>
@@ -14859,14 +14876,14 @@ function RoomMakeUpPageNew() {
                           {/* MOBILE CARD LIST */}
                           <div className="sm:hidden space-y-2">
                             {roomItems.map(stock => {
-                              const act = linenActions[stock.item_id] || { dirtyQty: 0, damageQty: 0, lostQty: 0 };
-                              const total = act.dirtyQty + act.damageQty + act.lostQty;
+                              const act = linenActions[stock.item_id] || { dirtyQty: 0, damageQty: 0, lostQty: 0, toHkQty: 0 };
+                              const total = act.dirtyQty + act.damageQty + act.lostQty + (act.toHkQty || 0);
                               const hasAction = total > 0;
                               const maxStock = stock.quantity;
                               const borderColor = hasAction ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-white';
                               const updateAction = (field, val) => {
                                 const newAct = { ...act, [field]: val };
-                                const newTotal = newAct.dirtyQty + newAct.damageQty + newAct.lostQty;
+                                const newTotal = newAct.dirtyQty + newAct.damageQty + newAct.lostQty + (newAct.toHkQty || 0);
                                 if (newTotal > maxStock) return;
                                 if (newTotal === 0) { const na = { ...linenActions }; delete na[stock.item_id]; setLinenActions(na); }
                                 else { setLinenActions(prev => ({ ...prev, [stock.item_id]: newAct })); }
@@ -14888,18 +14905,23 @@ function RoomMakeUpPageNew() {
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-yellow-700 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>Dirty</span>
-                                        <QtyStepper value={act.dirtyQty} min={0} max={maxStock - act.damageQty - act.lostQty}
+                                        <QtyStepper value={act.dirtyQty} min={0} max={maxStock - act.damageQty - act.lostQty - (act.toHkQty || 0)}
                                           onChange={val => updateAction('dirtyQty', val)} color="gray" />
                                       </div>
                                       <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-orange-700 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block"></span>Damage</span>
-                                        <QtyStepper value={act.damageQty} min={0} max={maxStock - act.dirtyQty - act.lostQty}
+                                        <QtyStepper value={act.damageQty} min={0} max={maxStock - act.dirtyQty - act.lostQty - (act.toHkQty || 0)}
                                           onChange={val => updateAction('damageQty', val)} color="gray" />
                                       </div>
                                       <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-red-700 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"></span>Lost</span>
-                                        <QtyStepper value={act.lostQty} min={0} max={maxStock - act.dirtyQty - act.damageQty}
+                                        <QtyStepper value={act.lostQty} min={0} max={maxStock - act.dirtyQty - act.damageQty - (act.toHkQty || 0)}
                                           onChange={val => updateAction('lostQty', val)} color="gray" />
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-teal-700 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-400 inline-block"></span>To HK</span>
+                                        <QtyStepper value={act.toHkQty || 0} min={0} max={maxStock - act.dirtyQty - act.damageQty - act.lostQty}
+                                          onChange={val => updateAction('toHkQty', val)} color="gray" />
                                       </div>
                                       {hasAction && (
                                         <p className="text-xs text-gray-500 text-right">Total: {total} / {maxStock}</p>
@@ -14912,6 +14934,7 @@ function RoomMakeUpPageNew() {
                                       {act.dirtyQty > 0 && <div className="flex justify-between text-xs"><span className="font-medium text-yellow-700">Dirty</span><span className="font-bold">{act.dirtyQty}</span></div>}
                                       {act.damageQty > 0 && <div className="flex justify-between text-xs"><span className="font-medium text-orange-700">Damage</span><span className="font-bold">{act.damageQty}</span></div>}
                                       {act.lostQty > 0 && <div className="flex justify-between text-xs"><span className="font-medium text-red-700">Lost</span><span className="font-bold">{act.lostQty}</span></div>}
+                                      {act.toHkQty > 0 && <div className="flex justify-between text-xs"><span className="font-medium text-teal-700">To HK</span><span className="font-bold">{act.toHkQty}</span></div>}
                                     </div>
                                   )}
                                 </div>
