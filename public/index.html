@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.14',
+    'app.version': 'v1.0.15',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
     'app.maintenance.title': 'System Under Maintenance',
@@ -1078,7 +1078,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.14',
+    'app.version': 'v1.0.15',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
     'app.maintenance.title': '系统维护中',
@@ -2119,6 +2119,45 @@ function App() {
   const [showForceChangePassword, setShowForceChangePassword] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
 
+  // Global auto-refresh & session timeout
+  const lastActivityRef = React.useRef(Date.now());
+  const lastRefreshRef = React.useRef(Date.now());
+  const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+  const MIN_REFRESH_INTERVAL_MS = 10 * 1000; // min 10s between auto-refreshes
+
+  // Track user activity (mouse, keyboard, touch, scroll)
+  useEffect(() => {
+    function trackActivity() { lastActivityRef.current = Date.now(); }
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(e => window.addEventListener(e, trackActivity, { passive: true }));
+    return () => events.forEach(e => window.removeEventListener(e, trackActivity));
+  }, []);
+
+  // Global visibility change: auto-refresh ALL pages OR force re-login
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible' || !currentUser) return;
+      const now = Date.now();
+      const inactiveMs = now - lastActivityRef.current;
+      // Session timeout: force re-login after 15 min inactivity
+      if (inactiveMs >= SESSION_TIMEOUT_MS) {
+        console.log('[Session] Timeout after', Math.round(inactiveMs / 60000), 'min inactivity. Forcing re-login.');
+        showNotification(t('session.timeout') || 'Sesi Anda telah berakhir karena tidak aktif selama 15 menit. Silakan login kembali.', 'warning');
+        handleLogout();
+        return;
+      }
+      // Auto-refresh: force new selectedOrg reference to trigger all pages' useEffect([selectedOrg])
+      if (now - lastRefreshRef.current >= MIN_REFRESH_INTERVAL_MS && selectedOrg) {
+        console.log('[App] Tab visible again, refreshing all page data...');
+        lastRefreshRef.current = now;
+        lastActivityRef.current = now;
+        setSelectedOrg(prev => prev ? Object.assign({}, prev) : prev);
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [currentUser, selectedOrg]);
+
   // Refresh role permissions from DB when app loads with saved user
   async function refreshRolePermissions(user) {
     if (!user?.id) return;
@@ -2583,9 +2622,9 @@ function App() {
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Top Bar */}
-          <header className="bg-white shadow-sm border-b border-gray-200 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <button onClick={() => setMobileSidebar(true)} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg flex-shrink-0">
+          <header className="bg-white shadow-sm border-b border-gray-200 px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-1 sm:gap-2" style={{minHeight: '48px'}}>
+            <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 overflow-hidden">
+              <button onClick={() => setMobileSidebar(true)} className="lg:hidden p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg flex-shrink-0">
                 <Icons.Menu />
               </button>
               {selectedOrg && (() => {
@@ -2602,31 +2641,31 @@ function App() {
                 const orgIdx = organizations.findIndex(o => o.id === selectedOrg.id);
                 const c = orgColors[orgIdx >= 0 ? orgIdx % orgColors.length : 0];
                 return (
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm sm:text-lg font-semibold text-gray-800 truncate">{selectedOrg.name}</h2>
-                    <span className={`text-xs sm:text-sm ${c.bg} ${c.text} px-2 py-0.5 rounded-full font-medium flex-shrink-0`}>
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 overflow-hidden">
+                    <h2 className="text-xs sm:text-lg font-semibold text-gray-800 truncate" style={{maxWidth: '100%'}}>{selectedOrg.name}</h2>
+                    <span className={`text-xs ${c.bg} ${c.text} px-1.5 sm:px-2 py-0.5 rounded-full font-medium flex-shrink-0 whitespace-nowrap`}>
                       {selectedOrg.code}
                     </span>
                   </div>
                 );
               })()}
             </div>
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              <button onClick={toggleLanguage} className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg relative text-xs sm:text-sm font-medium text-gray-700">
+            <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
+              <button onClick={toggleLanguage} className="hidden sm:block p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg relative text-xs sm:text-sm font-medium text-gray-700">
                 {lang === 'en' ? '中文' : 'EN'}
               </button>
-              <button className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg relative">
+              <button className="p-1 sm:p-2 hover:bg-gray-100 rounded-lg relative">
                 <Icons.Bell />
               </button>
-              <div className="flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2">
+              <div className="flex items-center gap-0.5 sm:gap-2 ml-0.5 sm:ml-2">
                 <div className="text-right hidden sm:block">
                   <div className="text-sm font-medium text-gray-700">{currentUser?.full_name}</div>
                   <div className="text-xs text-gray-500">{currentUser?.role?.name}</div>
                 </div>
-                <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-medium flex-shrink-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
                   {(currentUser?.full_name || 'U')[0].toUpperCase()}
                 </div>
-                <button onClick={handleLogout} className="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg text-gray-500 hover:text-red-600 flex-shrink-0" title={t('login.logout')}>
+                <button onClick={handleLogout} className="p-1 sm:p-2 hover:bg-red-50 rounded-lg text-gray-500 hover:text-red-600 flex-shrink-0" title={t('login.logout')}>
                   <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                 </button>
               </div>
@@ -2779,7 +2818,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.14 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.15 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
