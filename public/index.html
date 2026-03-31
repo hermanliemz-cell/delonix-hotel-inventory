@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.15',
+    'app.version': 'v1.0.17',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
     'app.maintenance.title': 'System Under Maintenance',
@@ -752,6 +752,8 @@ const translations = {
     'laundry.noItemsSelected': 'Pilih minimal 1 item untuk ditransfer',
     'laundry.history': 'Riwayat Laundry',
     'laundry.noHistory': 'Belum ada riwayat laundry.',
+    'laundry.typeSend': 'Kirim',
+    'laundry.typeReceive': 'Terima',
 
     // Transfer
     'transfer.title': 'Stock Transfer',
@@ -1078,7 +1080,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.15',
+    'app.version': 'v1.0.17',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
     'app.maintenance.title': '系统维护中',
@@ -2818,7 +2820,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.15 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.17 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -4071,7 +4073,7 @@ function ItemsPage() {
   const [filterSubCategory, setFilterSubCategory] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false });
+  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false, max_inuse_qty: 0 });
 
   // Import from hotel states
   const [showImportModal, setShowImportModal] = useState(false);
@@ -4303,6 +4305,7 @@ function ItemsPage() {
         allow_single_usage: item.allow_single_usage,
         allow_direct_purchase: item.allow_direct_purchase,
         allow_inuse_warehouse: item.allow_inuse_warehouse,
+        max_inuse_qty: item.max_inuse_qty || 0,
         is_active: true, organization_id: selectedOrg?.id
       }));
       const { error } = await supabase.from('items').insert(itemPayloads);
@@ -4384,13 +4387,13 @@ function ItemsPage() {
 
   function openCreate() {
     setEditItem(null);
-    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false });
+    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false, max_inuse_qty: 0 });
     setShowModal(true);
   }
 
   function openEdit(item) {
     setEditItem(item);
-    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false, allow_direct_purchase: item.allow_direct_purchase || false, allow_inuse_warehouse: item.allow_inuse_warehouse || false });
+    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false, allow_direct_purchase: item.allow_direct_purchase || false, allow_inuse_warehouse: item.allow_inuse_warehouse || false, max_inuse_qty: item.max_inuse_qty || 0 });
     setShowModal(true);
   }
 
@@ -4539,6 +4542,7 @@ function ItemsPage() {
             { header: 'SIU', render: r => r.allow_single_usage ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
             { header: 'DP', render: r => r.allow_direct_purchase ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
             { header: 'IUW', render: r => r.allow_inuse_warehouse ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge> },
+            { header: 'Max IU', render: r => r.allow_inuse_warehouse && r.max_inuse_qty > 0 ? <span className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded font-medium">{formatNumber(r.max_inuse_qty)}</span> : <span className="text-gray-400">-</span> },
             { header: t('common.status'), render: r => <Badge color={r.is_active ? 'green' : 'red'}>{r.is_active ? t('common.active') : t('common.inactive')}</Badge> },
           ]}
           data={paginatedItems}
@@ -4667,6 +4671,12 @@ function ItemsPage() {
               <span className="text-xs text-gray-400">Item ini boleh masuk ke In-Use Warehouse (kamar)</span>
             </div>
           </FormField>
+          {form.allow_inuse_warehouse && (
+            <FormField label="Max In-Use Qty">
+              <Input type="number" min="0" step="1" value={form.max_inuse_qty} onChange={e => setForm({...form, max_inuse_qty: parseInt(e.target.value) || 0})} placeholder="0 = unlimited" />
+              <span className="text-xs text-gray-400 mt-1">Maksimal qty yang boleh berada di In-Use Warehouse. 0 = tidak dibatasi.</span>
+            </FormField>
+          )}
         </div>
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
           <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
@@ -13470,6 +13480,10 @@ function OpeningBalancePage() {
           const convRate = parseFloat(itemMap[d.item_id]?.conversion_rate) || 1;
           detMap[d.item_id]._purchase_cost = Math.round((d.unit_cost || 0) * convRate);
         }
+        // Also store cost per usage unit directly (for non-Linen categories)
+        if ((d.unit_cost || 0) > 0 && !detMap[d.item_id]._cost_per_usage) {
+          detMap[d.item_id]._cost_per_usage = d.unit_cost || 0;
+        }
       });
       setDetails(detMap);
 
@@ -13614,7 +13628,10 @@ function OpeningBalancePage() {
 
         const convRate = parseFloat(item.conversion_rate) || 1;
         const purchaseCost = parseFloat(itemDetails._purchase_cost) || 0;
-        const unitCost = convRate > 0 ? purchaseCost / convRate : 0;
+        // For Linen: unitCost = purchaseCost / convRate; For others: use direct cost per usage unit
+        const unitCost = isLinen
+          ? (convRate > 0 ? purchaseCost / convRate : 0)
+          : (parseFloat(itemDetails._cost_per_usage) || (convRate > 0 ? purchaseCost / convRate : 0));
 
         for (const st of config.statuses) {
           const d = itemDetails[st] || { quantity: 0, unit_cost: 0 };
@@ -14327,19 +14344,35 @@ function OpeningBalancePage() {
                   <tr className="bg-gray-50 border-b border-gray-100">
                     <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3 w-24">{t('ob.itemCode')}</th>
                     <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3">{t('ob.itemName')}</th>
-                    {config.statuses.map(st => (
-                      <th key={st} className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-24">
-                        {t(config.labels[st])}
-                      </th>
-                    ))}
-                    {isMultiStatus && (
-                      <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20 bg-blue-50">{t('ob.totalPcs')}</th>
+                    {isLinenCategory ? (
+                      <React.Fragment>
+                        {config.statuses.map(st => (
+                          <th key={st} className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-24">
+                            {t(config.labels[st])}
+                          </th>
+                        ))}
+                        {isMultiStatus && (
+                          <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20 bg-blue-50">Total Usage Unit Qty</th>
+                        )}
+                        <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Purchase Unit</th>
+                        <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost/Usage Unit</th>
+                        <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Usage Unit</th>
+                        <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Conversion</th>
+                        <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost/Usage Unit</th>
+                      </React.Fragment>
+                    ) : (
+                      <React.Fragment>
+                        <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Purchase Unit</th>
+                        <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Usage Unit</th>
+                        <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Conversion</th>
+                        {config.statuses.map(st => (
+                          <th key={st} className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-28">
+                            Usage Unit Qty on Hand
+                          </th>
+                        ))}
+                        <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost per Usage Unit</th>
+                      </React.Fragment>
                     )}
-                    <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Purchase Unit</th>
-                    <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost/Purchase Unit</th>
-                    <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Usage Unit</th>
-                    <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-20">Conversion</th>
-                    <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-3 w-32">Cost/Usage Unit</th>
                     <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-4 py-3 w-36">{t('ob.totalValue')}</th>
                   </tr>
                 </thead>
@@ -14356,9 +14389,12 @@ function OpeningBalancePage() {
                     const usageUnitName = getUnitName(item.usage_unit_id || item.unit_id);
                     const conversionRate = parseFloat(item.conversion_rate) || 1;
 
-                    // Cost per purchase unit is stored in detail as 'purchase_cost'
+                    // Cost calculation differs: Linen uses purchase_cost/convRate, others use direct cost per usage
                     const purchaseCost = parseFloat(itemD._purchase_cost) || 0;
-                    const costPerUsage = conversionRate > 0 ? purchaseCost / conversionRate : 0;
+                    const directCostPerUsage = parseFloat(itemD._cost_per_usage) || 0;
+                    const costPerUsage = isLinenCategory
+                      ? (conversionRate > 0 ? purchaseCost / conversionRate : 0)
+                      : directCostPerUsage;
                     const totalValue = totalQty * costPerUsage;
                     const hasData = totalQty > 0;
 
@@ -14370,68 +14406,116 @@ function OpeningBalancePage() {
                         <td className="px-4 py-2">
                           <span className="font-medium text-sm text-gray-800">{item.name}</span>
                         </td>
-                        {config.statuses.map(st => {
-                          const d = itemD[st] || {};
-                          const isInUseLinenCol = isLinenCategory && st === 'in_use';
-                          return (
-                            <td key={st} className="px-2 py-2">
-                              <div className={isInUseLinenCol ? 'flex items-center gap-1' : ''}>
-                                <input type="number" min="0" step="1"
-                                  value={d.quantity || ''}
-                                  onChange={e => updateDetail(item.id, st, 'quantity', e.target.value)}
-                                  disabled={isLocked} placeholder="0"
-                                  className={`w-full text-center text-sm border rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-primary-500
-                                    ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'}
-                                    ${(parseFloat(d.quantity) || 0) > 0 ? 'border-green-300 bg-green-50' : ''}`}
-                                />
-                                {isInUseLinenCol && (parseFloat(d.quantity) || 0) > 0 && !isLocked && (
-                                  <button onClick={() => { setRoomPopupItemId(item.id); setShowRoomPopup(true); }}
-                                    title="Assign ke kamar"
-                                    className="flex-shrink-0 p-1 text-blue-600 hover:bg-blue-50 rounded">
-                                    <Icons.MapPin className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </div>
+                        {isLinenCategory ? (
+                          <React.Fragment>
+                            {config.statuses.map(st => {
+                              const d = itemD[st] || {};
+                              const isInUseLinenCol = st === 'in_use';
+                              return (
+                                <td key={st} className="px-2 py-2">
+                                  <div className={isInUseLinenCol ? 'flex items-center gap-1' : ''}>
+                                    <input type="number" min="0" step="1"
+                                      value={d.quantity || ''}
+                                      onChange={e => updateDetail(item.id, st, 'quantity', e.target.value)}
+                                      disabled={isLocked} placeholder="0"
+                                      className={`w-full text-center text-sm border rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-primary-500
+                                        ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'}
+                                        ${(parseFloat(d.quantity) || 0) > 0 ? 'border-green-300 bg-green-50' : ''}`}
+                                    />
+                                    {isInUseLinenCol && (parseFloat(d.quantity) || 0) > 0 && !isLocked && (
+                                      <button onClick={() => { setRoomPopupItemId(item.id); setShowRoomPopup(true); }}
+                                        title="Assign ke kamar"
+                                        className="flex-shrink-0 p-1 text-blue-600 hover:bg-blue-50 rounded">
+                                        <Icons.MapPin className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                            {isMultiStatus && (
+                              <td className="px-2 py-2 text-center bg-blue-50/50">
+                                <span className={`text-sm font-bold ${totalQty > 0 ? 'text-blue-700' : 'text-gray-400'}`}>{totalQty || '-'}</span>
+                              </td>
+                            )}
+                            <td className="px-2 py-2 text-center text-sm text-gray-600">{purchaseUnitName}</td>
+                            <td className="px-2 py-2">
+                              <input type="number" min="0" step="1"
+                                value={purchaseCost || ''}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setDetails(prev => ({
+                                    ...prev,
+                                    [item.id]: {
+                                      ...(prev[item.id] || {}),
+                                      _purchase_cost: val
+                                    }
+                                  }));
+                                  const cpuu = conversionRate > 0 ? (parseFloat(val) || 0) / conversionRate : 0;
+                                  config.statuses.forEach(st => updateDetail(item.id, st, 'unit_cost', cpuu));
+                                }}
+                                disabled={isLocked} placeholder="0"
+                                className={`w-full text-center text-sm border rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-primary-500
+                                  ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'}
+                                  ${purchaseCost > 0 ? 'border-green-300 bg-green-50' : ''}`}
+                              />
                             </td>
-                          );
-                        })}
-                        {isMultiStatus && (
-                          <td className="px-2 py-2 text-center bg-blue-50/50">
-                            <span className={`text-sm font-bold ${totalQty > 0 ? 'text-blue-700' : 'text-gray-400'}`}>{totalQty || '-'}</span>
-                          </td>
+                            <td className="px-2 py-2 text-center text-sm text-gray-600">{usageUnitName}</td>
+                            <td className="px-2 py-2 text-center">
+                              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{conversionRate}</span>
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              <span className={`text-sm font-medium ${costPerUsage > 0 ? 'text-primary-700' : 'text-gray-400'}`}>
+                                {costPerUsage > 0 ? formatCurrency(Math.round(costPerUsage)) : '-'}
+                              </span>
+                            </td>
+                          </React.Fragment>
+                        ) : (
+                          <React.Fragment>
+                            <td className="px-2 py-2 text-center text-sm text-gray-600">{purchaseUnitName}</td>
+                            <td className="px-2 py-2 text-center text-sm text-gray-600">{usageUnitName}</td>
+                            <td className="px-2 py-2 text-center">
+                              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{conversionRate}</span>
+                            </td>
+                            {config.statuses.map(st => {
+                              const d = itemD[st] || {};
+                              return (
+                                <td key={st} className="px-2 py-2">
+                                  <input type="number" min="0" step="1"
+                                    value={d.quantity || ''}
+                                    onChange={e => updateDetail(item.id, st, 'quantity', e.target.value)}
+                                    disabled={isLocked} placeholder="0"
+                                    className={`w-full text-center text-sm border rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-primary-500
+                                      ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'}
+                                      ${(parseFloat(d.quantity) || 0) > 0 ? 'border-green-300 bg-green-50' : ''}`}
+                                  />
+                                </td>
+                              );
+                            })}
+                            <td className="px-2 py-2">
+                              <input type="number" min="0" step="1"
+                                value={directCostPerUsage || ''}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  const cpuu = parseFloat(val) || 0;
+                                  setDetails(prev => ({
+                                    ...prev,
+                                    [item.id]: {
+                                      ...(prev[item.id] || {}),
+                                      _cost_per_usage: val,
+                                      _purchase_cost: Math.round(cpuu * conversionRate)
+                                    }
+                                  }));
+                                  config.statuses.forEach(st => updateDetail(item.id, st, 'unit_cost', cpuu));
+                                }}
+                                disabled={isLocked} placeholder="0"
+                                className={`w-full text-right text-sm border rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-primary-500
+                                  ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'}
+                                  ${directCostPerUsage > 0 ? 'border-green-300 bg-green-50' : ''}`}
+                              />
+                            </td>
+                          </React.Fragment>
                         )}
-                        <td className="px-2 py-2 text-center text-sm text-gray-600">{purchaseUnitName}</td>
-                        <td className="px-2 py-2">
-                          <input type="number" min="0" step="1"
-                            value={purchaseCost || ''}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setDetails(prev => ({
-                                ...prev,
-                                [item.id]: {
-                                  ...(prev[item.id] || {}),
-                                  _purchase_cost: val
-                                }
-                              }));
-                              // Auto-calculate and store cost per usage unit in all statuses
-                              const cpuu = conversionRate > 0 ? (parseFloat(val) || 0) / conversionRate : 0;
-                              config.statuses.forEach(st => updateDetail(item.id, st, 'unit_cost', cpuu));
-                            }}
-                            disabled={isLocked} placeholder="0"
-                            className={`w-full text-center text-sm border rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-primary-500
-                              ${isLocked ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-200'}
-                              ${purchaseCost > 0 ? 'border-green-300 bg-green-50' : ''}`}
-                          />
-                        </td>
-                        <td className="px-2 py-2 text-center text-sm text-gray-600">{usageUnitName}</td>
-                        <td className="px-2 py-2 text-center">
-                          <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{conversionRate}</span>
-                        </td>
-                        <td className="px-2 py-2 text-right">
-                          <span className={`text-sm font-medium ${costPerUsage > 0 ? 'text-primary-700' : 'text-gray-400'}`}>
-                            {costPerUsage > 0 ? formatCurrency(Math.round(costPerUsage)) : '-'}
-                          </span>
-                        </td>
                         <td className="px-4 py-2 text-right">
                           <span className={`text-sm font-medium ${totalValue > 0 ? 'text-green-700' : 'text-gray-400'}`}>
                             {totalValue > 0 ? formatCurrency(Math.round(totalValue)) : '-'}
@@ -15400,19 +15484,7 @@ function RoomMakeUpPageNew() {
       reference_number: refNumber, reference_id: refId || null, warehouse_id: warehouseId,
       notes: notesText, created_by: currentUser?.id, department_id: dept || null,
     });
-    if (movementType === 'OUT') {
-      if (sb) {
-        const newQty = Math.max(0, parseFloat(sb.quantity) - qty);
-        await supabase.from('stock_balance').update({ quantity: newQty, total_value: newQty * unitCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', sb.id);
-      }
-    } else {
-      if (sb) {
-        const newQty = parseFloat(sb.quantity) + qty;
-        await supabase.from('stock_balance').update({ quantity: newQty, avg_cost: unitCost, total_value: newQty * unitCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', sb.id);
-      } else {
-        await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, department_id: dept || null, item_id: itemId, warehouse_id: warehouseId, quantity: qty, avg_cost: unitCost, total_value: qty * unitCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-      }
-    }
+    // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
   }
 
   function toggleSection(key) { setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] })); }
@@ -17769,8 +17841,18 @@ function LaundryPage() {
         .in('reference_type', ['LAUNDRY_SEND', 'LAUNDRY_RECEIVE'])
         .eq('movement_type', 'OUT')
         .order('created_at', { ascending: false })
-        .limit(50);
-      setHistory(histData || []);
+        .limit(200);
+      // Group history by reference_number: 1 row per document
+      const grouped = {};
+      (histData || []).forEach(rec => {
+        const key = rec.reference_number;
+        if (!grouped[key]) {
+          grouped[key] = { reference_number: key, reference_type: rec.reference_type, created_at: rec.created_at, total_qty: 0, item_count: 0, vendors: rec.vendors, users: rec.users };
+        }
+        grouped[key].total_qty += parseFloat(rec.quantity) || 0;
+        grouped[key].item_count += 1;
+      });
+      setHistory(Object.values(grouped));
     } catch (e) {
       console.error(e);
       showNotification('Error loading laundry data: ' + e.message, 'error');
@@ -18206,22 +18288,23 @@ function LaundryPage() {
     setExpandedLaundryCats(prev => ({ ...prev, [catId]: !prev[catId] }));
   }
 
-  // ===== PDF Export: Berita Acara Kirim Laundry (LS) =====
-  async function exportLSPdf(refNumber) {
+  // ===== PDF Export: Berita Acara Laundry (Send & Receive) =====
+  async function exportLaundryPdf(refNumber, refType) {
     try {
-      // Fetch all items for this LS reference
+      // Fetch all items for this reference (works for both SEND and RECEIVE)
       const { data: lsItems } = await supabase.from('stock_movements')
         .select('*, items:item_id(code, name, category_id, item_categories:category_id(id, name)), vendors:vendor_id(id, code, name), users:created_by(id, full_name, department_id, departments:department_id(name))')
         .eq('organization_id', selectedOrg.id)
         .eq('reference_number', refNumber)
-        .eq('reference_type', 'LAUNDRY_SEND')
+        .eq('reference_type', refType || 'LAUNDRY_SEND')
         .eq('movement_type', 'OUT')
         .order('created_at');
 
       if (!lsItems || lsItems.length === 0) {
-        showNotification('Data LS tidak ditemukan', 'error');
+        showNotification('Data tidak ditemukan untuk ' + refNumber, 'error');
         return;
       }
+      const isSend = refType === 'LAUNDRY_SEND';
 
       const firstItem = lsItems[0];
       const vendorName = firstItem.vendors?.name || '-';
@@ -18248,7 +18331,7 @@ function LaundryPage() {
       // Title
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
-      doc.text('BERITA ACARA SERAH TERIMA LAUNDRY', pw / 2, y, { align: 'center' });
+      doc.text(isSend ? 'BERITA ACARA SERAH TERIMA LAUNDRY' : 'BERITA ACARA PENERIMAAN LAUNDRY', pw / 2, y, { align: 'center' });
       y += 6;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
@@ -18341,8 +18424,8 @@ function LaundryPage() {
 
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text('Yang Menyerahkan,', sigX1, y);
-      doc.text('Yang Menerima (Pihak Vendor Laundry),', sigX2, y);
+      doc.text(isSend ? 'Yang Menyerahkan,' : 'Yang Menerima,', sigX1, y);
+      doc.text(isSend ? 'Yang Menerima (Pihak Vendor Laundry),' : 'Yang Menyerahkan (Pihak Vendor Laundry),', sigX2, y);
       y += 30;
 
       // Signature lines
@@ -18845,9 +18928,8 @@ function LaundryPage() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.refNumber') || 'Reference'}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.type') || 'Type'}</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemCode') || 'Item Code'}</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemName') || 'Item Name'}</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.qty') || 'Qty'}</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Items</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Qty</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.date') || 'Date'}</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-16"></th>
                   </tr>
@@ -18865,15 +18947,14 @@ function LaundryPage() {
                           {rec.reference_type === 'LAUNDRY_SEND' ? (t('laundry.typeSend') || 'Send') : (t('laundry.typeReceive') || 'Receive')}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium">{rec.items?.code || '-'}</td>
-                      <td className="px-4 py-3 text-sm">{rec.items?.name || '-'}</td>
-                      <td className="px-4 py-3 text-center text-sm">{rec.quantity}</td>
+                      <td className="px-4 py-3 text-center text-sm">{rec.item_count} item</td>
+                      <td className="px-4 py-3 text-center text-sm font-semibold">{formatNumber(rec.total_qty)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {rec.created_at ? formatDateSys(rec.created_at) : '-'}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button
-                          onClick={() => exportLSPdf(rec.reference_number)}
+                          onClick={() => exportLaundryPdf(rec.reference_number, rec.reference_type)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
                           title="Export PDF"
                         >
@@ -18901,14 +18982,13 @@ function LaundryPage() {
                       {rec.reference_type === 'LAUNDRY_SEND' ? 'Kirim' : 'Terima'}
                     </span>
                   </div>
-                  <div className="text-sm font-medium text-gray-800">{rec.items?.name || '-'}</div>
+                  <div className="text-sm text-gray-600">{rec.item_count} item</div>
                   <div className="flex items-center justify-between mt-1">
-                    <span className="text-xs text-gray-400">{rec.items?.code || '-'}</span>
+                    <span className="text-sm font-bold text-gray-700">Total Qty: {formatNumber(rec.total_qty)}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-gray-700">Qty: {rec.quantity}</span>
                       <span className="text-xs text-gray-400">{rec.created_at ? formatDateSys(rec.created_at) : '-'}</span>
                       <button
-                        onClick={() => exportLSPdf(rec.reference_number)}
+                        onClick={() => exportLaundryPdf(rec.reference_number, rec.reference_type)}
                         className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
@@ -18965,7 +19045,7 @@ function InUseWarehousePage() {
       const [whRes, catRes, itemRes, storeRes] = await Promise.all([
         supabase.from('warehouses').select('*').eq('organization_id', selectedOrg.id).eq('warehouse_type', 'in_use').single(),
         supabase.from('item_categories').select('*').eq('is_active', true).order('name'),
-        supabase.from('items').select('id, code, name, brand, category_id').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
+        supabase.from('items').select('id, code, name, brand, category_id, max_inuse_qty').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
         supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).in('warehouse_type', ['store','general']).order('code'),
       ]);
       const iuWh = whRes.data;
@@ -19058,17 +19138,28 @@ function InUseWarehousePage() {
       showNotification('Pilih warehouse asal dan minimal 1 item.', 'error'); return;
     }
 
-    // CONTROL: Check if any item already has stock in in-use warehouse
+    // CONTROL: Check max_inuse_qty for each item
     const itemIds = validItems.map(i => i.item_id);
     const { data: existingStock } = await supabase.from('stock_balance')
-      .select('item_id, quantity, items:item_id(name)')
-      .eq('warehouse_id', inUseWarehouse.id).gt('quantity', 0).in('item_id', itemIds);
-    // For edit, exclude items that were already in the original draft
-    const origItemIds = editingTransfer ? (editingTransfer.in_use_transfer_items || []).map(i => i.item_id) : [];
-    const conflicts = (existingStock || []).filter(s => !origItemIds.includes(s.item_id));
-    if (conflicts.length > 0) {
-      const names = conflicts.map(s => s.items?.name || 'Unknown').join(', ');
-      showNotification(`Item masih ada di In-Use Warehouse (harus di-deplete dulu): ${names}`, 'error'); return;
+      .select('item_id, quantity')
+      .eq('warehouse_id', inUseWarehouse.id).in('item_id', itemIds);
+    const existingMap = {};
+    (existingStock || []).forEach(s => { existingMap[s.item_id] = parseFloat(s.quantity) || 0; });
+
+    const overQuotaItems = [];
+    for (const row of validItems) {
+      const itemInfo = allItems.find(i => i.id === row.item_id);
+      const maxQty = parseInt(itemInfo?.max_inuse_qty) || 0;
+      if (maxQty > 0) {
+        const currentInUse = existingMap[row.item_id] || 0;
+        const newQty = parseFloat(row.quantity) || 0;
+        if (currentInUse + newQty > maxQty) {
+          overQuotaItems.push(`${itemInfo?.name || 'Unknown'} (max: ${maxQty}, saat ini di IU: ${currentInUse}, request: ${newQty})`);
+        }
+      }
+    }
+    if (overQuotaItems.length > 0) {
+      showNotification(`Qty melebihi Max In-Use Qty:\n${overQuotaItems.join('\n')}`, 'error'); return;
     }
 
     setSaving(true);
@@ -19111,15 +19202,31 @@ function InUseWarehousePage() {
     if (tr.status !== 'DRAFT') return;
     if (!(await showConfirm(`Confirm transfer ${tr.transfer_number}?\n\nStock akan berpindah dari ${tr.from_wh?.code || 'warehouse'} ke In-Use Warehouse.\nAksi ini akan membuat stock movement.`, { variant: 'warning' }))) return;
 
-    // CONTROL: Re-check stock conflicts before confirm
+    // CONTROL: Re-check max_inuse_qty before confirm
     const trItems = tr.in_use_transfer_items || [];
     const itemIds = trItems.map(i => i.item_id);
     const { data: existingStock } = await supabase.from('stock_balance')
-      .select('item_id, quantity, items:item_id(name)')
-      .eq('warehouse_id', inUseWarehouse.id).gt('quantity', 0).in('item_id', itemIds);
-    if (existingStock && existingStock.length > 0) {
-      const names = existingStock.map(s => s.items?.name || 'Unknown').join(', ');
-      showNotification(`Tidak bisa confirm. Item masih ada di In-Use Warehouse: ${names}`, 'error'); return;
+      .select('item_id, quantity')
+      .eq('warehouse_id', inUseWarehouse.id).in('item_id', itemIds);
+    const existingMap = {};
+    (existingStock || []).forEach(s => { existingMap[s.item_id] = parseFloat(s.quantity) || 0; });
+    const { data: itemsData } = await supabase.from('items').select('id, name, max_inuse_qty').in('id', itemIds);
+    const itemInfoMap = {};
+    (itemsData || []).forEach(i => { itemInfoMap[i.id] = i; });
+    const overQuotaItems = [];
+    for (const row of trItems) {
+      const info = itemInfoMap[row.item_id];
+      const maxQty = parseInt(info?.max_inuse_qty) || 0;
+      if (maxQty > 0) {
+        const currentInUse = existingMap[row.item_id] || 0;
+        const newQty = parseFloat(row.quantity) || 0;
+        if (currentInUse + newQty > maxQty) {
+          overQuotaItems.push(`${info?.name || 'Unknown'} (max: ${maxQty}, saat ini: ${currentInUse}, request: ${newQty})`);
+        }
+      }
+    }
+    if (overQuotaItems.length > 0) {
+      showNotification(`Tidak bisa confirm. Qty melebihi Max In-Use Qty:\n${overQuotaItems.join('\n')}`, 'error'); return;
     }
 
     // CONTROL: Check source warehouse has enough stock
@@ -19167,21 +19274,7 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // Update source stock_balance (decrease)
-        if (sb) {
-          const newQty = Math.max(0, parseFloat(sb.quantity) - qty);
-          await supabase.from('stock_balance').update({ quantity: newQty, total_value: newQty * unitCost, updated_at: new Date().toISOString() }).eq('id', sb.id);
-        }
-
-        // Update/create dest stock_balance (increase)
-        const { data: destBal } = await supabase.from('stock_balance')
-          .select('id, quantity').eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
-        if (destBal) {
-          const newQty = parseFloat(destBal.quantity) + qty;
-          await supabase.from('stock_balance').update({ quantity: newQty, avg_cost: unitCost, total_value: newQty * unitCost, updated_at: new Date().toISOString() }).eq('id', destBal.id);
-        } else {
-          await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id, quantity: qty, avg_cost: unitCost, total_value: totalCost });
-        }
+        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
       }
 
       await supabase.from('in_use_transfers').update({
@@ -19236,21 +19329,7 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // Update source stock_balance (increase back)
-        const { data: srcBal } = await supabase.from('stock_balance')
-          .select('id, quantity').eq('item_id', item.item_id).eq('warehouse_id', tr.from_warehouse_id).maybeSingle();
-        if (srcBal) {
-          const newQty = parseFloat(srcBal.quantity) + qty;
-          await supabase.from('stock_balance').update({ quantity: newQty, total_value: newQty * unitCost, updated_at: new Date().toISOString() }).eq('id', srcBal.id);
-        } else {
-          await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.from_warehouse_id, quantity: qty, avg_cost: unitCost, total_value: totalCost });
-        }
-
-        // Update in-use stock_balance (decrease)
-        if (iuBal) {
-          const newQty = Math.max(0, parseFloat(iuBal.quantity) - qty);
-          await supabase.from('stock_balance').update({ quantity: newQty, total_value: newQty * unitCost, updated_at: new Date().toISOString() }).eq('id', iuBal.id);
-        }
+        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
       }
 
       await supabase.from('in_use_transfers').update({
@@ -19392,11 +19471,7 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // Update stock_balance (decrease)
-        const newQty = Math.max(0, parseFloat(iuBal.quantity) - qty);
-        await supabase.from('stock_balance').update({
-          quantity: newQty, total_value: newQty * unitCost, updated_at: new Date().toISOString()
-        }).eq('id', iuBal.id);
+        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
       }
 
       await supabase.from('in_use_depletes').update({
@@ -19432,15 +19507,7 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // Update stock_balance (increase)
-        const { data: iuBal } = await supabase.from('stock_balance')
-          .select('id, quantity').eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
-        if (iuBal) {
-          const newQty = parseFloat(iuBal.quantity) + qty;
-          await supabase.from('stock_balance').update({ quantity: newQty, total_value: newQty * unitCost, updated_at: new Date().toISOString() }).eq('id', iuBal.id);
-        } else {
-          await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id, quantity: qty, avg_cost: unitCost, total_value: totalCost });
-        }
+        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
       }
 
       await supabase.from('in_use_depletes').update({
@@ -19605,6 +19672,9 @@ function InUseWarehousePage() {
                                 <button onClick={() => handleDeleteTransfer(tr)} className="p-1 hover:bg-red-50 rounded text-red-400" title="Delete"><Icons.Trash /></button>
                               </div>
                             )}
+                            {tr.status === 'CONFIRMED' && (
+                              <button onClick={() => handleRevokeTransfer(tr)} className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100" title="Revoke"><Icons.RotateCcw /> Revoke</button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -19646,6 +19716,9 @@ function InUseWarehousePage() {
                                 <button onClick={() => openEditDeplete(dp)} className="p-1 hover:bg-gray-100 rounded text-gray-500" title="Edit"><Icons.Edit /></button>
                                 <button onClick={() => handleDeleteDeplete(dp)} className="p-1 hover:bg-red-50 rounded text-red-400" title="Delete"><Icons.Trash /></button>
                               </div>
+                            )}
+                            {dp.status === 'CONFIRMED' && (
+                              <button onClick={() => handleRevokeDeplete(dp)} className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100" title="Revoke"><Icons.RotateCcw /> Revoke</button>
                             )}
                           </td>
                         </tr>
@@ -20516,10 +20589,7 @@ function SingleItemUsagePage() {
         created_by: currentUser?.id || null,
       });
 
-      // Update stock balance
-      const newQty = stockData.quantity - qty;
-      const newTotalValue = newQty > 0 ? newQty * avgCost : 0;
-      await supabase.from('stock_balance').update({ quantity: newQty, total_value: newTotalValue, updated_at: new Date().toISOString() }).eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id);
+      // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
 
       showNotification(`${record.usage_number} berhasil dikonfirmasi. Stok berkurang ${qty}.`, 'success');
       loadAll();
@@ -20546,17 +20616,8 @@ function SingleItemUsagePage() {
     try {
       const qty = parseFloat(record.quantity);
 
-      // Reverse stock: add back
-      const { data: stockData } = await supabase.from('stock_balance').select('quantity').eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id).single();
-      const currentQty = stockData ? stockData.quantity : 0;
-      const newQty = currentQty + qty;
-
-      // Update stock balance
-      if (stockData) {
-        await supabase.from('stock_balance').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id);
-      }
-
-      // Hapus stock movement asli SIU dari bincard (bukan buat entry baru)
+      // Hapus stock movement asli SIU dari bincard
+      // stock_balance will be automatically recalculated by DB trigger (trg_sync_stock_balance) on DELETE
       await supabase.from('stock_movements').delete()
         .eq('reference_type', 'USAGE')
         .eq('reference_id', record.id);
@@ -20981,44 +21042,8 @@ function TransferPage() {
         });
         if (inErr) throw new Error('IN movement: ' + inErr.message);
 
-        // Update stock_balance for SOURCE warehouse (decrease)
-        const { data: srcBal } = await supabase.from('stock_balance')
-          .select('id, quantity')
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', tr.from_warehouse_id)
-          .maybeSingle();
-        if (srcBal) {
-          const newSrcQty = Math.max(0, parseFloat(srcBal.quantity) - qty);
-          await supabase.from('stock_balance').update({
-            quantity: newSrcQty,
-            updated_at: new Date().toISOString()
-          }).eq('id', srcBal.id);
-        }
-
-        // Update stock_balance for DESTINATION warehouse (increase or create)
-        const { data: destBal } = await supabase.from('stock_balance')
-          .select('id, quantity')
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', tr.to_warehouse_id)
-          .maybeSingle();
-        if (destBal) {
-          const newDestQty = parseFloat(destBal.quantity) + qty;
-          await supabase.from('stock_balance').update({
-            quantity: newDestQty,
-            avg_cost: unitCost,
-            total_value: newDestQty * unitCost,
-            updated_at: new Date().toISOString()
-          }).eq('id', destBal.id);
-        } else {
-          await supabase.from('stock_balance').insert({
-            organization_id: selectedOrg.id,
-            item_id: item.item_id,
-            warehouse_id: tr.to_warehouse_id,
-            quantity: qty,
-            avg_cost: unitCost,
-            total_value: qty * unitCost,
-          });
-        }
+        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+        // on stock_movements INSERT — no manual update needed here
       }
 
       await supabase.from('transfers').update({
@@ -21027,6 +21052,70 @@ function TransferPage() {
       }).eq('id', tr.id);
 
       showNotification(t('transfer.successConfirm'));
+      setShowModal(false);
+      loadAll();
+    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+    setSaving(false);
+  }
+
+  async function revokeTransfer(tr) {
+    if (tr.status !== 'CONFIRMED') return;
+    if (!(await showConfirm('Revoke transfer ' + tr.transfer_number + '?\n\nStock movement akan dibalik dan item dikembalikan ke warehouse asal.', { variant: 'danger' }))) return;
+    setSaving(true);
+    try {
+      const trItems = tr.transfer_items || [];
+      for (const item of trItems) {
+        const qty = parseFloat(item.quantity);
+        if (qty <= 0) continue;
+
+        // Get unit_cost from original OUT movement
+        const { data: origOut } = await supabase.from('stock_movements')
+          .select('unit_cost')
+          .eq('reference_number', tr.transfer_number)
+          .eq('reference_type', 'TRANSFER')
+          .eq('item_id', item.item_id)
+          .eq('movement_type', 'OUT')
+          .limit(1).maybeSingle();
+        const unitCost = origOut ? parseFloat(origOut.unit_cost) || 0 : 0;
+        const totalCost = qty * unitCost;
+
+        // Check destination warehouse still has stock to reverse
+        const { data: destBal } = await supabase.from('stock_balance')
+          .select('quantity').eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.to_warehouse_id).maybeSingle();
+        if (!destBal || parseFloat(destBal.quantity) < qty) {
+          const itemName = item.items?.name || 'Unknown';
+          showNotification('Tidak bisa revoke. Stock ' + itemName + ' di warehouse tujuan tidak cukup (qty: ' + (destBal?.quantity || 0) + ', dibutuhkan: ' + qty + ')', 'error');
+          setSaving(false); return;
+        }
+
+        // Reverse: IN back to source warehouse
+        const revInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty, tr.from_warehouse_id);
+        await supabase.from('stock_movements').insert({
+          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.from_warehouse_id,
+          movement_type: 'IN', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
+          balance_after: revInBal, reference_type: 'TRANSFER-REV', reference_number: tr.transfer_number,
+          notes: 'Revoke: return from ' + (warehouses.find(w => w.id === tr.to_warehouse_id)?.code || 'warehouse'),
+          created_by: currentUser?.id || null, department_id: currentUser?.department_id || null,
+        });
+
+        // Reverse: OUT from destination warehouse
+        const revOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty, tr.to_warehouse_id);
+        await supabase.from('stock_movements').insert({
+          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.to_warehouse_id,
+          movement_type: 'OUT', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
+          balance_after: revOutBal, reference_type: 'TRANSFER-REV', reference_number: tr.transfer_number,
+          notes: 'Revoke: return to ' + (warehouses.find(w => w.id === tr.from_warehouse_id)?.code || 'warehouse'),
+          created_by: currentUser?.id || null, department_id: currentUser?.department_id || null,
+        });
+
+        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+      }
+
+      await supabase.from('transfers').update({
+        status: 'REVOKED', updated_at: new Date().toISOString(),
+      }).eq('id', tr.id);
+
+      showNotification(tr.transfer_number + ' berhasil di-revoke.', 'success');
       setShowModal(false);
       loadAll();
     } catch (err) { showNotification('Error: ' + err.message, 'error'); }
@@ -21059,6 +21148,7 @@ function TransferPage() {
             <option value="">{t('common.all')}</option>
             <option value="DRAFT">{t('status.draft')}</option>
             <option value="CONFIRMED">Confirmed</option>
+            <option value="REVOKED">Revoked</option>
           </select>
         </div>
         <DataTable loading={loading} columns={[
@@ -21072,6 +21162,7 @@ function TransferPage() {
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => openView(r)}>View</Button>
               {r.status === 'DRAFT' && <Button size="sm" variant="primary" onClick={() => confirmTransfer(r)} disabled={saving}>{t('transfer.confirm')}</Button>}
+              {r.status === 'CONFIRMED' && <button onClick={() => revokeTransfer(r)} disabled={saving} className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100 disabled:opacity-50"><Icons.RotateCcw /> Revoke</button>}
             </div>
           )},
         ]} data={filtered} />
@@ -21189,6 +21280,7 @@ function TransferPage() {
           <Button variant="secondary" onClick={() => setShowModal(false)}>{isView ? t('common.close') : t('common.cancel')}</Button>
           {!isView && <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : t('transfer.saveDraft')}</Button>}
           {isDraft && <Button variant="primary" onClick={() => confirmTransfer(viewing)} disabled={saving}>{t('transfer.confirm')}</Button>}
+          {viewing && viewing.status === 'CONFIRMED' && <button onClick={() => revokeTransfer(viewing)} disabled={saving} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 disabled:opacity-50"><Icons.RotateCcw /> Revoke</button>}
         </div>
       </Modal>
     </div>
