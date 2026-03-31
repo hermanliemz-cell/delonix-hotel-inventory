@@ -18224,80 +18224,117 @@ function LaundryPage() {
             <span className="text-sm font-medium text-gray-600">Pilih Semua ({filtered.length} item)</span>
           </div>
 
-          {filtered.map(item => {
-            const sel = selectedItems[item.item_id] || {};
-            const qtyVal = parseInt(sel.qty) || 0;
+          {groupedFiltered.map(group => {
+            const isExpanded = expandedLaundryCats[group.catId];
+            const catTotalQty = group.items.reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
+            const catTransferQty = group.items.reduce((s, i) => s + (parseFloat(selectedItems[i.item_id]?.qty) || 0), 0);
             return (
-              <div key={item.item_id} className={`bg-white rounded-xl shadow-sm border-2 p-4 transition-colors ${sel.selected ? 'border-primary-400 bg-primary-50' : 'border-gray-200'}`}>
-                {/* Header: checkbox + item info */}
-                <div className="flex items-start gap-3 mb-3">
-                  <input
-                    type="checkbox"
-                    className="w-5 h-5 mt-0.5 rounded flex-shrink-0"
-                    checked={!!sel.selected}
-                    onChange={e => {
-                      const newSel = { ...selectedItems };
-                      if (e.target.checked) {
-                        newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
-                      } else {
-                        delete newSel[item.item_id];
-                      }
-                      setSelectedItems(newSel);
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">{item.items?.code}</span>
-                      <span className="text-xs text-gray-400">{item.items?.item_categories?.name || ''}</span>
-                    </div>
-                    <div className="text-sm font-semibold text-gray-800 leading-tight">{item.items?.name}</div>
-                    {item.items?.brand && <div className="text-xs text-gray-400 mt-0.5">{item.items.brand}</div>}
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-xs text-gray-400">Tersedia</div>
-                    <div className="text-lg font-bold text-gray-700">{item.quantity}</div>
-                  </div>
-                </div>
-
-                {/* Transfer Qty with +/- stepper */}
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-gray-600">Transfer Qty</span>
-                  <div className="inline-flex items-center border rounded-lg overflow-hidden border-gray-300">
-                    <button type="button"
-                      onClick={() => {
-                        const nv = Math.max(0, qtyVal - 1);
+              <div key={'mlc-'+group.catId} className="bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+                {/* Accordion Header */}
+                <button onClick={() => toggleLaundryCat(group.catId)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors min-h-[48px]">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox"
+                      className="w-5 h-5 rounded flex-shrink-0"
+                      checked={group.items.every(i => selectedItems[i.item_id]?.selected)}
+                      onChange={e => {
+                        e.stopPropagation();
                         const newSel = { ...selectedItems };
-                        newSel[item.item_id] = { ...newSel[item.item_id], qty: nv || '', selected: nv > 0 };
-                        if (nv === 0) { delete newSel[item.item_id]; }
+                        group.items.forEach(i => {
+                          if (e.target.checked) {
+                            newSel[i.item_id] = { ...newSel[i.item_id], selected: true };
+                          } else {
+                            if (newSel[i.item_id]) delete newSel[i.item_id].selected;
+                          }
+                        });
                         setSelectedItems(newSel);
                       }}
-                      className="w-12 h-12 flex items-center justify-center text-xl font-bold bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-700 transition-colors select-none">−</button>
-                    <span className="w-14 h-12 flex items-center justify-center text-base font-bold bg-white border-l border-r border-gray-300">{qtyVal}</span>
-                    <button type="button"
-                      onClick={() => {
-                        const nv = Math.min(item.quantity, qtyVal + 1);
-                        const newSel = { ...selectedItems };
-                        newSel[item.item_id] = { ...newSel[item.item_id], qty: nv, selected: true };
-                        setSelectedItems(newSel);
-                      }}
-                      className="w-12 h-12 flex items-center justify-center text-xl font-bold bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-700 transition-colors select-none">+</button>
+                      onClick={e => e.stopPropagation()}
+                    />
+                    <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></div>
+                    <span className="font-semibold text-blue-900 text-sm">{group.catName}</span>
+                    <span className="text-xs text-blue-600">({group.items.length})</span>
                   </div>
-                </div>
-
-                {/* Notes - always visible */}
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    placeholder="Catatan (opsional)..."
-                    value={sel.notes || ''}
-                    onChange={e => {
-                      const newSel = { ...selectedItems };
-                      newSel[item.item_id] = { ...newSel[item.item_id], notes: e.target.value };
-                      setSelectedItems(newSel);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">Qty: <span className="font-bold text-gray-700">{catTotalQty}</span></span>
+                    {catTransferQty > 0 && <span className="text-xs font-bold text-blue-600">{catTransferQty}</span>}
+                    <span className="text-blue-400 text-lg">{isExpanded ? '−' : '+'}</span>
+                  </div>
+                </button>
+                {/* Accordion Content - Item Cards */}
+                {isExpanded && (
+                  <div className="p-2 space-y-2 border-t border-blue-100">
+                    {group.items.map(item => {
+                      const sel = selectedItems[item.item_id] || {};
+                      const qtyVal = parseInt(sel.qty) || 0;
+                      return (
+                        <div key={item.item_id} className={`rounded-lg border p-3 transition-colors ${sel.selected ? 'border-primary-400 bg-primary-50' : 'border-gray-200 bg-white'}`}>
+                          <div className="flex items-start gap-3 mb-3">
+                            <input
+                              type="checkbox"
+                              className="w-5 h-5 mt-0.5 rounded flex-shrink-0"
+                              checked={!!sel.selected}
+                              onChange={e => {
+                                const newSel = { ...selectedItems };
+                                if (e.target.checked) {
+                                  newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
+                                } else {
+                                  delete newSel[item.item_id];
+                                }
+                                setSelectedItems(newSel);
+                              }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-xs font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">{item.items?.code}</span>
+                              </div>
+                              <div className="text-sm font-semibold text-gray-800 leading-tight">{item.items?.name}</div>
+                              {item.items?.brand && <div className="text-xs text-gray-400 mt-0.5">{item.items.brand}</div>}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="text-xs text-gray-400">Tersedia</div>
+                              <div className="text-lg font-bold text-gray-700">{item.quantity}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-gray-600">Transfer Qty</span>
+                            <div className="inline-flex items-center border rounded-lg overflow-hidden border-gray-300">
+                              <button type="button"
+                                onClick={() => {
+                                  const nv = Math.max(0, qtyVal - 1);
+                                  const newSel = { ...selectedItems };
+                                  newSel[item.item_id] = { ...newSel[item.item_id], qty: nv || '', selected: nv > 0 };
+                                  if (nv === 0) { delete newSel[item.item_id]; }
+                                  setSelectedItems(newSel);
+                                }}
+                                className="w-12 h-12 flex items-center justify-center text-xl font-bold bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-700 transition-colors select-none">−</button>
+                              <span className="w-14 h-12 flex items-center justify-center text-base font-bold bg-white border-l border-r border-gray-300">{qtyVal}</span>
+                              <button type="button"
+                                onClick={() => {
+                                  const nv = Math.min(item.quantity, qtyVal + 1);
+                                  const newSel = { ...selectedItems };
+                                  newSel[item.item_id] = { ...newSel[item.item_id], qty: nv, selected: true };
+                                  setSelectedItems(newSel);
+                                }}
+                                className="w-12 h-12 flex items-center justify-center text-xl font-bold bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-700 transition-colors select-none">+</button>
+                            </div>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Catatan (opsional)..."
+                            value={sel.notes || ''}
+                            onChange={e => {
+                              const newSel = { ...selectedItems };
+                              newSel[item.item_id] = { ...newSel[item.item_id], notes: e.target.value };
+                              setSelectedItems(newSel);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
