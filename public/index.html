@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.12',
+    'app.version': 'v1.0.14',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
     'app.maintenance.title': 'System Under Maintenance',
@@ -1078,7 +1078,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.12',
+    'app.version': 'v1.0.14',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
     'app.maintenance.title': '系统维护中',
@@ -2779,7 +2779,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.12 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.14 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -3584,13 +3584,15 @@ function formatDateSys(dateStr, opts = {}) {
   return d.toLocaleDateString('id-ID', { timeZone: tz });
 }
 
-// Helper: get balance_after for stock_movements (sums all warehouse rows for the item)
-async function getBalanceAfter(orgId, itemId, movementType, qty) {
+// Helper: get balance_after for stock_movements (per warehouse when warehouseId provided)
+async function getBalanceAfter(orgId, itemId, movementType, qty, warehouseId) {
   try {
-    const { data } = await supabase.from('stock_balance')
+    let query = supabase.from('stock_balance')
       .select('quantity')
       .eq('organization_id', orgId)
       .eq('item_id', itemId);
+    if (warehouseId) query = query.eq('warehouse_id', warehouseId);
+    const { data } = await query;
     const currentQty = (data || []).reduce((sum, r) => sum + (parseFloat(r.quantity) || 0), 0);
     if (movementType === 'IN') return currentQty + parseFloat(qty);
     if (movementType === 'OUT') return Math.max(0, currentQty - parseFloat(qty));
@@ -13794,6 +13796,53 @@ function OpeningBalancePage() {
         }
       }
 
+      // POST-SAVE RECONCILIATION: Verify stock_balance matches sum of all movements
+      // This catches any edge cases where the upsert above didn't properly update
+      if (balanceUpserts.length > 0) {
+        const reconItemIds = [...new Set(balanceUpserts.map(b => b.item_id))];
+        // Get all movements (including new OB movements just inserted) per item+warehouse
+        const { data: allMovements } = await supabase.from('stock_movements')
+          .select('item_id, warehouse_id, movement_type, quantity')
+          .eq('organization_id', selectedOrg.id)
+          .in('item_id', reconItemIds);
+
+        // Build expected balance per item+warehouse from movements
+        const expectedBal = {};
+        (allMovements || []).forEach(m => {
+          const key = m.item_id + '|' + m.warehouse_id;
+          if (!expectedBal[key]) expectedBal[key] = { item_id: m.item_id, warehouse_id: m.warehouse_id, qty: 0 };
+          expectedBal[key].qty += m.movement_type === 'IN' ? parseFloat(m.quantity) : -parseFloat(m.quantity);
+        });
+
+        // Also include zero-qty balanceUpserts (warehouses that should be 0 even if no movements)
+        balanceUpserts.forEach(b => {
+          const key = b.item_id + '|' + b.warehouse_id;
+          if (!expectedBal[key]) expectedBal[key] = { item_id: b.item_id, warehouse_id: b.warehouse_id, qty: 0 };
+        });
+
+        // Read current stock_balance for these items
+        const { data: currentBalances } = await supabase.from('stock_balance')
+          .select('id, item_id, warehouse_id, quantity')
+          .eq('organization_id', selectedOrg.id)
+          .in('item_id', reconItemIds);
+
+        // Fix any mismatches
+        for (const [key, expected] of Object.entries(expectedBal)) {
+          const current = (currentBalances || []).find(
+            cb => cb.item_id === expected.item_id && cb.warehouse_id === expected.warehouse_id
+          );
+          const expectedQty = Math.max(0, expected.qty);
+          if (current && Math.abs(parseFloat(current.quantity) - expectedQty) > 0.001) {
+            await supabase.from('stock_balance').update({
+              quantity: expectedQty,
+              total_value: expectedQty * (current.avg_cost || 0),
+              updated_at: new Date().toISOString()
+            }).eq('id', current.id);
+            console.warn('OB Reconciliation fix:', expected.item_id, expected.warehouse_id, 'from', current.quantity, 'to', expectedQty);
+          }
+        }
+      }
+
       // FIFO entries (same as before)
       const itemIds = fifoEntries.map(f => f.item_id);
       if (itemIds.length > 0) {
@@ -17748,7 +17797,7 @@ function LaundryPage() {
         if (!stockItem) continue;
 
         const qty = item.qty;
-        const balanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
+        const balanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty, dirtyWarehouse.id);
 
         // OUT from dirty warehouse
         await supabase.from('stock_movements').insert({
@@ -17771,7 +17820,7 @@ function LaundryPage() {
         });
 
         // IN to laundry warehouse
-        const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
+        const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty, laundryWarehouse.id);
         await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           department_id: deptId,
@@ -17880,7 +17929,7 @@ function LaundryPage() {
         if (!stockItem) continue;
 
         const qty = item.qty;
-        const balanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
+        const balanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty, laundryWarehouse.id);
 
         // OUT from laundry warehouse
         await supabase.from('stock_movements').insert({
@@ -17903,7 +17952,7 @@ function LaundryPage() {
         });
 
         // IN to store warehouse
-        const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
+        const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty, storeWarehouse.id);
         await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           department_id: deptId,
@@ -18460,7 +18509,7 @@ function LaundryPage() {
       </div>
 
       {/* Vendor Selection */}
-      <div className="mb-4 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+      <div className="mb-4 bg-white border border-gray-200 rounded-xl p-3 shadow-sm overflow-hidden">
         <div className="flex flex-col gap-2">
           <label className="text-sm font-semibold text-gray-700">
             <span className="inline-flex items-center gap-1">
@@ -18468,26 +18517,25 @@ function LaundryPage() {
               Vendor Laundry
             </span>
           </label>
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedVendor}
-              onChange={e => { setSelectedVendor(e.target.value); setSelectedItems({}); }}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          <select
+            value={selectedVendor}
+            onChange={e => { setSelectedVendor(e.target.value); setSelectedItems({}); }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            style={{maxWidth: '100%'}}
+          >
+            <option value="">-- Pilih Vendor Laundry --</option>
+            {vendors.map(v => <option key={v.id} value={v.id}>{v.code} - {v.name}</option>)}
+          </select>
+          {activeTab === 'receive' && selectedVendor && vendorLaundryItems.length > 0 && (
+            <button
+              onClick={exportReceiveChecklistPdf}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors w-full"
+              title="Export Check List PDF"
             >
-              <option value="">-- Pilih Vendor Laundry --</option>
-              {vendors.map(v => <option key={v.id} value={v.id}>{v.code} - {v.name}</option>)}
-            </select>
-            {activeTab === 'receive' && selectedVendor && vendorLaundryItems.length > 0 && (
-              <button
-                onClick={exportReceiveChecklistPdf}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors whitespace-nowrap"
-                title="Export Check List PDF"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                Export PDF
-              </button>
-            )}
-          </div>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+              Export Check List PDF
+            </button>
+          )}
         </div>
         {!selectedVendor && activeTab === 'receive' && (
           <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
@@ -20845,18 +20893,19 @@ function TransferPage() {
         const qty = parseFloat(item.quantity);
         if (qty <= 0) continue;
 
-        // Get avg_cost from stock_balance
+        // Get avg_cost from stock_balance (source warehouse)
         const { data: sb } = await supabase.from('stock_balance')
           .select('id, quantity, avg_cost, total_value')
           .eq('organization_id', selectedOrg.id)
           .eq('item_id', item.item_id)
+          .eq('warehouse_id', tr.from_warehouse_id)
           .maybeSingle();
 
         const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
         const totalCost = qty * unitCost;
 
         // OUT from source warehouse
-        const trOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
+        const trOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty, tr.from_warehouse_id);
         const { error: outErr } = await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
@@ -20875,7 +20924,7 @@ function TransferPage() {
         if (outErr) throw new Error('OUT movement: ' + outErr.message);
 
         // IN to destination warehouse
-        const trInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
+        const trInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty, tr.to_warehouse_id);
         const { error: inErr } = await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id,
           item_id: item.item_id,
