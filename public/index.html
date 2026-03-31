@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.10',
+    'app.version': 'v1.0.11',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
     'app.maintenance.title': 'System Under Maintenance',
@@ -1078,7 +1078,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.10',
+    'app.version': 'v1.0.11',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
     'app.maintenance.title': '系统维护中',
@@ -2779,7 +2779,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.10 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.11 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -17614,6 +17614,8 @@ function LaundryPage() {
   const [dirtyWarehouse, setDirtyWarehouse] = useState(null);
   const [laundryWarehouse, setLaundryWarehouse] = useState(null);
   const [storeWarehouse, setStoreWarehouse] = useState(null);
+  const [vendors, setVendors] = useState([]);
+  const [selectedVendor, setSelectedVendor] = useState('');
 
   useEffect(() => {
     if (selectedOrg) loadAll();
@@ -17665,6 +17667,13 @@ function LaundryPage() {
         .order('name');
       setCategories(catData || []);
 
+      // Load vendors for laundry
+      const { data: vendorData } = await supabase.from('vendors')
+        .select('id, code, name')
+        .eq('is_active', true)
+        .order('name');
+      setVendors(vendorData || []);
+
       // Load history — only OUT movements to avoid duplicate rows (each send/receive creates OUT + IN pair)
       const { data: histData } = await supabase.from('stock_movements')
         .select('*, items:item_id(code, name), warehouses:warehouse_id(code, name)')
@@ -17702,6 +17711,12 @@ function LaundryPage() {
   }
 
   async function handleSendToLaundry() {
+    // Validate vendor selection
+    if (!selectedVendor) {
+      showNotification('Pilih vendor laundry terlebih dahulu!', 'error');
+      return;
+    }
+
     const itemsToSend = Object.entries(selectedItems)
       .filter(([_, val]) => val && parseFloat(val.qty) > 0)
       .map(([itemId, val]) => ({ item_id: itemId, qty: parseFloat(val.qty), notes: val.notes || '' }));
@@ -17750,6 +17765,7 @@ function LaundryPage() {
           reference_id: item.item_id,
           notes: item.notes,
           warehouse_id: dirtyWarehouse.id,
+          vendor_id: selectedVendor,
           created_by: currentUser?.id || null,
           created_at: new Date().toISOString()
         });
@@ -17770,6 +17786,7 @@ function LaundryPage() {
           reference_id: item.item_id,
           notes: item.notes,
           warehouse_id: laundryWarehouse.id,
+          vendor_id: selectedVendor,
           created_by: currentUser?.id || null,
           created_at: new Date().toISOString()
         });
@@ -17825,6 +17842,12 @@ function LaundryPage() {
   }
 
   async function handleReceiveFromLaundry() {
+    // Validate vendor selection
+    if (!selectedVendor) {
+      showNotification('Pilih vendor laundry terlebih dahulu!', 'error');
+      return;
+    }
+
     const itemsToReceive = Object.entries(selectedItems)
       .filter(([_, val]) => val && parseFloat(val.qty) > 0)
       .map(([itemId, val]) => ({ item_id: itemId, qty: parseFloat(val.qty), notes: val.notes || '' }));
@@ -17874,6 +17897,7 @@ function LaundryPage() {
           reference_id: item.item_id,
           notes: item.notes,
           warehouse_id: laundryWarehouse.id,
+          vendor_id: selectedVendor,
           created_by: currentUser?.id || null,
           created_at: new Date().toISOString()
         });
@@ -17894,6 +17918,7 @@ function LaundryPage() {
           reference_id: item.item_id,
           notes: item.notes,
           warehouse_id: storeWarehouse.id,
+          vendor_id: selectedVendor,
           created_by: currentUser?.id || null,
           created_at: new Date().toISOString()
         });
@@ -17948,7 +17973,114 @@ function LaundryPage() {
     setSaving(false);
   }
 
-  const itemsToDisplay = activeTab === 'send' ? dirtyItems : laundryItems;
+  // For receive tab: load vendor-specific laundry items
+  const [vendorLaundryItems, setVendorLaundryItems] = React.useState([]);
+  const [loadingVendorItems, setLoadingVendorItems] = React.useState(false);
+
+  React.useEffect(() => {
+    if (activeTab === 'receive' && selectedVendor && laundryWarehouse) {
+      loadVendorLaundryItems();
+    } else if (activeTab === 'receive' && !selectedVendor) {
+      setVendorLaundryItems([]);
+    }
+  }, [activeTab, selectedVendor, laundryWarehouse?.id]);
+
+  // Default vendor for legacy (untracked) laundry items
+  const BONVIVO_VENDOR_ID = '27a3bed2-7ff6-48f6-b579-e999def3dcfc';
+
+  async function loadVendorLaundryItems() {
+    setLoadingVendorItems(true);
+    try {
+      // 1. Get ALL items currently in laundry warehouse
+      const { data: allLaundryItems } = await supabase.from('stock_balance')
+        .select('*, items:item_id(id, code, name, brand, category_id, item_categories:category_id(id, name))')
+        .eq('warehouse_id', laundryWarehouse.id)
+        .gt('quantity', 0);
+
+      if (!allLaundryItems || allLaundryItems.length === 0) {
+        setVendorLaundryItems([]);
+        setLoadingVendorItems(false);
+        return;
+      }
+
+      // 2. Get vendor-specific SEND movements (items sent TO laundry for selected vendor)
+      const { data: vendorSends } = await supabase.from('stock_movements')
+        .select('item_id, quantity')
+        .eq('organization_id', selectedOrg.id)
+        .eq('reference_type', 'LAUNDRY_SEND')
+        .eq('movement_type', 'IN')
+        .eq('vendor_id', selectedVendor)
+        .eq('warehouse_id', laundryWarehouse.id);
+
+      // 3. Get vendor-specific RECEIVE movements (items received FROM laundry for selected vendor)
+      const { data: vendorReceives } = await supabase.from('stock_movements')
+        .select('item_id, quantity')
+        .eq('organization_id', selectedOrg.id)
+        .eq('reference_type', 'LAUNDRY_RECEIVE')
+        .eq('movement_type', 'OUT')
+        .eq('vendor_id', selectedVendor)
+        .eq('warehouse_id', laundryWarehouse.id);
+
+      // 4. Calculate vendor-specific net qty per item
+      const vendorNetQty = {};
+      (vendorSends || []).forEach(m => {
+        vendorNetQty[m.item_id] = (vendorNetQty[m.item_id] || 0) + (parseFloat(m.quantity) || 0);
+      });
+      (vendorReceives || []).forEach(m => {
+        vendorNetQty[m.item_id] = (vendorNetQty[m.item_id] || 0) - (parseFloat(m.quantity) || 0);
+      });
+
+      // 5. Get ALL vendor-tracked movements (all vendors combined) to find "tracked" totals
+      const { data: allTrackedSends } = await supabase.from('stock_movements')
+        .select('item_id, quantity')
+        .eq('organization_id', selectedOrg.id)
+        .eq('reference_type', 'LAUNDRY_SEND')
+        .eq('movement_type', 'IN')
+        .not('vendor_id', 'is', null)
+        .eq('warehouse_id', laundryWarehouse.id);
+
+      const { data: allTrackedReceives } = await supabase.from('stock_movements')
+        .select('item_id, quantity')
+        .eq('organization_id', selectedOrg.id)
+        .eq('reference_type', 'LAUNDRY_RECEIVE')
+        .eq('movement_type', 'OUT')
+        .not('vendor_id', 'is', null)
+        .eq('warehouse_id', laundryWarehouse.id);
+
+      // 6. Calculate total tracked qty per item (across all vendors)
+      const totalTracked = {};
+      (allTrackedSends || []).forEach(m => {
+        totalTracked[m.item_id] = (totalTracked[m.item_id] || 0) + (parseFloat(m.quantity) || 0);
+      });
+      (allTrackedReceives || []).forEach(m => {
+        totalTracked[m.item_id] = (totalTracked[m.item_id] || 0) - (parseFloat(m.quantity) || 0);
+      });
+
+      // 7. Build final items list
+      // For each laundry item: vendor_qty = vendor_net + (if BonVivo: untracked legacy qty)
+      const vendorItems = allLaundryItems.map(item => {
+        let qty = vendorNetQty[item.item_id] || 0;
+
+        // Legacy/untracked items (stock_balance qty not covered by any vendor movements)
+        // are attributed to BonVivo as the default vendor
+        if (selectedVendor === BONVIVO_VENDOR_ID) {
+          const tracked = totalTracked[item.item_id] || 0;
+          const untracked = Math.max(0, item.quantity - tracked);
+          qty += untracked;
+        }
+
+        return { ...item, quantity: qty };
+      }).filter(item => item.quantity > 0);
+
+      setVendorLaundryItems(vendorItems);
+    } catch (e) {
+      console.error('Error loading vendor laundry items:', e);
+      showNotification('Error loading vendor laundry items: ' + e.message, 'error');
+    }
+    setLoadingVendorItems(false);
+  }
+
+  const itemsToDisplay = activeTab === 'send' ? dirtyItems : (selectedVendor ? vendorLaundryItems : []);
   const filtered = itemsToDisplay.filter(item => {
     const txt = search.toLowerCase();
     const matchSearch = !txt ||
@@ -17975,10 +18107,10 @@ function LaundryPage() {
     return Object.values(groups).sort((a, b) => a.catName.localeCompare(b.catName));
   }, [filtered]);
 
-  // Auto-expand all categories initially
+  // Default all categories to collapsed
   React.useEffect(() => {
     const expanded = {};
-    groupedFiltered.forEach(g => { expanded[g.catId] = true; });
+    groupedFiltered.forEach(g => { expanded[g.catId] = false; });
     setExpandedLaundryCats(expanded);
   }, [groupedFiltered.length]);
 
@@ -17996,7 +18128,7 @@ function LaundryPage() {
       {/* Tab Navigation */}
       <div className="mb-6 flex gap-4 border-b border-gray-200">
         <button
-          onClick={() => { setActiveTab('send'); setSearch(''); setFilterCategory(''); }}
+          onClick={() => { setActiveTab('send'); setSearch(''); setFilterCategory(''); setSelectedVendor(''); setSelectedItems({}); }}
           className={`px-4 py-3 font-medium border-b-2 transition-colors ${
             activeTab === 'send'
               ? 'border-primary-500 text-primary-600'
@@ -18006,7 +18138,7 @@ function LaundryPage() {
           {t('laundry.sendTab') || 'Kirim ke Laundry'}
         </button>
         <button
-          onClick={() => { setActiveTab('receive'); setSearch(''); setFilterCategory(''); }}
+          onClick={() => { setActiveTab('receive'); setSearch(''); setFilterCategory(''); setSelectedVendor(''); setSelectedItems({}); }}
           className={`px-4 py-3 font-medium border-b-2 transition-colors ${
             activeTab === 'receive'
               ? 'border-primary-500 text-primary-600'
@@ -18017,31 +18149,42 @@ function LaundryPage() {
         </button>
       </div>
 
-      {/* Summary Cards - removed per user request */}
-
-      {/* Search and Filter */}
-      <div className="mb-4 flex flex-col sm:flex-row gap-3">
-        <div className="flex-1">
-          <input
-            type="text"
-            placeholder={t('laundry.searchPlaceholder') || 'Search by item name, code, or brand...'}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-          />
+      {/* Vendor Selection */}
+      <div className="mb-4 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">
+            <span className="inline-flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+              Vendor Laundry {activeTab === 'send' ? '' : ''}
+            </span>
+          </label>
+          <select
+            value={selectedVendor}
+            onChange={e => { setSelectedVendor(e.target.value); setSelectedItems({}); }}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          >
+            <option value="">-- Pilih Vendor Laundry --</option>
+            {vendors.map(v => <option key={v.id} value={v.id}>{v.code} - {v.name}</option>)}
+          </select>
         </div>
-        <select
-          value={filterCategory}
-          onChange={e => setFilterCategory(e.target.value)}
-          className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-        >
-          <option value="">{t('laundry.allCategories') || 'All Categories'}</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        {!selectedVendor && activeTab === 'receive' && (
+          <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+            Pilih vendor terlebih dahulu untuk melihat item yang ada di laundry vendor tersebut.
+          </p>
+        )}
+        {!selectedVendor && activeTab === 'send' && (
+          <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+            Anda bisa mengisi data tanpa vendor, tetapi wajib pilih vendor sebelum menyimpan.
+          </p>
+        )}
       </div>
 
+      {/* Search bar removed per user request */}
+
       {/* Items Table */}
-      {loading ? (
+      {loading || loadingVendorItems ? (
         <div className="flex justify-center py-12">
           <div className="spinner"></div>
         </div>
@@ -18053,38 +18196,22 @@ function LaundryPage() {
         <div className="text-center py-12 text-gray-500">
           {t('laundry.noLaundryWarehouse') || 'No laundry warehouse configured for this hotel.'}
         </div>
+      ) : activeTab === 'receive' && !selectedVendor ? (
+        <div className="text-center py-12 text-gray-400">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+          <p className="text-sm">Pilih vendor laundry terlebih dahulu untuk melihat item.</p>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           {activeTab === 'send'
             ? (t('laundry.noDirtyItems') || 'No items in dirty warehouse.')
-            : (t('laundry.noLaundryItems') || 'No items in laundry warehouse.')
+            : 'Tidak ada item di laundry vendor ini.'
           }
         </div>
       ) : (
         <React.Fragment>
         {/* ===== DESKTOP ACCORDION (hidden on mobile) ===== */}
         <div className="hidden sm:block mb-6 space-y-3">
-          {/* Select All */}
-          <div className="flex items-center gap-3 px-2 mb-1">
-            <input
-              type="checkbox"
-              className="w-4 h-4 rounded"
-              checked={filtered.length > 0 && filtered.every(item => selectedItems[item.item_id]?.selected)}
-              onChange={e => {
-                const newSel = { ...selectedItems };
-                filtered.forEach(item => {
-                  if (e.target.checked) {
-                    newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
-                  } else {
-                    if (newSel[item.item_id]) delete newSel[item.item_id].selected;
-                  }
-                });
-                setSelectedItems(newSel);
-              }}
-            />
-            <span className="text-sm font-medium text-gray-500">Pilih Semua ({filtered.length} item)</span>
-          </div>
-
           {groupedFiltered.map(group => {
             const isExpanded = expandedLaundryCats[group.catId];
             const catTotalQty = group.items.reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
@@ -18095,23 +18222,6 @@ function LaundryPage() {
                 <button onClick={() => toggleLaundryCat(group.catId)}
                   className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors min-h-[48px]">
                   <div className="flex items-center gap-3">
-                    <input type="checkbox"
-                      className="w-4 h-4 rounded"
-                      checked={group.items.every(i => selectedItems[i.item_id]?.selected)}
-                      onChange={e => {
-                        e.stopPropagation();
-                        const newSel = { ...selectedItems };
-                        group.items.forEach(i => {
-                          if (e.target.checked) {
-                            newSel[i.item_id] = { ...newSel[i.item_id], selected: true };
-                          } else {
-                            if (newSel[i.item_id]) delete newSel[i.item_id].selected;
-                          }
-                        });
-                        setSelectedItems(newSel);
-                      }}
-                      onClick={e => e.stopPropagation()}
-                    />
                     <div className="w-2 h-2 rounded-full bg-blue-500"></div>
                     <span className="font-semibold text-blue-900 text-sm">{group.catName}</span>
                     <span className="text-xs text-blue-600">({group.items.length})</span>
@@ -18126,7 +18236,6 @@ function LaundryPage() {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-8"></th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemCode') || 'Kode'}</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemName') || 'Nama Item'}</th>
                           <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.availableQty') || 'Qty Tersedia'}</th>
@@ -18137,21 +18246,6 @@ function LaundryPage() {
                       <tbody className="divide-y divide-gray-100">
                         {group.items.map(item => (
                           <tr key={item.item_id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">
-                              <input
-                                type="checkbox"
-                                checked={!!selectedItems[item.item_id]?.selected}
-                                onChange={e => {
-                                  const newSel = { ...selectedItems };
-                                  if (e.target.checked) {
-                                    newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
-                                  } else {
-                                    delete newSel[item.item_id];
-                                  }
-                                  setSelectedItems(newSel);
-                                }}
-                              />
-                            </td>
                             <td className="px-4 py-3 text-sm font-medium">{item.items?.code}</td>
                             <td className="px-4 py-3 text-sm">
                               <div className="font-medium">{item.items?.name}</div>
@@ -18203,27 +18297,6 @@ function LaundryPage() {
 
         {/* ===== MOBILE CARD LIST (hidden on desktop) ===== */}
         <div className="sm:hidden mb-6 space-y-3 pb-20">
-          {/* Select All */}
-          <div className="flex items-center gap-2 px-1 mb-2">
-            <input
-              type="checkbox"
-              className="w-5 h-5 rounded"
-              checked={filtered.length > 0 && filtered.every(item => selectedItems[item.item_id]?.selected)}
-              onChange={e => {
-                const newSel = { ...selectedItems };
-                filtered.forEach(item => {
-                  if (e.target.checked) {
-                    newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
-                  } else {
-                    if (newSel[item.item_id]) delete newSel[item.item_id].selected;
-                  }
-                });
-                setSelectedItems(newSel);
-              }}
-            />
-            <span className="text-sm font-medium text-gray-600">Pilih Semua ({filtered.length} item)</span>
-          </div>
-
           {groupedFiltered.map(group => {
             const isExpanded = expandedLaundryCats[group.catId];
             const catTotalQty = group.items.reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
@@ -18234,23 +18307,6 @@ function LaundryPage() {
                 <button onClick={() => toggleLaundryCat(group.catId)}
                   className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors min-h-[48px]">
                   <div className="flex items-center gap-2">
-                    <input type="checkbox"
-                      className="w-5 h-5 rounded flex-shrink-0"
-                      checked={group.items.every(i => selectedItems[i.item_id]?.selected)}
-                      onChange={e => {
-                        e.stopPropagation();
-                        const newSel = { ...selectedItems };
-                        group.items.forEach(i => {
-                          if (e.target.checked) {
-                            newSel[i.item_id] = { ...newSel[i.item_id], selected: true };
-                          } else {
-                            if (newSel[i.item_id]) delete newSel[i.item_id].selected;
-                          }
-                        });
-                        setSelectedItems(newSel);
-                      }}
-                      onClick={e => e.stopPropagation()}
-                    />
                     <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></div>
                     <span className="font-semibold text-blue-900 text-sm">{group.catName}</span>
                     <span className="text-xs text-blue-600">({group.items.length})</span>
@@ -18268,22 +18324,8 @@ function LaundryPage() {
                       const sel = selectedItems[item.item_id] || {};
                       const qtyVal = parseInt(sel.qty) || 0;
                       return (
-                        <div key={item.item_id} className={`rounded-lg border p-3 transition-colors ${sel.selected ? 'border-primary-400 bg-primary-50' : 'border-gray-200 bg-white'}`}>
+                        <div key={item.item_id} className="rounded-lg border p-3 border-gray-200 bg-white">
                           <div className="flex items-start gap-3 mb-3">
-                            <input
-                              type="checkbox"
-                              className="w-5 h-5 mt-0.5 rounded flex-shrink-0"
-                              checked={!!sel.selected}
-                              onChange={e => {
-                                const newSel = { ...selectedItems };
-                                if (e.target.checked) {
-                                  newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
-                                } else {
-                                  delete newSel[item.item_id];
-                                }
-                                setSelectedItems(newSel);
-                              }}
-                            />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">
                                 <span className="text-xs font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">{item.items?.code}</span>
