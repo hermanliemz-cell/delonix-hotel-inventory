@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.9',
+    'app.version': 'v1.0.10',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
     'app.maintenance.title': 'System Under Maintenance',
@@ -1078,7 +1078,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.9',
+    'app.version': 'v1.0.10',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
     'app.maintenance.title': '系统维护中',
@@ -2779,7 +2779,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.9 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.10 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -14996,6 +14996,29 @@ function RoomMakeUpPageNew() {
       return;
     }
 
+    // Validate replacement qty must equal dirty+damage+lost per sub-category
+    if (hasLinenActions || hasReplaceRows) {
+      const incompleteCats = [];
+      for (const cat of linenCategories) {
+        const catItems = getLinenItemsForCategory(cat.id);
+        const totalDDL = catItems.reduce((sum, stock) => {
+          const act = linenActions[stock.item_id] || {};
+          return sum + (act.dirtyQty || 0) + (act.damageQty || 0) + (act.lostQty || 0);
+        }, 0);
+        const catRows = replaceRows[cat.id] || [];
+        const totalReplace = catRows.reduce((sum, r) => sum + (r.itemId ? (parseFloat(r.qty) || 0) : 0), 0);
+        if (totalDDL === 0 && totalReplace === 0) continue;
+        if (totalReplace !== totalDDL) {
+          incompleteCats.push(`${cat.name}: replacement (${totalReplace}) ≠ dirty+damage+lost (${totalDDL})`);
+        }
+      }
+      if (incompleteCats.length > 0) {
+        showNotification('Replacement belum lengkap!\n' + incompleteCats.join('\n'), 'error');
+        setActiveTab('linen');
+        return;
+      }
+    }
+
     const lockCheck = await checkPeriodLock(selectedOrg.id, makeupDate);
     if (lockCheck.locked) {
       showNotification('Period is locked (' + lockCheck.month + '/' + lockCheck.year + ')', 'error');
@@ -15537,6 +15560,13 @@ function RoomMakeUpPageNew() {
               const roomItems = getLinenItemsForCategory(cat.id);
               const catReplaceRows = replaceRows[cat.id] || [];
               const selectableItems = allItems.filter(i => i.category_id === cat.id);
+              // Compute total dirty+damage+lost for this sub-category
+              const catDDL = roomItems.reduce((sum, stock) => {
+                const act = linenActions[stock.item_id] || {};
+                return sum + (act.dirtyQty || 0) + (act.damageQty || 0) + (act.lostQty || 0);
+              }, 0);
+              // Compute total replacement qty already entered for this sub-category
+              const catReplaceTotal = catReplaceRows.reduce((sum, r) => sum + (r.itemId ? (parseFloat(r.qty) || 0) : 0), 0);
               const isCollapsed = collapsedSections['linen_' + cat.id];
               return (
                 <div key={cat.id} className="bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
@@ -15737,7 +15767,7 @@ function RoomMakeUpPageNew() {
                                     </select>
                                     <div className="flex items-center justify-between">
                                       <label className="text-xs font-medium text-blue-700 shrink-0">Qty:</label>
-                                      <QtyStepper value={row.qty} min={1} max={cat.maxQty || 999} color="blue"
+                                      <QtyStepper value={row.qty} min={1} max={Math.max(1, catDDL - catReplaceTotal + (parseFloat(row.qty) || 0))} color="blue"
                                         onChange={val => setReplaceRows(prev => ({ ...prev, [cat.id]: (prev[cat.id] || []).map(r => r.id === row.id ? { ...r, qty: val } : r) }))}
                                       />
                                     </div>
@@ -17987,29 +18017,7 @@ function LaundryPage() {
         </button>
       </div>
 
-      {/* Summary Cards */}
-      {!loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <StatCard
-            icon={Icons.Warehouse}
-            label={t('laundry.itemsInDirty') || 'Items in Dirty'}
-            value={dirtyItems.length}
-            color="orange"
-          />
-          <StatCard
-            icon={Icons.Truck}
-            label={t('laundry.itemsInLaundry') || 'Items in Laundry'}
-            value={laundryItems.length}
-            color="blue"
-          />
-          <StatCard
-            icon={Icons.Package}
-            label={t('laundry.selectedCount') || 'Selected for Transfer'}
-            value={totalItemsSelected}
-            color="green"
-          />
-        </div>
-      )}
+      {/* Summary Cards - removed per user request */}
 
       {/* Search and Filter */}
       <div className="mb-4 flex flex-col sm:flex-row gap-3">
@@ -18054,139 +18062,143 @@ function LaundryPage() {
         </div>
       ) : (
         <React.Fragment>
-        {/* ===== DESKTOP TABLE (hidden on mobile) ===== */}
-        <div className="hidden sm:block bg-white rounded-lg shadow overflow-hidden mb-6">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-8">
-                  <input
-                    type="checkbox"
-                    checked={filtered.length > 0 && filtered.every(item => selectedItems[item.item_id]?.selected)}
-                    onChange={e => {
-                      const newSel = { ...selectedItems };
-                      filtered.forEach(item => {
-                        if (e.target.checked) {
-                          newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
-                        } else {
-                          if (newSel[item.item_id]) delete newSel[item.item_id].selected;
-                        }
-                      });
-                      setSelectedItems(newSel);
-                    }}
-                  />
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemCode') || 'Item Code'}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemName') || 'Item Name'}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.category') || 'Category'}</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.availableQty') || 'Available Qty'}</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.transferQty') || 'Transfer Qty'}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.notes') || 'Notes'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {groupedFiltered.map(group => {
-                const isExpanded = expandedLaundryCats[group.catId];
-                const catTotalQty = group.items.reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
-                const catTransferQty = group.items.reduce((s, i) => s + (parseFloat(selectedItems[i.item_id]?.qty) || 0), 0);
-                return (
-                  <React.Fragment key={'lc-'+group.catId}>
-                    {/* Category subtotal row */}
-                    <tr className="bg-gray-100 cursor-pointer select-none hover:bg-gray-200" onClick={() => toggleLaundryCat(group.catId)}>
-                      <td className="px-4 py-2">
-                        <input type="checkbox"
-                          checked={group.items.every(i => selectedItems[i.item_id]?.selected)}
-                          onChange={e => {
-                            e.stopPropagation();
-                            const newSel = { ...selectedItems };
-                            group.items.forEach(i => {
-                              if (e.target.checked) {
-                                newSel[i.item_id] = { ...newSel[i.item_id], selected: true };
-                              } else {
-                                if (newSel[i.item_id]) delete newSel[i.item_id].selected;
-                              }
-                            });
-                            setSelectedItems(newSel);
-                          }}
-                          onClick={e => e.stopPropagation()}
-                        />
-                      </td>
-                      <td colSpan={2} className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-500 text-xs">{isExpanded ? '▼' : '▶'}</span>
-                          <span className="font-bold text-sm text-gray-700">{group.catName}</span>
-                          <span className="text-xs text-gray-500">({group.items.length})</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2"></td>
-                      <td className="px-4 py-2 text-center text-sm font-bold text-gray-700">{catTotalQty}</td>
-                      <td className="px-4 py-2 text-center text-sm font-bold text-blue-700">{catTransferQty > 0 ? catTransferQty : '-'}</td>
-                      <td className="px-4 py-2"></td>
-                    </tr>
-                    {/* Item rows */}
-                    {isExpanded && group.items.map(item => (
-                      <tr key={item.item_id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={!!selectedItems[item.item_id]?.selected}
-                            onChange={e => {
-                              const newSel = { ...selectedItems };
-                              if (e.target.checked) {
-                                newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
-                              } else {
-                                delete newSel[item.item_id];
-                              }
-                              setSelectedItems(newSel);
-                            }}
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium">{item.items?.code}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <div className="font-medium">{item.items?.name}</div>
-                          {item.items?.brand && <div className="text-gray-500 text-xs">{item.items.brand}</div>}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{item.items?.item_categories?.name || '-'}</td>
-                        <td className="px-4 py-3 text-center text-sm font-medium">{item.quantity}</td>
-                        <td className="px-4 py-3 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max={item.quantity}
-                            placeholder="0"
-                            value={selectedItems[item.item_id]?.qty || ''}
-                            onChange={e => {
-                              const newSel = { ...selectedItems };
-                              newSel[item.item_id] = {
-                                ...newSel[item.item_id],
-                                qty: e.target.value,
-                                selected: !!e.target.value
-                              };
-                              setSelectedItems(newSel);
-                            }}
-                            className="w-20 px-2 py-1 text-center border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            placeholder={t('laundry.notesPlaceholder') || 'Optional notes...'}
-                            value={selectedItems[item.item_id]?.notes || ''}
-                            onChange={e => {
-                              const newSel = { ...selectedItems };
-                              newSel[item.item_id] = { ...newSel[item.item_id], notes: e.target.value };
-                              setSelectedItems(newSel);
-                            }}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+        {/* ===== DESKTOP ACCORDION (hidden on mobile) ===== */}
+        <div className="hidden sm:block mb-6 space-y-3">
+          {/* Select All */}
+          <div className="flex items-center gap-3 px-2 mb-1">
+            <input
+              type="checkbox"
+              className="w-4 h-4 rounded"
+              checked={filtered.length > 0 && filtered.every(item => selectedItems[item.item_id]?.selected)}
+              onChange={e => {
+                const newSel = { ...selectedItems };
+                filtered.forEach(item => {
+                  if (e.target.checked) {
+                    newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
+                  } else {
+                    if (newSel[item.item_id]) delete newSel[item.item_id].selected;
+                  }
+                });
+                setSelectedItems(newSel);
+              }}
+            />
+            <span className="text-sm font-medium text-gray-500">Pilih Semua ({filtered.length} item)</span>
+          </div>
+
+          {groupedFiltered.map(group => {
+            const isExpanded = expandedLaundryCats[group.catId];
+            const catTotalQty = group.items.reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0);
+            const catTransferQty = group.items.reduce((s, i) => s + (parseFloat(selectedItems[i.item_id]?.qty) || 0), 0);
+            return (
+              <div key={'lc-'+group.catId} className="bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+                {/* Accordion Header */}
+                <button onClick={() => toggleLaundryCat(group.catId)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors min-h-[48px]">
+                  <div className="flex items-center gap-3">
+                    <input type="checkbox"
+                      className="w-4 h-4 rounded"
+                      checked={group.items.every(i => selectedItems[i.item_id]?.selected)}
+                      onChange={e => {
+                        e.stopPropagation();
+                        const newSel = { ...selectedItems };
+                        group.items.forEach(i => {
+                          if (e.target.checked) {
+                            newSel[i.item_id] = { ...newSel[i.item_id], selected: true };
+                          } else {
+                            if (newSel[i.item_id]) delete newSel[i.item_id].selected;
+                          }
+                        });
+                        setSelectedItems(newSel);
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                    <span className="font-semibold text-blue-900 text-sm">{group.catName}</span>
+                    <span className="text-xs text-blue-600">({group.items.length})</span>
+                    <span className="text-xs text-gray-500 ml-2">Qty: <span className="font-bold text-gray-700">{catTotalQty}</span></span>
+                    {catTransferQty > 0 && <span className="text-xs text-blue-600 ml-1">| Transfer: <span className="font-bold">{catTransferQty}</span></span>}
+                  </div>
+                  <span className="text-blue-400 text-lg">{isExpanded ? '−' : '+'}</span>
+                </button>
+                {/* Accordion Content */}
+                {isExpanded && (
+                  <div className="border-t border-blue-100">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-8"></th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemCode') || 'Kode'}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.itemName') || 'Nama Item'}</th>
+                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.availableQty') || 'Qty Tersedia'}</th>
+                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">{t('laundry.transferQty') || 'Qty Transfer'}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('laundry.notes') || 'Catatan'}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {group.items.map(item => (
+                          <tr key={item.item_id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedItems[item.item_id]?.selected}
+                                onChange={e => {
+                                  const newSel = { ...selectedItems };
+                                  if (e.target.checked) {
+                                    newSel[item.item_id] = { ...newSel[item.item_id], selected: true };
+                                  } else {
+                                    delete newSel[item.item_id];
+                                  }
+                                  setSelectedItems(newSel);
+                                }}
+                              />
+                            </td>
+                            <td className="px-4 py-3 text-sm font-medium">{item.items?.code}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <div className="font-medium">{item.items?.name}</div>
+                              {item.items?.brand && <div className="text-gray-500 text-xs">{item.items.brand}</div>}
+                            </td>
+                            <td className="px-4 py-3 text-center text-sm font-medium">{item.quantity}</td>
+                            <td className="px-4 py-3 text-center">
+                              <input
+                                type="number"
+                                min="0"
+                                max={item.quantity}
+                                placeholder="0"
+                                value={selectedItems[item.item_id]?.qty || ''}
+                                onChange={e => {
+                                  const newSel = { ...selectedItems };
+                                  newSel[item.item_id] = {
+                                    ...newSel[item.item_id],
+                                    qty: e.target.value,
+                                    selected: !!e.target.value
+                                  };
+                                  setSelectedItems(newSel);
+                                }}
+                                className="w-20 px-2 py-1 text-center border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="text"
+                                placeholder="Catatan (opsional)..."
+                                value={selectedItems[item.item_id]?.notes || ''}
+                                onChange={e => {
+                                  const newSel = { ...selectedItems };
+                                  newSel[item.item_id] = { ...newSel[item.item_id], notes: e.target.value };
+                                  setSelectedItems(newSel);
+                                }}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* ===== MOBILE CARD LIST (hidden on desktop) ===== */}
