@@ -14876,7 +14876,7 @@ function RoomMakeUpPageNew() {
     try {
       const [muRes, roomRes, whRes, itemRes] = await Promise.all([
         supabase.from('room_makeups')
-          .select('*, rooms!left(room_number, floor)')
+          .select('*, rooms!left(room_number, floor), users:created_by(full_name, username), departments:department_id(code, name)')
           .eq('organization_id', selectedOrg.id)
           .order('created_at', { ascending: false }),
         supabase.from('rooms').select('id, room_number, floor, warehouse_id, room_types(name)')
@@ -15204,31 +15204,7 @@ function RoomMakeUpPageNew() {
       return;
     }
 
-    // Validate replacement qty must equal dirty+damage+lost per sub-category
-    if (hasLinenActions || hasReplaceRows) {
-      const incompleteCats = [];
-      for (const cat of linenCategories) {
-        const catItems = getLinenItemsForCategory(cat.id);
-        const totalDDL = catItems.reduce((sum, stock) => {
-          const act = linenActions[stock.item_id] || {};
-          return sum + (act.dirtyQty || 0) + (act.damageQty || 0) + (act.lostQty || 0);
-        }, 0);
-        const catRows = replaceRows[cat.id] || [];
-        const totalReplace = catRows.reduce((sum, r) => sum + (r.itemId ? (parseFloat(r.qty) || 0) : 0), 0);
-        if (totalDDL === 0 && totalReplace === 0) continue;
-        // Exception: if category has NO in-room stock at all, allow replace without DDL
-        const catHasStock = catItems.some(stock => stock.quantity > 0);
-        if (!catHasStock && totalReplace > 0 && totalDDL === 0) continue;
-        if (totalReplace !== totalDDL) {
-          incompleteCats.push(`${cat.name}: replacement (${totalReplace}) ≠ dirty+damage+lost (${totalDDL})`);
-        }
-      }
-      if (incompleteCats.length > 0) {
-        showNotification('Replacement belum lengkap!\n' + incompleteCats.join('\n'), 'error');
-        setActiveTab('linen');
-        return;
-      }
-    }
+    // Replacement qty is now free — no longer required to equal dirty+damage+lost per category
 
     const lockCheck = await checkPeriodLock(selectedOrg.id, makeupDate);
     if (lockCheck.locked) {
@@ -15265,6 +15241,7 @@ function RoomMakeUpPageNew() {
         const { data: mu, error: muErr } = await supabase.from('room_makeups').insert({
           organization_id: selectedOrg.id, room_id: selectedRoom, makeup_number: makeupNumber,
           makeup_date: makeupDate, status: 'DRAFT', notes,
+          created_by: currentUser?.id || null, department_id: userDept?.id || null,
         }).select().single();
         if (muErr) throw muErr;
         muId = mu.id;
@@ -15609,8 +15586,10 @@ function RoomMakeUpPageNew() {
         <div className="hidden sm:block">
           <DataTable loading={loading} columns={[
             { header: 'Number', render: r => <button onClick={() => r.status === 'DRAFT' ? openEdit(r) : openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.makeup_number}</button> },
-            { header: t('common.date'), render: r => formatDateSys(r.makeup_date) },
+            { header: t('common.date'), render: r => formatDateSys(r.created_at, { includeTime: true }) },
             { header: 'Room', render: r => <span className="font-medium">{r.rooms?.room_number || '-'}</span> },
+            { header: 'User', render: r => <span className="text-xs">{r.users?.full_name || r.users?.username || '-'}</span> },
+            { header: 'Department', render: r => <span className="text-xs">{r.departments?.name || '-'}</span> },
             { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
             { header: t('common.actions'), render: r => (
               <div className="flex gap-1">
@@ -15645,7 +15624,11 @@ function RoomMakeUpPageNew() {
                 </div>
                 <div className="flex items-center justify-between text-xs text-gray-500">
                   <span>Room: <span className="font-medium text-gray-700">{r.rooms?.room_number || '-'}</span></span>
-                  <span>{formatDateSys(r.makeup_date)}</span>
+                  <span>{formatDateSys(r.created_at, { includeTime: true })}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-400 mt-0.5">
+                  <span>{r.users?.full_name || r.users?.username || '-'}</span>
+                  <span>{r.departments?.name || '-'}</span>
                 </div>
                 {r.status === 'DRAFT' && (
                   <div className="flex gap-2 mt-2">
@@ -15968,7 +15951,7 @@ function RoomMakeUpPageNew() {
                                     </select>
                                     <div className="flex items-center justify-between">
                                       <label className="text-xs font-medium text-blue-700 shrink-0">Qty:</label>
-                                      <QtyStepper value={row.qty} min={1} max={!catHasStock ? 99 : Math.max(1, catDDL - catReplaceTotal + (parseFloat(row.qty) || 0))} color="blue"
+                                      <QtyStepper value={row.qty} min={1} max={99} color="blue"
                                         onChange={val => setReplaceRows(prev => ({ ...prev, [cat.id]: (prev[cat.id] || []).map(r => r.id === row.id ? { ...r, qty: val } : r) }))}
                                       />
                                     </div>
