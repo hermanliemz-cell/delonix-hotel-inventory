@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.17',
+    'app.version': 'v1.0.18',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
     'app.maintenance.title': 'System Under Maintenance',
@@ -1080,7 +1080,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.17',
+    'app.version': 'v1.0.18',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
     'app.maintenance.title': '系统维护中',
@@ -2820,7 +2820,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.17 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.18 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -16246,31 +16246,7 @@ function RoomAdditionalRequestPage() {
       department_id: dept || null,
     });
     if (mvErr) throw new Error('Stock movement insert failed: ' + mvErr.message);
-
-    if (movementType === 'OUT') {
-      if (sb) {
-        const newQty = Math.max(0, parseFloat(sb.quantity) - qty);
-        await supabase.from('stock_balance').update({
-          quantity: newQty, total_value: newQty * unitCost,
-          last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        }).eq('id', sb.id);
-      }
-    } else {
-      if (sb) {
-        const newQty = parseFloat(sb.quantity) + qty;
-        await supabase.from('stock_balance').update({
-          quantity: newQty, avg_cost: unitCost, total_value: newQty * unitCost,
-          last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        }).eq('id', sb.id);
-      } else {
-        await supabase.from('stock_balance').insert({
-          organization_id: selectedOrg.id, department_id: dept || null,
-          item_id: itemId, warehouse_id: warehouseId,
-          quantity: qty, avg_cost: unitCost, total_value: qty * unitCost,
-          last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        });
-      }
-    }
+    // stock_balance is automatically updated by DB trigger fn_sync_stock_balance
   }
 
   // ==================== GENERATE REQUEST NUMBER ====================
@@ -17969,44 +17945,8 @@ function LaundryPage() {
           created_at: new Date().toISOString()
         });
 
-        // Update stock_balance: decrease in dirty, increase in laundry
-        await supabase.from('stock_balance')
-          .update({
-            quantity: stockItem.quantity - qty,
-            updated_at: new Date().toISOString()
-          })
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', dirtyWarehouse.id);
-
-        // Update stock_balance for laundry warehouse (IN side)
-        const { data: existingLdryBal } = await supabase.from('stock_balance')
-          .select('id, quantity')
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', laundryWarehouse.id)
-          .maybeSingle();
-
-        if (existingLdryBal) {
-          await supabase.from('stock_balance')
-            .update({
-              quantity: existingLdryBal.quantity + qty,
-              avg_cost: stockItem.avg_cost || 0,
-              total_value: (existingLdryBal.quantity + qty) * (stockItem.avg_cost || 0),
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', existingLdryBal.id);
-        } else {
-          await supabase.from('stock_balance').insert({
-            organization_id: selectedOrg.id,
-            department_id: deptId,
-            item_id: item.item_id,
-            warehouse_id: laundryWarehouse.id,
-            quantity: qty,
-            avg_cost: stockItem.avg_cost || 0,
-            total_value: qty * (stockItem.avg_cost || 0),
-            updated_at: new Date().toISOString()
-          });
-        }
+        // stock_balance is automatically updated by DB trigger fn_sync_stock_balance
+        // when stock_movements are inserted above — no manual update needed
       }
 
       showNotification('Items sent to laundry successfully (Ref: ' + refNumber + ')', 'success');
@@ -18101,44 +18041,8 @@ function LaundryPage() {
           created_at: new Date().toISOString()
         });
 
-        // Update stock_balance: decrease in laundry, increase in store
-        await supabase.from('stock_balance')
-          .update({
-            quantity: stockItem.quantity - qty,
-            updated_at: new Date().toISOString()
-          })
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', laundryWarehouse.id);
-
-        // Update stock_balance for store warehouse (IN side)
-        const { data: existingStoreBal } = await supabase.from('stock_balance')
-          .select('id, quantity')
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', storeWarehouse.id)
-          .maybeSingle();
-
-        if (existingStoreBal) {
-          await supabase.from('stock_balance')
-            .update({
-              quantity: existingStoreBal.quantity + qty,
-              avg_cost: stockItem.avg_cost || 0,
-              total_value: (existingStoreBal.quantity + qty) * (stockItem.avg_cost || 0),
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', existingStoreBal.id);
-        } else {
-          await supabase.from('stock_balance').insert({
-            organization_id: selectedOrg.id,
-            department_id: deptId,
-            item_id: item.item_id,
-            warehouse_id: storeWarehouse.id,
-            quantity: qty,
-            avg_cost: stockItem.avg_cost || 0,
-            total_value: qty * (stockItem.avg_cost || 0),
-            updated_at: new Date().toISOString()
-          });
-        }
+        // stock_balance is automatically updated by DB trigger fn_sync_stock_balance
+        // when stock_movements are inserted above — no manual update needed
       }
 
       showNotification('Items received from laundry successfully (Ref: ' + refNumber + ')', 'success');
