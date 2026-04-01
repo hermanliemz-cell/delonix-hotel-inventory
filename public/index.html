@@ -6939,7 +6939,7 @@ function StockBalancePage() {
   const [bincardWarehouses, setBincardWarehouses] = useState([]);
   const [bincardFilterWh, setBincardFilterWh] = useState('');
   const [bincardFilterType, setBincardFilterType] = useState('');
-  const [bincardPeriod, setBincardPeriod] = useState('mtd');
+  const [bincardPeriod, setBincardPeriod] = useState('ytd');
   const [bincardDateFrom, setBincardDateFrom] = useState('');
   const [bincardDateTo, setBincardDateTo] = useState('');
 
@@ -6954,9 +6954,12 @@ function StockBalancePage() {
     const lastMonthEnd = new Date(yyyy, today.getMonth(), 0);
     const lmsStr = lastMonthEnd.getFullYear() + '-' + String(lastMonthEnd.getMonth() + 1).padStart(2, '0') + '-01';
     const lmeStr = lastMonthEnd.getFullYear() + '-' + String(lastMonthEnd.getMonth() + 1).padStart(2, '0') + '-' + String(lastMonthEnd.getDate()).padStart(2, '0');
+    const lastWeekStart = new Date(today); lastWeekStart.setDate(lastWeekStart.getDate() - 6);
+    const lwStr = lastWeekStart.getFullYear() + '-' + String(lastWeekStart.getMonth() + 1).padStart(2, '0') + '-' + String(lastWeekStart.getDate()).padStart(2, '0');
     switch (preset) {
       case 'today': return { from: todayStr, to: todayStr };
       case 'yesterday': return { from: ydStr, to: ydStr };
+      case 'lastweek': return { from: lwStr, to: todayStr };
       case 'mtd': return { from: yyyy + '-' + mm + '-01', to: todayStr };
       case 'lastmonth': return { from: lmsStr, to: lmeStr };
       case 'ytd': return { from: yyyy + '-01-01', to: todayStr };
@@ -6972,8 +6975,8 @@ function StockBalancePage() {
     setBincardLoading(true);
     setBincardFilterWh('');
     setBincardFilterType('');
-    setBincardPeriod('mtd');
-    const range = getBincardDateRange('mtd');
+    setBincardPeriod('ytd');
+    const range = getBincardDateRange('ytd');
     setBincardDateFrom(range.from);
     setBincardDateTo(range.to);
     // Load warehouses
@@ -7376,6 +7379,7 @@ function StockBalancePage() {
         const bcGetWhName = (whId) => { const w = bincardWarehouses.find(x => x.id === whId); return w ? w.code : '-'; };
         const bcPeriodOptions = [
           { value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' },
+          { value: 'lastweek', label: 'Last Week' },
           { value: 'mtd', label: 'MTD' }, { value: 'lastmonth', label: 'Last Month' },
           { value: 'ytd', label: 'YTD' }, { value: 'custom', label: 'Custom' },
         ];
@@ -7501,7 +7505,7 @@ function BinCardPage() {
   const [filterItem, setFilterItem] = useState('');
   const [filterType, setFilterType] = useState('');
   const [docDetailMovement, setDocDetailMovement] = useState(null);
-  const [periodPreset, setPeriodPreset] = useState('mtd');
+  const [periodPreset, setPeriodPreset] = useState('ytd');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [itemDropOpen, setItemDropOpen] = useState(false);
@@ -7524,9 +7528,12 @@ function BinCardPage() {
     const lmsStr = lastMonthStart.getFullYear() + '-' + String(lastMonthStart.getMonth() + 1).padStart(2, '0') + '-01';
     const lmeStr = lastMonthEnd.getFullYear() + '-' + String(lastMonthEnd.getMonth() + 1).padStart(2, '0') + '-' + String(lastMonthEnd.getDate()).padStart(2, '0');
 
+    const lastWeekStart = new Date(today); lastWeekStart.setDate(lastWeekStart.getDate() - 6);
+    const lwStr = lastWeekStart.getFullYear() + '-' + String(lastWeekStart.getMonth() + 1).padStart(2, '0') + '-' + String(lastWeekStart.getDate()).padStart(2, '0');
     switch (preset) {
       case 'today': return { from: todayStr, to: todayStr };
       case 'yesterday': return { from: ydStr, to: ydStr };
+      case 'lastweek': return { from: lwStr, to: todayStr };
       case 'mtd': return { from: yyyy + '-' + mm + '-01', to: todayStr };
       case 'lastmonth': return { from: lmsStr, to: lmeStr };
       case 'ytd': return { from: yyyy + '-01-01', to: todayStr };
@@ -7544,9 +7551,9 @@ function BinCardPage() {
     }
   }
 
-  // Initialize MTD dates on mount
+  // Initialize YTD dates on mount
   useEffect(() => {
-    const range = getDateRange('mtd');
+    const range = getDateRange('ytd');
     setDateFrom(range.from);
     setDateTo(range.to);
   }, []);
@@ -7816,6 +7823,7 @@ function BinCardPage() {
   const periodOptions = [
     { value: 'today', label: 'Today' },
     { value: 'yesterday', label: 'Yesterday' },
+    { value: 'lastweek', label: 'Last Week' },
     { value: 'mtd', label: 'Current Month (MTD)' },
     { value: 'lastmonth', label: 'Last Month' },
     { value: 'ytd', label: 'Current Year (YTD)' },
