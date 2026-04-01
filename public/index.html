@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.18',
+    'app.version': 'v1.0.19',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
     'app.maintenance.title': 'System Under Maintenance',
@@ -1080,7 +1080,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.18',
+    'app.version': 'v1.0.19',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
     'app.maintenance.title': '系统维护中',
@@ -2820,7 +2820,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.18 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.19 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -16323,6 +16323,7 @@ function RoomAdditionalRequestPage() {
 
   // ==================== SAVE DRAFT ====================
   async function handleSaveDraft() {
+    if (saving) return; // Prevent double-click
     if (!selectedRoom) {
       showNotification('Please select a room', 'error');
       return;
@@ -16404,10 +16405,19 @@ function RoomAdditionalRequestPage() {
   }
 
   async function handleConfirm(record) {
+    if (saving) return; // Prevent double-click
     if (!(await showConfirm(`Confirm request ${record.request_number}? Transfer and/or consumption documents will be created.`, { variant: 'warning' }))) return;
 
     setSaving(true);
     try {
+      // Re-verify AR status from DB to prevent double confirm
+      const { data: freshAR } = await supabase.from('room_additional_requests')
+        .select('status').eq('id', record.id).single();
+      if (!freshAR || freshAR.status !== 'draft') {
+        showNotification('Request has already been confirmed or is no longer in draft status.', 'warning');
+        return;
+      }
+
       // Load items with category info
       const { data: items } = await supabase.from('room_additional_request_items')
         .select('*, items(id, code, name, category_id)')
@@ -16616,7 +16626,7 @@ function RoomAdditionalRequestPage() {
                 {r.status === 'draft' && (
                   <>
                     <button onClick={() => openEdit(r)} className="text-blue-600 hover:text-blue-700 text-xs font-medium">Edit</button>
-                    <button onClick={() => handleConfirm(r)} className="text-green-600 hover:text-green-700 text-xs font-medium">Confirm</button>
+                    <button onClick={() => handleConfirm(r)} disabled={saving} className="text-green-600 hover:text-green-700 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed">Confirm</button>
                   </>
                 )}
               </div>
@@ -16821,7 +16831,7 @@ function RoomAdditionalRequestPage() {
           {viewRecord && viewRecord.status === 'draft' && (
             <>
               <button type="button" onClick={() => { setViewRecord(null); openEdit(viewRecord); }} className="px-3 py-1.5 border border-blue-600 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50">Edit</button>
-              <button type="button" onClick={() => { setViewRecord(null); handleConfirm(viewRecord); }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">Confirm</button>
+              <button type="button" onClick={() => { setViewRecord(null); handleConfirm(viewRecord); }} disabled={saving} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">Confirm</button>
               <button type="button" onClick={() => { setViewRecord(null); handleDelete(viewRecord); }} className="px-3 py-1.5 border border-red-600 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50">Delete</button>
             </>
           )}
