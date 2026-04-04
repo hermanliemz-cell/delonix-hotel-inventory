@@ -3690,13 +3690,14 @@ function DashboardPage() {
       const [itemsRes, vendorsRes, stockRes, prRes] = await Promise.all([
         supabase.from('items').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('is_active', true),
         supabase.from('vendors').select('id', { count: 'exact', head: true }).eq('is_active', true),
-        supabase.from('stock_balance').select('*').eq('organization_id', selectedOrg.id),
+        supabase.from('stock_balance').select('quantity, warehouses!inner(warehouse_type)').eq('organization_id', selectedOrg.id),
         supabase.from('purchase_requests').select('id', { count: 'exact', head: true }).eq('organization_id', selectedOrg.id).eq('status', 'SUBMITTED'),
       ]);
 
       const stockData = stockRes.data || [];
+      // Only count out-of-stock in 'store' warehouses (main stock, not room/dirty/laundry/damage)
       const lowStockCount = stockData.filter(s => {
-        return s.quantity <= 0;
+        return s.quantity <= 0 && s.warehouses?.warehouse_type === 'store';
       }).length;
 
       setStats({
