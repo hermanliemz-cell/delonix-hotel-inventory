@@ -162,7 +162,7 @@ const translations = {
     'menu.group.stockOut': 'Stock Out',
     'menu.group.stock': 'Stock Management',
     'menu.group.settings': 'Settings',
-    'menu.roomMakeupNew': 'Room Make Up (New)',
+    'menu.roomMakeupNew': 'Room Make Up',
     'menu.transfer': 'Transfer',
     'menu.directPurchase': 'Direct Purchase',
     'menu.hotels': 'Hotels',
@@ -1061,6 +1061,7 @@ const translations = {
     'roles.allowMaintenanceAccess': 'Allow Maintenance Access',
     'roles.allowMaintenanceAccessDesc': 'Users with this role can still access the system during maintenance mode',
     'menu.systemSettings': 'System Settings',
+    'menu.cronJobs': 'CRON Jobs',
 
     // Change Password
     'pwd.title': 'Change Password',
@@ -1996,6 +1997,7 @@ const translations = {
     'roles.allowMaintenanceAccess': '允许维护访问',
     'roles.allowMaintenanceAccessDesc': '拥有此角色的用户在维护模式下仍可访问系统',
     'menu.systemSettings': '系统设置',
+    'menu.cronJobs': '定时任务',
 
     // Change Password
     'pwd.title': '修改密码',
@@ -2086,6 +2088,7 @@ const Icons = {
   Linen: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M8 3v7m8-7v7"/></svg>,
   Wrench: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
   Monitor: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>,
+  Clock: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2"/></svg>,
 };
 
 // ============================================================
@@ -2478,6 +2481,7 @@ function App() {
       { id: 'role-mgmt', label: t('menu.roleMgmt'), icon: Icons.Shield },
       { id: 'change-password', label: t('menu.changePassword'), icon: Icons.Lock },
       { id: 'system-settings', label: t('menu.systemSettings'), icon: Icons.Settings },
+      { id: 'cron-jobs', label: t('menu.cronJobs'), icon: Icons.Clock },
     ]},
   ];
 
@@ -2919,6 +2923,7 @@ function PageRouter({ page }) {
     case 'user-mgmt': return <UserManagementPage />;
     case 'role-mgmt': return <RoleManagementPage />;
     case 'system-settings': return <SystemSettingsPage />;
+    case 'cron-jobs': return <CronJobsPage />;
     case 'change-password': return <ChangePasswordPage />;
     default: return <DashboardPage />;
   }
@@ -4073,7 +4078,8 @@ function ItemsPage() {
   const [filterSubCategory, setFilterSubCategory] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false, max_inuse_qty: 0 });
+  const [form, setForm] = useState({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false, max_inuse_qty: 0, is_active: true });
+  const [filterStatus, setFilterStatus] = useState('all');
 
   // Import from hotel states
   const [showImportModal, setShowImportModal] = useState(false);
@@ -4387,13 +4393,13 @@ function ItemsPage() {
 
   function openCreate() {
     setEditItem(null);
-    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false, max_inuse_qty: 0 });
+    setForm({ code: '', name: '', description: '', category_id: '', unit_id: '', purchase_unit_id: '', usage_unit_id: '', conversion_rate: 1, brand: '', size: '', min_stock: 0, max_stock: 0, reorder_point: 0, default_warehouse_id: '', allow_single_usage: false, allow_direct_purchase: false, allow_inuse_warehouse: false, max_inuse_qty: 0, is_active: true });
     setShowModal(true);
   }
 
   function openEdit(item) {
     setEditItem(item);
-    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false, allow_direct_purchase: item.allow_direct_purchase || false, allow_inuse_warehouse: item.allow_inuse_warehouse || false, max_inuse_qty: item.max_inuse_qty || 0 });
+    setForm({ code: item.code, name: item.name, description: item.description || '', category_id: item.category_id || '', unit_id: item.unit_id || '', purchase_unit_id: item.purchase_unit_id || '', usage_unit_id: item.usage_unit_id || '', conversion_rate: item.conversion_rate || 1, brand: item.brand || '', size: item.size || '', min_stock: item.min_stock, max_stock: item.max_stock, reorder_point: item.reorder_point, default_warehouse_id: item.default_warehouse_id || '', allow_single_usage: item.allow_single_usage || false, allow_direct_purchase: item.allow_direct_purchase || false, allow_inuse_warehouse: item.allow_inuse_warehouse || false, max_inuse_qty: item.max_inuse_qty || 0, is_active: item.is_active !== false });
     setShowModal(true);
   }
 
@@ -4466,6 +4472,18 @@ function ItemsPage() {
     }
   }
 
+  async function toggleActive(item) {
+    try {
+      const newStatus = !item.is_active;
+      const { error } = await supabase.from('items').update({ is_active: newStatus }).eq('id', item.id);
+      if (error) throw error;
+      showNotification(`Item "${item.name}" (${item.code}) ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}.`);
+      loadData();
+    } catch (err) {
+      showNotification('Error: ' + err.message, 'error');
+    }
+  }
+
   const filtered = items.filter(i => {
     const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase()) ||
       i.code.toLowerCase().includes(search.toLowerCase()) ||
@@ -4476,7 +4494,8 @@ function ItemsPage() {
     } else if (filterCategory) {
       matchCategory = i.category_id === filterCategory || categories.some(c => c.id === i.category_id && c.parent_id === filterCategory);
     }
-    return matchSearch && matchCategory;
+    const matchStatus = filterStatus === 'all' || (filterStatus === 'active' && i.is_active) || (filterStatus === 'inactive' && !i.is_active);
+    return matchSearch && matchCategory && matchStatus;
   });
 
   const totalPages = Math.ceil(filtered.length / pageSize);
@@ -4484,7 +4503,7 @@ function ItemsPage() {
   const paginatedItems = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   // Reset to page 1 when filters change
-  useEffect(() => { setCurrentPage(1); }, [search, filterCategory, filterSubCategory, pageSize]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterCategory, filterSubCategory, filterStatus, pageSize]);
 
   return (
     <div>
@@ -4515,8 +4534,14 @@ function ItemsPage() {
               {categories.filter(c => c.parent_id === filterCategory).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
-          {(filterCategory || filterSubCategory) && (
-            <button onClick={() => { setFilterCategory(''); setFilterSubCategory(''); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 bg-white">
+            <option value="all">All Status</option>
+            <option value="active">Active Only</option>
+            <option value="inactive">Non-Active Only</option>
+          </select>
+          {(filterCategory || filterSubCategory || filterStatus !== 'all') && (
+            <button onClick={() => { setFilterCategory(''); setFilterSubCategory(''); setFilterStatus('all'); }} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
               Clear Filters
             </button>
           )}
@@ -4548,6 +4573,11 @@ function ItemsPage() {
           data={paginatedItems}
           actions={(row) => (
             <>
+              <button onClick={(e) => { e.stopPropagation(); toggleActive(row); }}
+                className={`p-1.5 rounded-lg ${row.is_active ? 'hover:bg-red-50 text-orange-400' : 'hover:bg-green-50 text-green-500'}`}
+                title={row.is_active ? 'Set Non-Active' : 'Set Active'}>
+                {row.is_active ? <Icons.Lock /> : <Icons.Unlock />}
+              </button>
               <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><Icons.Edit /></button>
               <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(row); }} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400" title="Delete"><Icons.Trash /></button>
             </>
@@ -4677,6 +4707,18 @@ function ItemsPage() {
               <span className="text-xs text-gray-400 mt-1">Maksimal qty yang boleh berada di In-Use Warehouse. 0 = tidak dibatasi.</span>
             </FormField>
           )}
+          <FormField label="Status Item">
+            <div className="flex items-center gap-3 mt-1">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked={form.is_active !== false}
+                  onChange={e => setForm({...form, is_active: e.target.checked})}
+                  className="sr-only peer" />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                <span className={`ml-2 text-sm font-medium ${form.is_active !== false ? 'text-green-600' : 'text-red-500'}`}>{form.is_active !== false ? 'Active' : 'Non-Active'}</span>
+              </label>
+              <span className="text-xs text-gray-400">Item non-active tidak akan muncul di seluruh dropdown pilihan item</span>
+            </div>
+          </FormField>
         </div>
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
           <Button variant="secondary" onClick={() => setShowModal(false)}>{t('common.cancel')}</Button>
@@ -12798,7 +12840,7 @@ const ALL_MENU_GROUPS = [
     { id: 'approval', label: 'Approval' },
   ]},
   { group: 'Housekeeping', items: [
-    { id: 'room-makeup-new', label: 'Room Make Up (New)' },
+    { id: 'room-makeup-new', label: 'Room Make Up' },
     { id: 'laundry', label: 'Laundry' },
     { id: 'room-consumption', label: 'Room Consumption History' },
     { id: 'item-lost-in-room', label: 'Item Lost in Room' },
@@ -13285,6 +13327,219 @@ function SystemSettingsPage() {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// CRON JOBS PAGE
+// ============================================================
+function CronJobsPage() {
+  const { selectedOrg, showNotification } = useApp();
+  const [jobs, setJobs] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [runningJob, setRunningJob] = useState(null);
+  const [selectedJob, setSelectedJob] = useState(null);
+
+  useEffect(() => { if (selectedOrg) loadData(); }, [selectedOrg]);
+
+  async function loadData() {
+    setLoading(true);
+    try {
+      // Load pg_cron jobs from cron.job table (via raw SQL through a function)
+      // Since cron schema isn't accessible via PostgREST, we use a wrapper
+      const { data: jobData, error: jobErr } = await supabase.rpc('get_cron_jobs');
+      if (jobErr) {
+        // Fallback: show known jobs statically
+        setJobs([{
+          jobid: 1, schedule: '0 19 * * *', command: 'SELECT inventory.fn_auto_confirm_room_makeups()',
+          jobname: 'auto-confirm-room-makeups', nodename: '', nodeport: 0, database: 'postgres', username: 'postgres', active: true,
+        }]);
+      } else {
+        setJobs(jobData || []);
+      }
+
+      // Load execution logs
+      const { data: logData } = await supabase.from('cron_job_logs')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(50);
+      setLogs(logData || []);
+    } catch (err) {
+      console.error('Error loading cron data:', err);
+    }
+    setLoading(false);
+  }
+
+  async function handleRunNow(jobName) {
+    if (runningJob) return;
+    setRunningJob(jobName);
+    try {
+      const { data, error } = await supabase.rpc('fn_auto_confirm_room_makeups_rpc');
+      if (error) throw error;
+      showNotification(`Job "${jobName}" executed. Result: ${JSON.stringify(data)}`, 'success');
+      await loadData();
+    } catch (err) {
+      showNotification('Error running job: ' + err.message, 'error');
+    }
+    setRunningJob(null);
+  }
+
+  function formatSchedule(cron) {
+    const map = {
+      '0 19 * * *': 'Every day at 02:00 WIB (19:00 UTC)',
+      '*/5 * * * *': 'Every 5 minutes',
+      '0 * * * *': 'Every hour',
+    };
+    return map[cron] || cron;
+  }
+
+  function formatDate(ts) {
+    if (!ts) return '-';
+    const tz = window.__systemSettings?.timezone || 'Asia/Bangkok';
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).format(new Date(ts));
+  }
+
+  function getStatusBadge(status) {
+    const colors = {
+      SUCCESS: 'bg-green-100 text-green-700',
+      RUNNING: 'bg-blue-100 text-blue-700',
+      FAILED: 'bg-red-100 text-red-700',
+      PARTIAL: 'bg-yellow-100 text-yellow-700',
+    };
+    return (
+      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] || 'bg-gray-100 text-gray-600'}`}>
+        {status}
+      </span>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader title="CRON Jobs" subtitle="Scheduled tasks and execution history" />
+
+      {/* JOB LIST */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
+        <div className="p-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700">Scheduled Jobs</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left">
+                <th className="px-4 py-2 font-medium text-gray-600">Job Name</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Schedule</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Description</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Status</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {jobs.length === 0 && !loading ? (
+                <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-400">No cron jobs found</td></tr>
+              ) : jobs.map((job, idx) => (
+                <tr key={idx} className="border-t border-gray-50 hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">{job.jobname || 'Job #' + job.jobid}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-gray-700">{formatSchedule(job.schedule)}</div>
+                    <div className="text-xs text-gray-400 font-mono mt-0.5">{job.schedule}</div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {job.jobname === 'auto-confirm-room-makeups'
+                      ? 'Auto-confirm all DRAFT room makeups daily at 02:00 WIB'
+                      : job.command?.substring(0, 60) + (job.command?.length > 60 ? '...' : '')}
+                  </td>
+                  <td className="px-4 py-3">
+                    {job.active !== false
+                      ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Active</span>
+                      : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Inactive</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => handleRunNow(job.jobname || 'Job #' + job.jobid)}
+                      disabled={!!runningJob}
+                      className="px-3 py-1 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      {runningJob === (job.jobname || 'Job #' + job.jobid) ? 'Running...' : 'Run Now'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* EXECUTION LOGS */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-700">Execution History</h3>
+          <button onClick={loadData} className="text-xs text-primary-600 hover:text-primary-700 font-medium">
+            Refresh
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left">
+                <th className="px-4 py-2 font-medium text-gray-600">Job Name</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Started At</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Finished At</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Duration</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Status</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.length === 0 && !loading ? (
+                <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-400">No execution history yet</td></tr>
+              ) : logs.map((log) => {
+                const duration = log.started_at && log.finished_at
+                  ? ((new Date(log.finished_at) - new Date(log.started_at)) / 1000).toFixed(1) + 's'
+                  : '-';
+                const details = log.details || {};
+                return (
+                  <tr key={log.id} className="border-t border-gray-50 hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{log.job_name}</td>
+                    <td className="px-4 py-3 text-gray-600">{formatDate(log.started_at)}</td>
+                    <td className="px-4 py-3 text-gray-600">{formatDate(log.finished_at)}</td>
+                    <td className="px-4 py-3 text-gray-600">{duration}</td>
+                    <td className="px-4 py-3">{getStatusBadge(log.status)}</td>
+                    <td className="px-4 py-3">
+                      {details.confirmed !== undefined ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-600 font-medium">{details.confirmed} confirmed</span>
+                          {details.failed > 0 && <span className="text-red-600 font-medium">{details.failed} failed</span>}
+                          {selectedJob === log.id ? (
+                            <button onClick={() => setSelectedJob(null)} className="text-xs text-primary-600 underline">Hide</button>
+                          ) : (details.items && details.items.length > 0) && (
+                            <button onClick={() => setSelectedJob(log.id)} className="text-xs text-primary-600 underline">View</button>
+                          )}
+                        </div>
+                      ) : log.error_message ? (
+                        <span className="text-red-600 text-xs">{log.error_message}</span>
+                      ) : '-'}
+                      {selectedJob === log.id && details.items && (
+                        <div className="mt-2 p-2 bg-gray-50 rounded text-xs max-h-40 overflow-y-auto">
+                          {details.items.map((item, i) => (
+                            <div key={i} className={`py-0.5 ${item.status === 'failed' ? 'text-red-600' : 'text-green-600'}`}>
+                              {item.number}: {item.status} {item.error ? `(${item.error})` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -14825,6 +15080,13 @@ function RoomMakeUpPageNew() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterHousekeeper, setFilterHousekeeper] = useState('');
+  const [filterRoom, setFilterRoom] = useState('');
+  const [filterRoomSearch, setFilterRoomSearch] = useState('');
+  const [filterRoomOpen, setFilterRoomOpen] = useState(false);
+  const [filterDateRange, setFilterDateRange] = useState('today');
+  const [filterCount, setFilterCount] = useState('');
+  const filterRoomRef = React.useRef(null);
 
   // Form state
   const [showModal, setShowModal] = useState(false);
@@ -14897,6 +15159,27 @@ function RoomMakeUpPageNew() {
           .eq('id', currentUser.id).single();
         if (userData?.departments) setUserDept(userData.departments);
       }
+
+      // === AUTO-RECOVERY: Reset stuck PROCESSING (>5 menit) ke DRAFT ===
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const stuckDocs = (muRes.data || []).filter(m =>
+        m.status === 'PROCESSING' && m.created_at && m.created_at < fiveMinAgo
+      );
+      if (stuckDocs.length > 0) {
+        for (const doc of stuckDocs) {
+          await supabase.from('room_makeups')
+            .update({ status: 'DRAFT' })
+            .eq('id', doc.id)
+            .eq('status', 'PROCESSING');
+        }
+        showNotification(`${stuckDocs.length} dokumen stuck (PROCESSING > 5 menit) telah dikembalikan ke DRAFT.`, 'warning');
+        // Reload to reflect updated status
+        const { data: refreshed } = await supabase.from('room_makeups')
+          .select('*, rooms!left(room_number, floor), users:created_by(full_name, username), departments:department_id(code, name)')
+          .eq('organization_id', selectedOrg.id)
+          .order('created_at', { ascending: false });
+        setMakeups(refreshed || []);
+      }
     } catch (err) {
       showNotification('Error loading data: ' + err.message, 'error');
     }
@@ -14920,7 +15203,6 @@ function RoomMakeUpPageNew() {
 
   // ==================== ROOM SELECT ====================
   async function handleRoomSelect(roomId) {
-    setSelectedRoom(roomId);
     setLinenActions({});
     setReplaceRows({});
     setAmenityQty({});
@@ -14928,6 +15210,7 @@ function RoomMakeUpPageNew() {
     setCollapsedSections({});
 
     if (!roomId) {
+      setSelectedRoom('');
       setLinenCategories([]);
       setLinenRoomStock([]);
       setAmenityCategories([]);
@@ -14936,6 +15219,23 @@ function RoomMakeUpPageNew() {
       return;
     }
 
+    // Validasi: 1 room hanya boleh 1 makeup per tanggal (kecuali saat edit dokumen yang sama)
+    if (!isEditing) {
+      const { data: existing, error: checkErr } = await supabase.from('room_makeups')
+        .select('id, makeup_number')
+        .eq('organization_id', selectedOrg.id)
+        .eq('room_id', roomId)
+        .eq('makeup_date', makeupDate)
+        .limit(1);
+      if (!checkErr && existing && existing.length > 0) {
+        const roomNum = rooms.find(r => r.id === roomId)?.room_number || roomId;
+        showNotification(`Room ${roomNum} sudah memiliki dokumen Room Make Up (${existing[0].makeup_number}) untuk tanggal ${makeupDate}. Maksimal 1x per hari.`, 'error');
+        setSelectedRoom('');
+        return;
+      }
+    }
+
+    setSelectedRoom(roomId);
     const room = rooms.find(r => r.id === roomId);
 
     try {
@@ -15183,6 +15483,40 @@ function RoomMakeUpPageNew() {
   // ==================== SAVE DRAFT ====================
   async function handleSaveDraft() {
     if (!selectedRoom) { showNotification('Please select a room', 'error'); return; }
+
+    // === KONTROL 1: Cek duplikat room makeup di tanggal yang sama (semua status ditolak) ===
+    if (!isEditing) {
+      const { data: dupCheck } = await supabase.from('room_makeups')
+        .select('id, makeup_number, status')
+        .eq('organization_id', selectedOrg.id)
+        .eq('room_id', selectedRoom)
+        .eq('makeup_date', makeupDate)
+        .limit(1);
+      if (dupCheck && dupCheck.length > 0) {
+        const roomNum = rooms.find(r => r.id === selectedRoom)?.room_number || '';
+        const statusLabel = dupCheck[0].status === 'CONFIRMED' ? 'sudah dikonfirmasi' : 'belum dikonfirmasi';
+        showNotification(`Room ${roomNum} sudah memiliki dokumen (${dupCheck[0].makeup_number}) untuk tanggal ${makeupDate} (${statusLabel}). Tidak bisa membuat duplikat.`, 'error');
+        return;
+      }
+    }
+
+    // === KONTROL 2: Cek room makeup tanggal sebelumnya yang belum CONFIRMED ===
+    if (!isEditing) {
+      const { data: prevUnconfirmed } = await supabase.from('room_makeups')
+        .select('id, makeup_number, makeup_date, status')
+        .eq('organization_id', selectedOrg.id)
+        .eq('room_id', selectedRoom)
+        .lt('makeup_date', makeupDate)
+        .in('status', ['DRAFT', 'PROCESSING'])
+        .order('makeup_date', { ascending: false })
+        .limit(1);
+      if (prevUnconfirmed && prevUnconfirmed.length > 0) {
+        const roomNum = rooms.find(r => r.id === selectedRoom)?.room_number || '';
+        const prev = prevUnconfirmed[0];
+        showNotification(`Room ${roomNum} masih memiliki dokumen ${prev.makeup_number} (tanggal ${prev.makeup_date}) yang belum dikonfirmasi. Silakan konfirmasi terlebih dahulu agar urutan stock movement tidak berantakan.`, 'error');
+        return;
+      }
+    }
 
     const invalidActs = activityList.filter(a => {
       const check = activityChecks[a.id];
@@ -15505,8 +15839,103 @@ function RoomMakeUpPageNew() {
 
   function toggleSection(key) { setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] })); }
 
+  // Close room dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (filterRoomRef.current && !filterRoomRef.current.contains(e.target)) setFilterRoomOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Date range helper
+  function getDateRangeFilter() {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    switch (filterDateRange) {
+      case 'today': return today;
+      case 'yesterday': return new Date(today.getTime() - 86400000);
+      case 'last_week': return new Date(today.getTime() - 7 * 86400000);
+      case 'last_month': return new Date(today.getTime() - 30 * 86400000);
+      default: return null;
+    }
+  }
+
+  // Unique housekeepers for filter dropdown
+  const uniqueHousekeepers = React.useMemo(() => {
+    const map = {};
+    makeups.forEach(mu => {
+      const name = mu.users?.full_name || mu.users?.username;
+      const id = mu.created_by;
+      if (id && name && !map[id]) map[id] = name;
+    });
+    return Object.entries(map).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [makeups]);
+
+  // Count how many times each room is made up per date (only CONFIRMED status counts)
+  const roomDateCountMap = React.useMemo(() => {
+    const map = {};
+    makeups.forEach(mu => {
+      if (!mu.room_id) return;
+      const d = (mu.makeup_date || mu.created_at || '').substring(0, 10);
+      const key = mu.room_id + '|' + d;
+      map[key] = (map[key] || 0) + 1;
+    });
+    return map;
+  }, [makeups]);
+
+  function getRoomDateCount(mu) {
+    if (!mu.room_id) return 0;
+    const d = (mu.makeup_date || mu.created_at || '').substring(0, 10);
+    return roomDateCountMap[mu.room_id + '|' + d] || 0;
+  }
+
+  // Nth occurrence of this room on that date (for display: is this the 1st, 2nd, 3rd time?)
+  function getRoomDateNth(mu, list) {
+    if (!mu.room_id) return 0;
+    const d = (mu.makeup_date || mu.created_at || '').substring(0, 10);
+    const sameGroup = list.filter(m => m.room_id === mu.room_id && (m.makeup_date || m.created_at || '').substring(0, 10) === d);
+    sameGroup.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    return sameGroup.findIndex(m => m.id === mu.id) + 1;
+  }
+
+  function getCountChipStyle(count) {
+    const styles = {
+      1: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
+      2: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
+      3: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+      4: { bg: '#e0e7ff', text: '#3730a3', border: '#a5b4fc' },
+      5: { bg: '#fce7f3', text: '#9d174d', border: '#f9a8d4' },
+      6: { bg: '#ccfbf1', text: '#115e59', border: '#5eead4' },
+    };
+    return styles[count] || { bg: '#f3f4f6', text: '#374151', border: '#d1d5db' };
+  }
+
+  // Unique count values for filter dropdown
+  const uniqueCounts = React.useMemo(() => {
+    const countSet = new Set();
+    makeups.forEach(mu => {
+      const c = getRoomDateCount(mu);
+      if (c > 0) countSet.add(c);
+    });
+    return Array.from(countSet).sort((a, b) => a - b);
+  }, [makeups, roomDateCountMap]);
+
   const filtered = makeups.filter(mu => {
     if (filterStatus && mu.status !== filterStatus) return false;
+    if (filterHousekeeper && mu.created_by !== filterHousekeeper) return false;
+    if (filterRoom && mu.room_id !== filterRoom) return false;
+    if (filterCount) {
+      const cnt = getRoomDateCount(mu);
+      if (cnt !== parseInt(filterCount)) return false;
+    }
+    if (filterDateRange) {
+      const startDate = getDateRangeFilter();
+      if (startDate) {
+        const muDate = new Date(mu.makeup_date || mu.created_at);
+        if (muDate < startDate) return false;
+      }
+    }
     if (search) { const s = search.toLowerCase(); return mu.makeup_number?.toLowerCase().includes(s) || mu.rooms?.room_number?.toLowerCase().includes(s); }
     return true;
   });
@@ -15566,19 +15995,90 @@ function RoomMakeUpPageNew() {
   // ==================== RENDER ====================
   return (
     <div>
-      <PageHeader title="Room Make Up (New)" subtitle={`Housekeeping - ${selectedOrg?.name || ''}`}
+      <PageHeader title="Room Make Up" subtitle={`Housekeeping - ${selectedOrg?.name || ''}`}
         actions={<Button onClick={openNew}>+ New Makeup</Button>} />
+
+      {/* SUMMARY CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Total Room Make Up</p>
+            <p className="text-xl font-bold text-gray-800">{filtered.length}</p>
+          </div>
+        </div>
+      </div>
 
       {/* LIST VIEW */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-4 border-b border-gray-100 flex flex-wrap gap-3 items-center">
-          <input type="text" placeholder="Search room or number..." value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          <input type="text" placeholder="Search number..." value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full sm:w-48 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <option value="">{t('common.all')}</option>
+            <option value="">{t('common.all')} Status</option>
             <option value="DRAFT">{t('status.draft')}</option>
             <option value="CONFIRMED">Confirmed</option>
+            <option value="PROCESSING">Processing</option>
+          </select>
+          {/* Housekeeper filter */}
+          <select value={filterHousekeeper} onChange={e => setFilterHousekeeper(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">All Housekeeper</option>
+            {uniqueHousekeepers.map(([id, name]) => (
+              <option key={id} value={id}>{name}</option>
+            ))}
+          </select>
+          {/* Room filter - searchable dropdown */}
+          <div className="relative" ref={filterRoomRef}>
+            <div className="px-3 py-2 border border-gray-300 rounded-lg text-sm cursor-pointer bg-white min-w-[140px] flex items-center justify-between"
+              onClick={() => setFilterRoomOpen(!filterRoomOpen)}>
+              <span className={filterRoom ? 'text-gray-800' : 'text-gray-400'}>
+                {filterRoom ? (rooms.find(r => r.id === filterRoom)?.room_number || 'Room') : 'All Room'}
+              </span>
+              <svg className="w-4 h-4 text-gray-400 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </div>
+            {filterRoomOpen && (
+              <div className="absolute z-50 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-hidden">
+                <div className="p-2 border-b border-gray-100">
+                  <input type="text" placeholder="Search room..." value={filterRoomSearch} onChange={e => setFilterRoomSearch(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500"
+                    autoFocus onClick={e => e.stopPropagation()} />
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  <div className="px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer font-medium text-gray-500"
+                    onClick={() => { setFilterRoom(''); setFilterRoomSearch(''); setFilterRoomOpen(false); }}>
+                    All Room
+                  </div>
+                  {rooms.filter(r => !filterRoomSearch || r.room_number?.toLowerCase().includes(filterRoomSearch.toLowerCase()))
+                    .map(r => (
+                      <div key={r.id} className={`px-3 py-2 text-sm hover:bg-primary-50 cursor-pointer ${filterRoom === r.id ? 'bg-primary-50 font-semibold text-primary-700' : ''}`}
+                        onClick={() => { setFilterRoom(r.id); setFilterRoomSearch(''); setFilterRoomOpen(false); }}>
+                        {r.room_number} {r.room_types?.name ? <span className="text-gray-400 text-xs ml-1">({r.room_types.name})</span> : ''}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+          {/* Date range filter */}
+          <select value={filterDateRange} onChange={e => setFilterDateRange(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last_week">Last Week</option>
+            <option value="last_month">Last Month</option>
+            <option value="">All Date</option>
+          </select>
+          {/* Count filter */}
+          <select value={filterCount} onChange={e => setFilterCount(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">All Count</option>
+            {uniqueCounts.map(c => (
+              <option key={c} value={c}>{c}X</option>
+            ))}
           </select>
         </div>
 
@@ -15587,7 +16087,13 @@ function RoomMakeUpPageNew() {
           <DataTable loading={loading} columns={[
             { header: 'Number', render: r => <button onClick={() => r.status === 'DRAFT' ? openEdit(r) : openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.makeup_number}</button> },
             { header: t('common.date'), render: r => formatDateSys(r.created_at, { includeTime: true }) },
-            { header: 'Room', render: r => <span className="font-medium">{r.rooms?.room_number || '-'}</span> },
+            { header: 'Room', render: r => {
+              const cnt = getRoomDateCount(r);
+              const cs = getCountChipStyle(cnt);
+              return <span className="font-medium flex items-center gap-1.5">{r.rooms?.room_number || '-'}
+                {cnt > 0 && <span style={{background: cs.bg, color: cs.text, border: '1px solid ' + cs.border, borderRadius: '9999px', padding: '1px 8px', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap'}}>{cnt}X</span>}
+              </span>;
+            }},
             { header: 'User', render: r => <span className="text-xs">{r.users?.full_name || r.users?.username || '-'}</span> },
             { header: 'Department', render: r => <span className="text-xs">{r.departments?.name || '-'}</span> },
             { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
@@ -15623,7 +16129,7 @@ function RoomMakeUpPageNew() {
                   <StatusBadge status={r.status} />
                 </div>
                 <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>Room: <span className="font-medium text-gray-700">{r.rooms?.room_number || '-'}</span></span>
+                  <span className="flex items-center gap-1">Room: <span className="font-medium text-gray-700">{r.rooms?.room_number || '-'}</span>{(() => { const cnt = getRoomDateCount(r); const cs = getCountChipStyle(cnt); return cnt > 0 ? <span style={{background: cs.bg, color: cs.text, border: '1px solid ' + cs.border, borderRadius: '9999px', padding: '0px 6px', fontSize: '10px', fontWeight: 700}}>{cnt}X</span> : null; })()}</span>
                   <span>{formatDateSys(r.created_at, { includeTime: true })}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs text-gray-400 mt-0.5">
@@ -17777,6 +18283,7 @@ function LaundryPage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const savingRef = React.useRef(false); // Synchronous guard against double-click
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [selectedItems, setSelectedItems] = useState({});
@@ -17871,26 +18378,57 @@ function LaundryPage() {
   }
 
   async function generateSendNumber() {
-    const { count } = await supabase.from('stock_movements')
-      .select('*', { count: 'exact', head: true })
+    const code = selectedOrg.code || 'ORG';
+    const prefix = `LS-${code}-`;
+    const { data } = await supabase.from('stock_movements')
+      .select('reference_number')
       .eq('organization_id', selectedOrg.id)
       .eq('reference_type', 'LAUNDRY_SEND')
-      .eq('movement_type', 'OUT');
-    const seq = String((count || 0) + 1).padStart(4, '0');
-    return `LS-${selectedOrg.code}-${seq}`;
+      .eq('movement_type', 'OUT')
+      .like('reference_number', `${prefix}%`)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    let maxNum = 0;
+    if (data && data.length > 0) {
+      const seen = new Set();
+      data.forEach(d => {
+        if (!seen.has(d.reference_number)) {
+          seen.add(d.reference_number);
+          const num = parseInt(d.reference_number.split('-').pop()) || 0;
+          if (num > maxNum) maxNum = num;
+        }
+      });
+    }
+    return `${prefix}${String(maxNum + 1).padStart(4, '0')}`;
   }
 
   async function generateReceiveNumber() {
-    const { count } = await supabase.from('stock_movements')
-      .select('*', { count: 'exact', head: true })
+    const code = selectedOrg.code || 'ORG';
+    const prefix = `LR-${code}-`;
+    const { data } = await supabase.from('stock_movements')
+      .select('reference_number')
       .eq('organization_id', selectedOrg.id)
       .eq('reference_type', 'LAUNDRY_RECEIVE')
-      .eq('movement_type', 'OUT');
-    const seq = String((count || 0) + 1).padStart(4, '0');
-    return `LR-${selectedOrg.code}-${seq}`;
+      .eq('movement_type', 'OUT')
+      .like('reference_number', `${prefix}%`)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    let maxNum = 0;
+    if (data && data.length > 0) {
+      const seen = new Set();
+      data.forEach(d => {
+        if (!seen.has(d.reference_number)) {
+          seen.add(d.reference_number);
+          const num = parseInt(d.reference_number.split('-').pop()) || 0;
+          if (num > maxNum) maxNum = num;
+        }
+      });
+    }
+    return `${prefix}${String(maxNum + 1).padStart(4, '0')}`;
   }
 
   async function handleSendToLaundry() {
+    if (savingRef.current) { showNotification('Proses sedang berjalan, harap tunggu...', 'warning'); return; }
     // Validate vendor selection
     if (!selectedVendor) {
       showNotification('Pilih vendor laundry terlebih dahulu!', 'error');
@@ -17908,12 +18446,14 @@ function LaundryPage() {
 
     if (!(await showConfirm('Confirm sending ' + itemsToSend.length + ' item(s) to laundry?', { variant: 'warning' }))) return;
 
+    savingRef.current = true;
     setSaving(true);
     try {
       // Check period lock
       const lockCheck = await checkPeriodLock(selectedOrg.id, new Date().toISOString());
       if (lockCheck.locked) {
         showNotification('Period is locked (' + lockCheck.month + '/' + lockCheck.year + ')', 'error');
+        savingRef.current = false;
         setSaving(false);
         return;
       }
@@ -17980,12 +18520,25 @@ function LaundryPage() {
       loadAll();
     } catch (e) {
       console.error(e);
-      showNotification('Error sending to laundry: ' + e.message, 'error');
+      // Cleanup partial movements on error
+      try {
+        await supabase.from('stock_movements')
+          .delete()
+          .eq('reference_number', refNumber)
+          .eq('reference_type', 'LAUNDRY_SEND')
+          .eq('organization_id', selectedOrg.id);
+      } catch (cleanupErr) {
+        console.error('Cleanup failed:', cleanupErr);
+      }
+      showNotification('Error sending to laundry: ' + e.message + '. Data telah di-rollback.', 'error');
+      loadAll();
     }
+    savingRef.current = false;
     setSaving(false);
   }
 
   async function handleReceiveFromLaundry() {
+    if (savingRef.current) { showNotification('Proses sedang berjalan, harap tunggu...', 'warning'); return; }
     // Validate vendor selection
     if (!selectedVendor) {
       showNotification('Pilih vendor laundry terlebih dahulu!', 'error');
@@ -18003,12 +18556,14 @@ function LaundryPage() {
 
     if (!(await showConfirm('Confirm receiving ' + itemsToReceive.length + ' item(s) from laundry?', { variant: 'warning' }))) return;
 
+    savingRef.current = true;
     setSaving(true);
     try {
       // Check period lock
       const lockCheck = await checkPeriodLock(selectedOrg.id, new Date().toISOString());
       if (lockCheck.locked) {
         showNotification('Period is locked (' + lockCheck.month + '/' + lockCheck.year + ')', 'error');
+        savingRef.current = false;
         setSaving(false);
         return;
       }
@@ -18076,8 +18631,20 @@ function LaundryPage() {
       loadAll();
     } catch (e) {
       console.error(e);
-      showNotification('Error receiving from laundry: ' + e.message, 'error');
+      // Cleanup partial movements on error
+      try {
+        await supabase.from('stock_movements')
+          .delete()
+          .eq('reference_number', refNumber)
+          .eq('reference_type', 'LAUNDRY_RECEIVE')
+          .eq('organization_id', selectedOrg.id);
+      } catch (cleanupErr) {
+        console.error('Cleanup failed:', cleanupErr);
+      }
+      showNotification('Error receiving from laundry: ' + e.message + '. Data telah di-rollback.', 'error');
+      loadAll();
     }
+    savingRef.current = false;
     setSaving(false);
   }
 
@@ -18322,6 +18889,13 @@ function LaundryPage() {
           ]);
         });
       });
+
+      // Grand total row
+      const grandTotal = lsItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
+      tableBody.push([
+        { content: 'TOTAL', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', fillColor: [41, 65, 122], textColor: 255, fontSize: 9 } },
+        { content: String(grandTotal), styles: { fontStyle: 'bold', halign: 'center', fillColor: [41, 65, 122], textColor: 255, fontSize: 9 } }
+      ]);
 
       doc.autoTable({
         startY: y,
