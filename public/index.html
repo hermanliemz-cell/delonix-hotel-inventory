@@ -112,7 +112,7 @@ const translations = {
     'app.title': 'Hotel Inventory',
     'app.subtitle': 'Management System',
     'app.loading': 'Loading inventory system...',
-    'app.version': 'v1.0.20',
+    'app.version': 'v1.0.21',
     'app.accessDenied': 'Access Denied',
     'app.noPermission': 'You do not have permission to access this page.',
     'app.maintenance.title': 'System Under Maintenance',
@@ -1081,7 +1081,7 @@ const translations = {
     'app.title': '酒店库存',
     'app.subtitle': '管理系统',
     'app.loading': '正在加载库存系统...',
-    'app.version': 'v1.0.20',
+    'app.version': 'v1.0.21',
     'app.accessDenied': '访问被拒绝',
     'app.noPermission': '您没有权限访问此页面。',
     'app.maintenance.title': '系统维护中',
@@ -2824,7 +2824,7 @@ function LoginPage({ onLogin }) {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v1.0.20 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v1.0.21 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -14143,7 +14143,7 @@ function OpeningBalancePage() {
       if (balanceUpserts.length > 0) {
         const reconItemIds = [...new Set(balanceUpserts.map(b => b.item_id))];
         // Get all movements (including new OB movements just inserted) per item+warehouse
-        // Use pagination to avoid Supabase default 1000-row limit (v1.0.20 fix: was truncating >1000 movements)
+        // Use pagination to avoid Supabase default 1000-row limit (v1.0.21 fix: was truncating >1000 movements)
         const allMovements = await fetchAllRows(
           supabase.from('stock_movements')
             .select('item_id, warehouse_id, movement_type, quantity')
