@@ -7067,20 +7067,100 @@ function StockBalancePage() {
   }
 
   async function handleReconcile() {
-    if (!(await showConfirm('Reconcile akan menghitung ulang semua saldo stok dari data mutasi (stock movements). Lanjutkan?', { variant: 'warning' }))) return;
+    if (!(await showConfirm('Reconcile akan menghitung ulang semua saldo stok dari data mutasi (stock movements) dan memperbaiki selisih. Lanjutkan?', { variant: 'warning' }))) return;
     setReconciling(true);
     try {
-      const { data, error } = await supabase.rpc('reconcile_stock_balance', { p_org_id: selectedOrg.id });
-      if (error) throw error;
-      if (data && data.length > 0) {
-        const details = data.map(d => {
-          let line = `Item: ${d.item_id.substring(0,8)}... | Qty: ${d.old_qty} → ${d.new_qty} (${d.diff > 0 ? '+' : ''}${d.diff})`;
-          if (d.old_avg_cost !== undefined && d.new_avg_cost !== undefined) {
-            line += ` | Avg Cost: ${Math.round(Number(d.old_avg_cost)).toLocaleString('id-ID')} → ${Math.round(Number(d.new_avg_cost)).toLocaleString('id-ID')}`;
+      // Step 1: Get true avg_cost per item from OPENING_BALANCE
+      const { data: obData } = await supabase.from('stock_movements')
+        .select('item_id, unit_cost')
+        .eq('organization_id', selectedOrg.id)
+        .eq('reference_type', 'OPENING_BALANCE')
+        .eq('movement_type', 'IN');
+      const itemTrueCost = {};
+      (obData || []).forEach(m => {
+        if (!itemTrueCost[m.item_id]) itemTrueCost[m.item_id] = parseFloat(m.unit_cost) || 0;
+      });
+
+      // Step 2: Get all stock_movements (paginated)
+      let allMov = [];
+      let offset = 0;
+      while (true) {
+        const { data: page } = await supabase.from('stock_movements')
+          .select('item_id, warehouse_id, movement_type, quantity')
+          .eq('organization_id', selectedOrg.id)
+          .range(offset, offset + 999);
+        allMov = allMov.concat(page || []);
+        if (!page || page.length < 1000) break;
+        offset += 1000;
+      }
+
+      // Step 3: Calculate net qty per item+warehouse from movements (bin card)
+      const binCard = {};
+      allMov.forEach(m => {
+        const k = m.item_id + '|' + m.warehouse_id;
+        if (!binCard[k]) binCard[k] = { item_id: m.item_id, warehouse_id: m.warehouse_id, net: 0 };
+        binCard[k].net += (m.movement_type === 'IN' ? 1 : -1) * parseFloat(m.quantity);
+      });
+
+      // Step 4: Get all stock_balance records (paginated)
+      let allSB = [];
+      offset = 0;
+      while (true) {
+        const { data: page } = await supabase.from('stock_balance')
+          .select('id, item_id, warehouse_id, quantity, avg_cost, total_value')
+          .eq('organization_id', selectedOrg.id)
+          .range(offset, offset + 999);
+        allSB = allSB.concat(page || []);
+        if (!page || page.length < 1000) break;
+        offset += 1000;
+      }
+      const sbMap = {};
+      allSB.forEach(r => { sbMap[r.item_id + '|' + r.warehouse_id] = r; });
+
+      // Step 5: Find and fix discrepancies
+      const corrections = [];
+      const allKeys = new Set([...Object.keys(binCard), ...Object.keys(sbMap)]);
+      for (const k of allKeys) {
+        const bc = binCard[k];
+        const sb = sbMap[k];
+        const correctQty = bc ? Math.max(0, bc.net) : 0;
+        const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
+        const itemId = bc?.item_id || sb?.item_id;
+        const whId = bc?.warehouse_id || sb?.warehouse_id;
+        const trueCost = itemTrueCost[itemId];
+        const correctAvg = trueCost !== undefined ? trueCost : (sb ? parseFloat(sb.avg_cost) || 0 : 0);
+        const currentAvg = sb ? parseFloat(sb.avg_cost) || 0 : 0;
+        const correctTotal = correctQty * correctAvg;
+
+        if (Math.abs(currentQty - correctQty) > 0.001 || Math.abs(currentAvg - correctAvg) > 0.01) {
+          if (sb) {
+            await supabase.from('stock_balance').update({
+              quantity: correctQty, avg_cost: correctAvg, total_value: correctTotal,
+              updated_at: new Date().toISOString(),
+            }).eq('id', sb.id);
+          }
+          corrections.push({
+            item_id: itemId, old_qty: currentQty, new_qty: correctQty,
+            diff: correctQty - currentQty, old_avg_cost: currentAvg, new_avg_cost: correctAvg,
+          });
+        }
+      }
+
+      // Step 6: Get item names for display
+      if (corrections.length > 0) {
+        const itemIds = [...new Set(corrections.map(c => c.item_id))];
+        const { data: items } = await supabase.from('items').select('id, code, name').in('id', itemIds);
+        const itemMap = {};
+        (items || []).forEach(i => { itemMap[i.id] = i; });
+        const details = corrections.map(d => {
+          const it = itemMap[d.item_id];
+          let line = `${it?.code || d.item_id.substring(0,8)} ${(it?.name || '').substring(0,30)} | Qty: ${d.old_qty} → ${d.new_qty} (${d.diff > 0 ? '+' : ''}${d.diff})`;
+          if (d.old_avg_cost !== d.new_avg_cost) {
+            line += ` | Avg: ${Math.round(d.old_avg_cost).toLocaleString('id-ID')} → ${Math.round(d.new_avg_cost).toLocaleString('id-ID')}`;
           }
           return line;
         }).join('\n');
-        showNotification(`Reconcile selesai! ${data.length} item dikoreksi.\n${details}`, 'success');
+        showNotification(`Reconcile selesai! ${corrections.length} item dikoreksi.\n${details}`, 'success');
       } else {
         showNotification('Semua saldo sudah sinkron, tidak ada koreksi diperlukan.', 'info');
       }
@@ -15760,6 +15840,25 @@ function RoomMakeUpPageNew() {
         roomStock = rs || [];
       }
 
+      // Helper: get avg_cost from a specific warehouse for an item
+      const getWhAvgCost = (itemId, whId) => {
+        if (!whId) return 0;
+        const sb = roomStock.find(s => s.item_id === itemId);
+        return sb ? parseFloat(sb.avg_cost) || 0 : 0;
+      };
+
+      // Pre-fetch HK store stock for replace items cost lookup
+      let hkStoreStock = [];
+      if (hkStore?.id) {
+        const { data: hkSb } = await supabase.from('stock_balance')
+          .select('item_id, avg_cost').eq('organization_id', selectedOrg.id).eq('warehouse_id', hkStore.id);
+        hkStoreStock = hkSb || [];
+      }
+      const getHkAvgCost = (itemId) => {
+        const sb = hkStoreStock.find(s => s.item_id === itemId);
+        return sb ? parseFloat(sb.avg_cost) || 0 : 0;
+      };
+
       const { data: muItems } = await supabase.from('room_makeup_items').select('*').eq('makeup_id', mu.id);
       for (const mi of (muItems || [])) {
         const numQty = parseFloat(mi.actual_qty);
@@ -15767,14 +15866,19 @@ function RoomMakeUpPageNew() {
         if (mi.type === 'replace') {
           const linenItem = allItems.find(i => i.id === mi.item_id);
           const linenOutWh = linenItem?.default_warehouse_id || hkStore?.id;
+          // Get source (HK store) avg_cost BEFORE the OUT
+          const srcCost = linenOutWh === hkStore?.id ? getHkAvgCost(mi.item_id) : 0;
           if (linenOutWh) await doStockMovement(mi.item_id, 'OUT', numQty, linenOutWh, 'MAKEUP-LINEN REPLACE', makeupNumber, 'OUT from Store', dept, mu.id);
-          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'IN', numQty, room.warehouse_id, 'MAKEUP-LINEN REPLACE', makeupNumber, 'IN to Room ' + (room.room_number || ''), dept, mu.id);
+          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'IN', numQty, room.warehouse_id, 'MAKEUP-LINEN REPLACE', makeupNumber, 'IN to Room ' + (room.room_number || ''), dept, mu.id, srcCost);
         } else if (mi.type === 'move_to_dirty') {
+          // Get source (room) avg_cost BEFORE the OUT
+          const srcCost = getWhAvgCost(mi.item_id, room?.warehouse_id);
           if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'MAKEUP-DIRTY', makeupNumber, 'OUT from Room', dept, mu.id);
-          if (dirtyWh) await doStockMovement(mi.item_id, 'IN', numQty, dirtyWh.id, 'MAKEUP-DIRTY', makeupNumber, 'IN to Dirty', dept, mu.id);
+          if (dirtyWh) await doStockMovement(mi.item_id, 'IN', numQty, dirtyWh.id, 'MAKEUP-DIRTY', makeupNumber, 'IN to Dirty', dept, mu.id, srcCost);
         } else if (mi.type === 'damage') {
+          const srcCost = getWhAvgCost(mi.item_id, room?.warehouse_id);
           if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'DAMAGE', makeupNumber, 'Damage OUT', dept, mu.id);
-          if (damageWh) await doStockMovement(mi.item_id, 'IN', numQty, damageWh.id, 'DAMAGE', makeupNumber, 'Damage IN', dept, mu.id);
+          if (damageWh) await doStockMovement(mi.item_id, 'IN', numQty, damageWh.id, 'DAMAGE', makeupNumber, 'Damage IN', dept, mu.id, srcCost);
         } else if (mi.type === 'lost') {
           if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'ITEM_LOST', makeupNumber, 'Lost OUT', dept, mu.id);
           const stockItem = roomStock.find(s => s.item_id === mi.item_id);
@@ -15792,8 +15896,9 @@ function RoomMakeUpPageNew() {
           });
           showNotification('Laporkan ke Front Office: ' + (stockItem?.items?.name || 'Item') + ' hilang ' + numQty + ' pcs!', 'error');
         } else if (mi.type === 'to_hk_store') {
+          const srcCost = getWhAvgCost(mi.item_id, room?.warehouse_id);
           if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'MAKEUP-TO-HK', makeupNumber, 'OUT from Room to HK Store', dept, mu.id);
-          if (hkStore) await doStockMovement(mi.item_id, 'IN', numQty, hkStore.id, 'MAKEUP-TO-HK', makeupNumber, 'IN to HK Store from Room', dept, mu.id);
+          if (hkStore) await doStockMovement(mi.item_id, 'IN', numQty, hkStore.id, 'MAKEUP-TO-HK', makeupNumber, 'IN to HK Store from Room', dept, mu.id, srcCost);
         }
       }
 
@@ -15821,11 +15926,20 @@ function RoomMakeUpPageNew() {
   }
 
   // ==================== STOCK MOVEMENT HELPER ====================
-  async function doStockMovement(itemId, movementType, qty, warehouseId, refType, refNumber, notesText, dept, refId) {
+  async function doStockMovement(itemId, movementType, qty, warehouseId, refType, refNumber, notesText, dept, refId, overrideUnitCost) {
     const { data: sb } = await supabase.from('stock_balance')
       .select('id, quantity, avg_cost, total_value')
       .eq('organization_id', selectedOrg.id).eq('item_id', itemId).eq('warehouse_id', warehouseId).maybeSingle();
-    const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
+    // Validate: OUT movements must have sufficient stock (except ADJUSTMENT which is manual correction)
+    if (movementType === 'OUT' && refType !== 'ADJUSTMENT') {
+      const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
+      if (currentQty < qty) {
+        throw new Error(`Stock tidak cukup di warehouse untuk item ini. Tersedia: ${currentQty}, diminta: ${qty}. Pastikan item yang dipilih sudah benar.`);
+      }
+    }
+    // For IN movements: use overrideUnitCost (from source warehouse) if provided
+    // For OUT movements: always use this warehouse's avg_cost
+    const unitCost = (overrideUnitCost !== undefined && overrideUnitCost !== null) ? overrideUnitCost : (sb ? parseFloat(sb.avg_cost) || 0 : 0);
     const totalCost = qty * unitCost;
     const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty);
     await supabase.from('stock_movements').insert({
@@ -15834,7 +15948,7 @@ function RoomMakeUpPageNew() {
       reference_number: refNumber, reference_id: refId || null, warehouse_id: warehouseId,
       notes: notesText, created_by: currentUser?.id, department_id: dept || null,
     });
-    // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+    // stock_balance is now updated atomically by DB trigger: trg_sync_stock_balance
   }
 
   function toggleSection(key) { setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] })); }
@@ -16745,7 +16859,7 @@ function RoomAdditionalRequestPage() {
   }
 
   // ==================== STOCK MOVEMENT HELPER ====================
-  async function doStockMovement(itemId, movementType, qty, warehouseId, refType, refNumber, notesText, dept, refId) {
+  async function doStockMovement(itemId, movementType, qty, warehouseId, refType, refNumber, notesText, dept, refId, overrideUnitCost) {
     const { data: sb } = await supabase.from('stock_balance')
       .select('id, quantity, avg_cost, total_value')
       .eq('organization_id', selectedOrg.id)
@@ -16753,7 +16867,15 @@ function RoomAdditionalRequestPage() {
       .eq('warehouse_id', warehouseId)
       .maybeSingle();
 
-    const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
+    // Validate: OUT movements must have sufficient stock (except ADJUSTMENT which is manual correction)
+    if (movementType === 'OUT' && refType !== 'ADJUSTMENT') {
+      const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
+      if (currentQty < qty) {
+        throw new Error(`Stock tidak cukup di warehouse untuk item ini. Tersedia: ${currentQty}, diminta: ${qty}. Pastikan item yang dipilih sudah benar.`);
+      }
+    }
+
+    const unitCost = (overrideUnitCost !== undefined && overrideUnitCost !== null) ? overrideUnitCost : (sb ? parseFloat(sb.avg_cost) || 0 : 0);
     const totalCost = qty * unitCost;
     const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty);
 
@@ -16768,7 +16890,36 @@ function RoomAdditionalRequestPage() {
       department_id: dept || null,
     });
     if (mvErr) throw new Error('Stock movement insert failed: ' + mvErr.message);
-    // stock_balance is automatically updated by DB trigger fn_sync_stock_balance
+    // Manually update stock_balance (no DB trigger exists)
+    const oldQty = sb ? parseFloat(sb.quantity) || 0 : 0;
+    const oldTotalValue = sb ? parseFloat(sb.total_value) || 0 : 0;
+    if (movementType === 'IN') {
+      const newQty = oldQty + qty;
+      const newTotalValue = oldTotalValue + totalCost;
+      const newAvgCost = newQty > 0 ? newTotalValue / newQty : 0;
+      if (sb) {
+        await supabase.from('stock_balance').update({
+          quantity: newQty, total_value: newTotalValue, avg_cost: newAvgCost,
+          last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }).eq('id', sb.id);
+      } else {
+        await supabase.from('stock_balance').insert({
+          organization_id: selectedOrg.id, item_id: itemId, warehouse_id: warehouseId,
+          quantity: qty, avg_cost: unitCost, total_value: totalCost,
+          department_id: dept || null, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        });
+      }
+    } else {
+      const newQty = Math.max(0, oldQty - qty);
+      const newTotalValue = newQty > 0 ? newQty * (sb ? parseFloat(sb.avg_cost) || 0 : 0) : 0;
+      const newAvgCost = newQty > 0 ? (sb ? parseFloat(sb.avg_cost) || 0 : 0) : 0;
+      if (sb) {
+        await supabase.from('stock_balance').update({
+          quantity: newQty, total_value: newTotalValue, avg_cost: newAvgCost,
+          last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }).eq('id', sb.id);
+      }
+    }
   }
 
   // ==================== GENERATE REQUEST NUMBER ====================
@@ -18511,8 +18662,34 @@ function LaundryPage() {
           created_at: new Date().toISOString()
         });
 
-        // stock_balance is automatically updated by DB trigger fn_sync_stock_balance
-        // when stock_movements are inserted above — no manual update needed
+        // Update stock_balance manually after OUT from dirty
+        {
+          const { data: _sbDirty } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', dirtyWarehouse.id).maybeSingle();
+          if (_sbDirty) {
+            const _newQtyDirty = Math.max(0, (parseFloat(_sbDirty.quantity) || 0) - qty);
+            const _avgCostDirty = parseFloat(_sbDirty.avg_cost) || 0;
+            await supabase.from('stock_balance').update({ quantity: _newQtyDirty, total_value: _newQtyDirty * _avgCostDirty, avg_cost: _newQtyDirty > 0 ? _avgCostDirty : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbDirty.id);
+          }
+        }
+
+        // Update stock_balance manually after IN to laundry
+        {
+          const { data: _sbLaundry } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', laundryWarehouse.id).maybeSingle();
+          const _oldQtyLaundry = _sbLaundry ? parseFloat(_sbLaundry.quantity) || 0 : 0;
+          const _oldTotalLaundry = _sbLaundry ? parseFloat(_sbLaundry.total_value) || 0 : 0;
+          const _newQtyLaundry = _oldQtyLaundry + qty;
+          const _newTotalLaundry = _oldTotalLaundry + (qty * (stockItem.avg_cost || 0));
+          const _newAvgLaundry = _newQtyLaundry > 0 ? _newTotalLaundry / _newQtyLaundry : 0;
+          if (_sbLaundry) {
+            await supabase.from('stock_balance').update({ quantity: _newQtyLaundry, total_value: _newTotalLaundry, avg_cost: _newAvgLaundry, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbLaundry.id);
+          } else {
+            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: laundryWarehouse.id, quantity: qty, avg_cost: stockItem.avg_cost || 0, total_value: qty * (stockItem.avg_cost || 0), last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+        }
       }
 
       showNotification('Items sent to laundry successfully (Ref: ' + refNumber + ')', 'success');
@@ -18622,8 +18799,22 @@ function LaundryPage() {
           created_at: new Date().toISOString()
         });
 
-        // stock_balance is automatically updated by DB trigger fn_sync_stock_balance
-        // when stock_movements are inserted above — no manual update needed
+        // Update stock_balance manually after IN to store
+        {
+          const { data: _sbStore } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', storeWarehouse.id).maybeSingle();
+          const _oldQtyStore = _sbStore ? parseFloat(_sbStore.quantity) || 0 : 0;
+          const _oldTotalStore = _sbStore ? parseFloat(_sbStore.total_value) || 0 : 0;
+          const _newQtyStore = _oldQtyStore + qty;
+          const _newTotalStore = _oldTotalStore + (qty * (stockItem.avg_cost || 0));
+          const _newAvgStore = _newQtyStore > 0 ? _newTotalStore / _newQtyStore : 0;
+          if (_sbStore) {
+            await supabase.from('stock_balance').update({ quantity: _newQtyStore, total_value: _newTotalStore, avg_cost: _newAvgStore, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbStore.id);
+          } else {
+            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: storeWarehouse.id, quantity: qty, avg_cost: stockItem.avg_cost || 0, total_value: qty * (stockItem.avg_cost || 0), last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+        }
       }
 
       showNotification('Items received from laundry successfully (Ref: ' + refNumber + ')', 'success');
@@ -19786,7 +19977,34 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+        // Update stock_balance manually after OUT from source
+        {
+          const { data: _sbSrc } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.from_warehouse_id).maybeSingle();
+          if (_sbSrc) {
+            const _newQtySrc = Math.max(0, (parseFloat(_sbSrc.quantity) || 0) - qty);
+            const _avgCostSrc = parseFloat(_sbSrc.avg_cost) || 0;
+            await supabase.from('stock_balance').update({ quantity: _newQtySrc, total_value: _newQtySrc * _avgCostSrc, avg_cost: _newQtySrc > 0 ? _avgCostSrc : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbSrc.id);
+          }
+        }
+
+        // Update stock_balance manually after IN to in-use
+        {
+          const { data: _sbIU } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
+          const _oldQtyIU = _sbIU ? parseFloat(_sbIU.quantity) || 0 : 0;
+          const _oldTotalIU = _sbIU ? parseFloat(_sbIU.total_value) || 0 : 0;
+          const _newQtyIU = _oldQtyIU + qty;
+          const _newTotalIU = _oldTotalIU + totalCost;
+          const _newAvgIU = _newQtyIU > 0 ? _newTotalIU / _newQtyIU : 0;
+          if (_sbIU) {
+            await supabase.from('stock_balance').update({ quantity: _newQtyIU, total_value: _newTotalIU, avg_cost: _newAvgIU, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbIU.id);
+          } else {
+            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id, quantity: qty, avg_cost: unitCost, total_value: totalCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+        }
       }
 
       await supabase.from('in_use_transfers').update({
@@ -19841,7 +20059,34 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+        // Update stock_balance manually after IN to source (reverse)
+        {
+          const { data: _sbRevSrc } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.from_warehouse_id).maybeSingle();
+          const _oldQtyRevSrc = _sbRevSrc ? parseFloat(_sbRevSrc.quantity) || 0 : 0;
+          const _oldTotalRevSrc = _sbRevSrc ? parseFloat(_sbRevSrc.total_value) || 0 : 0;
+          const _newQtyRevSrc = _oldQtyRevSrc + qty;
+          const _newTotalRevSrc = _oldTotalRevSrc + totalCost;
+          const _newAvgRevSrc = _newQtyRevSrc > 0 ? _newTotalRevSrc / _newQtyRevSrc : 0;
+          if (_sbRevSrc) {
+            await supabase.from('stock_balance').update({ quantity: _newQtyRevSrc, total_value: _newTotalRevSrc, avg_cost: _newAvgRevSrc, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbRevSrc.id);
+          } else {
+            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.from_warehouse_id, quantity: qty, avg_cost: unitCost, total_value: totalCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+        }
+
+        // Update stock_balance manually after OUT from in-use (reverse)
+        {
+          const { data: _sbRevIU } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
+          if (_sbRevIU) {
+            const _newQtyRevIU = Math.max(0, (parseFloat(_sbRevIU.quantity) || 0) - qty);
+            const _avgCostRevIU = parseFloat(_sbRevIU.avg_cost) || 0;
+            await supabase.from('stock_balance').update({ quantity: _newQtyRevIU, total_value: _newQtyRevIU * _avgCostRevIU, avg_cost: _newQtyRevIU > 0 ? _avgCostRevIU : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbRevIU.id);
+          }
+        }
       }
 
       await supabase.from('in_use_transfers').update({
@@ -19983,7 +20228,17 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+        // Update stock_balance manually after OUT from in-use (deplete)
+        {
+          const { data: _sbDeplete } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
+          if (_sbDeplete) {
+            const _newQtyDeplete = Math.max(0, (parseFloat(_sbDeplete.quantity) || 0) - qty);
+            const _avgCostDeplete = parseFloat(_sbDeplete.avg_cost) || 0;
+            await supabase.from('stock_balance').update({ quantity: _newQtyDeplete, total_value: _newQtyDeplete * _avgCostDeplete, avg_cost: _newQtyDeplete > 0 ? _avgCostDeplete : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbDeplete.id);
+          }
+        }
       }
 
       await supabase.from('in_use_depletes').update({
@@ -20019,7 +20274,22 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+        // Update stock_balance manually after IN to in-use (revoke deplete)
+        {
+          const { data: _sbRevDep } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
+          const _oldQtyRevDep = _sbRevDep ? parseFloat(_sbRevDep.quantity) || 0 : 0;
+          const _oldTotalRevDep = _sbRevDep ? parseFloat(_sbRevDep.total_value) || 0 : 0;
+          const _newQtyRevDep = _oldQtyRevDep + qty;
+          const _newTotalRevDep = _oldTotalRevDep + totalCost;
+          const _newAvgRevDep = _newQtyRevDep > 0 ? _newTotalRevDep / _newQtyRevDep : 0;
+          if (_sbRevDep) {
+            await supabase.from('stock_balance').update({ quantity: _newQtyRevDep, total_value: _newTotalRevDep, avg_cost: _newAvgRevDep, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbRevDep.id);
+          } else {
+            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id, quantity: qty, avg_cost: unitCost, total_value: totalCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+        }
       }
 
       await supabase.from('in_use_depletes').update({
@@ -21101,7 +21371,17 @@ function SingleItemUsagePage() {
         created_by: currentUser?.id || null,
       });
 
-      // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+      // Update stock_balance manually after OUT (single usage)
+      {
+        const { data: _sbSIU } = await supabase.from('stock_balance')
+          .select('id, quantity, avg_cost, total_value')
+          .eq('organization_id', selectedOrg.id).eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id).maybeSingle();
+        if (_sbSIU) {
+          const _newQtySIU = Math.max(0, (parseFloat(_sbSIU.quantity) || 0) - qty);
+          const _avgCostSIU = parseFloat(_sbSIU.avg_cost) || 0;
+          await supabase.from('stock_balance').update({ quantity: _newQtySIU, total_value: _newQtySIU * _avgCostSIU, avg_cost: _newQtySIU > 0 ? _avgCostSIU : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbSIU.id);
+        }
+      }
 
       showNotification(`${record.usage_number} berhasil dikonfirmasi. Stok berkurang ${qty}.`, 'success');
       loadAll();
@@ -21554,8 +21834,34 @@ function TransferPage() {
         });
         if (inErr) throw new Error('IN movement: ' + inErr.message);
 
-        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
-        // on stock_movements INSERT — no manual update needed here
+        // Update stock_balance manually after OUT from source
+        {
+          const { data: _sbTrFrom } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.from_warehouse_id).maybeSingle();
+          if (_sbTrFrom) {
+            const _newQtyTrFrom = Math.max(0, (parseFloat(_sbTrFrom.quantity) || 0) - qty);
+            const _avgCostTrFrom = parseFloat(_sbTrFrom.avg_cost) || 0;
+            await supabase.from('stock_balance').update({ quantity: _newQtyTrFrom, total_value: _newQtyTrFrom * _avgCostTrFrom, avg_cost: _newQtyTrFrom > 0 ? _avgCostTrFrom : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbTrFrom.id);
+          }
+        }
+
+        // Update stock_balance manually after IN to destination
+        {
+          const { data: _sbTrTo } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.to_warehouse_id).maybeSingle();
+          const _oldQtyTrTo = _sbTrTo ? parseFloat(_sbTrTo.quantity) || 0 : 0;
+          const _oldTotalTrTo = _sbTrTo ? parseFloat(_sbTrTo.total_value) || 0 : 0;
+          const _newQtyTrTo = _oldQtyTrTo + qty;
+          const _newTotalTrTo = _oldTotalTrTo + totalCost;
+          const _newAvgTrTo = _newQtyTrTo > 0 ? _newTotalTrTo / _newQtyTrTo : 0;
+          if (_sbTrTo) {
+            await supabase.from('stock_balance').update({ quantity: _newQtyTrTo, total_value: _newTotalTrTo, avg_cost: _newAvgTrTo, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbTrTo.id);
+          } else {
+            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.to_warehouse_id, quantity: qty, avg_cost: unitCost, total_value: totalCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+        }
       }
 
       await supabase.from('transfers').update({
@@ -21620,7 +21926,34 @@ function TransferPage() {
           created_by: currentUser?.id || null, department_id: currentUser?.department_id || null,
         });
 
-        // stock_balance is automatically updated by DB trigger (trg_sync_stock_balance)
+        // Update stock_balance manually after IN to source (revoke)
+        {
+          const { data: _sbRevFrom } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.from_warehouse_id).maybeSingle();
+          const _oldQtyRevFrom = _sbRevFrom ? parseFloat(_sbRevFrom.quantity) || 0 : 0;
+          const _oldTotalRevFrom = _sbRevFrom ? parseFloat(_sbRevFrom.total_value) || 0 : 0;
+          const _newQtyRevFrom = _oldQtyRevFrom + qty;
+          const _newTotalRevFrom = _oldTotalRevFrom + totalCost;
+          const _newAvgRevFrom = _newQtyRevFrom > 0 ? _newTotalRevFrom / _newQtyRevFrom : 0;
+          if (_sbRevFrom) {
+            await supabase.from('stock_balance').update({ quantity: _newQtyRevFrom, total_value: _newTotalRevFrom, avg_cost: _newAvgRevFrom, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbRevFrom.id);
+          } else {
+            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.from_warehouse_id, quantity: qty, avg_cost: unitCost, total_value: totalCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+        }
+
+        // Update stock_balance manually after OUT from destination (revoke)
+        {
+          const { data: _sbRevTo } = await supabase.from('stock_balance')
+            .select('id, quantity, avg_cost, total_value')
+            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.to_warehouse_id).maybeSingle();
+          if (_sbRevTo) {
+            const _newQtyRevTo = Math.max(0, (parseFloat(_sbRevTo.quantity) || 0) - qty);
+            const _avgCostRevTo = parseFloat(_sbRevTo.avg_cost) || 0;
+            await supabase.from('stock_balance').update({ quantity: _newQtyRevTo, total_value: _newQtyRevTo * _avgCostRevTo, avg_cost: _newQtyRevTo > 0 ? _avgCostRevTo : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbRevTo.id);
+          }
+        }
       }
 
       await supabase.from('transfers').update({
