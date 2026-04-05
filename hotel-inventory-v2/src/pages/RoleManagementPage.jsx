@@ -26,6 +26,7 @@ const ALL_MENU_GROUPS = [
   ]},
   { group: 'Housekeeping', items: [
     { id: 'room-makeup-new', label: 'Room Make Up' },
+    { id: 'worksheet', label: 'Worksheet' },
     { id: 'laundry', label: 'Laundry' },
     { id: 'room-consumption', label: 'Room Consumption History' },
     { id: 'item-lost-in-room', label: 'Item Lost in Room' },
