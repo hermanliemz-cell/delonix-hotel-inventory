@@ -884,6 +884,7 @@ export default {
   'roles.action.manage_users': '管理用户',
   'roles.action.manage_roles': '管理角色',
   'roles.action.unlock_opening_balance': '解锁期初余额',
+  'roles.action.view_all_room_makeups': '查看所有客房整理单',
 
   // System Settings
   'settings.title': '系统设置',

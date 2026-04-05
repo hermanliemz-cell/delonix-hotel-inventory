@@ -75,14 +75,30 @@ function RoomMakeUpPageNew() {
   // ==================== LOAD DATA ====================
   useEffect(() => { if (selectedOrg) loadAll(); }, [selectedOrg]);
 
+  // Determine if current user can view all room makeups (not just own).
+  // Superadmin and GM always can; other roles can only if their role has
+  // special_actions.view_all_room_makeups = true or permissions.all = true.
+  const canViewAllMakeups = React.useMemo(() => {
+    const roleCode = currentUser?.role?.code;
+    if (roleCode === 'superadmin' || roleCode === 'gm') return true;
+    const perms = currentUser?.role?.permissions;
+    if (perms?.all === true) return true;
+    if (perms?.special_actions?.view_all_room_makeups === true) return true;
+    return false;
+  }, [currentUser?.role?.code, currentUser?.role?.permissions]);
+
   async function loadAll() {
     setLoading(true);
     try {
+      let muQuery = supabase.from('room_makeups')
+        .select('*, rooms!left(room_number, floor), users:created_by(full_name, username), departments:department_id(code, name)')
+        .eq('organization_id', selectedOrg.id);
+      if (!canViewAllMakeups && currentUser?.id) {
+        muQuery = muQuery.eq('created_by', currentUser.id);
+      }
+      muQuery = muQuery.order('created_at', { ascending: false });
       const [muRes, roomRes, whRes, itemRes] = await Promise.all([
-        supabase.from('room_makeups')
-          .select('*, rooms!left(room_number, floor), users:created_by(full_name, username), departments:department_id(code, name)')
-          .eq('organization_id', selectedOrg.id)
-          .order('created_at', { ascending: false }),
+        muQuery,
         supabase.from('rooms').select('id, room_number, floor, warehouse_id, room_types(name)')
           .eq('organization_id', selectedOrg.id).order('room_number'),
         supabase.from('warehouses').select('id, code, name, warehouse_type')
@@ -116,10 +132,13 @@ function RoomMakeUpPageNew() {
         }
         showNotification(`${stuckDocs.length} dokumen stuck (PROCESSING > 5 menit) telah dikembalikan ke DRAFT.`, 'warning');
         // Reload to reflect updated status
-        const { data: refreshed } = await supabase.from('room_makeups')
+        let refreshQuery = supabase.from('room_makeups')
           .select('*, rooms!left(room_number, floor), users:created_by(full_name, username), departments:department_id(code, name)')
-          .eq('organization_id', selectedOrg.id)
-          .order('created_at', { ascending: false });
+          .eq('organization_id', selectedOrg.id);
+        if (!canViewAllMakeups && currentUser?.id) {
+          refreshQuery = refreshQuery.eq('created_by', currentUser.id);
+        }
+        const { data: refreshed } = await refreshQuery.order('created_at', { ascending: false });
         setMakeups(refreshed || []);
       }
     } catch (err) {

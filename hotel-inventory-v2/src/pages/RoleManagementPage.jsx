@@ -70,6 +70,7 @@ const ALL_ACTIONS = [
   { id: 'manage_users', label: 'roles.action.manage_users' },
   { id: 'manage_roles', label: 'roles.action.manage_roles' },
   { id: 'unlock_opening_balance', label: 'roles.action.unlock_opening_balance' },
+  { id: 'view_all_room_makeups', label: 'roles.action.view_all_room_makeups' },
 ];
 
 // ============================================================

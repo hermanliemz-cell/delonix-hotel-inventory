@@ -917,6 +917,7 @@ export default {
   'roles.action.manage_users': 'Manage Users',
   'roles.action.manage_roles': 'Manage Roles',
   'roles.action.unlock_opening_balance': 'Unlock Opening Balance',
+  'roles.action.view_all_room_makeups': 'View All Room Make Ups',
 
   // System Settings
   'settings.title': 'System Settings',
