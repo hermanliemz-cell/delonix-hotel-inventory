@@ -1,7 +1,7 @@
 {
   "buildCommand": "cd hotel-inventory-v2 && npm install && npm run build",
   "outputDirectory": "hotel-inventory-v2/dist",
-  "framework": "vite",
+  "framework": null,
   "rewrites": [
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ],

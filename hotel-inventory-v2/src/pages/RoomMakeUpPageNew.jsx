@@ -160,22 +160,6 @@ function RoomMakeUpPageNew() {
       return;
     }
 
-    // Validasi: 1 room hanya boleh 1 makeup per tanggal (kecuali saat edit dokumen yang sama)
-    if (!isEditing) {
-      const { data: existing, error: checkErr } = await supabase.from('room_makeups')
-        .select('id, makeup_number')
-        .eq('organization_id', selectedOrg.id)
-        .eq('room_id', roomId)
-        .eq('makeup_date', makeupDate)
-        .limit(1);
-      if (!checkErr && existing && existing.length > 0) {
-        const roomNum = rooms.find(r => r.id === roomId)?.room_number || roomId;
-        showNotification(`Room ${roomNum} sudah memiliki dokumen Room Make Up (${existing[0].makeup_number}) untuk tanggal ${makeupDate}. Maksimal 1x per hari.`, 'error');
-        setSelectedRoom('');
-        return;
-      }
-    }
-
     setSelectedRoom(roomId);
     const room = rooms.find(r => r.id === roomId);
 
@@ -425,23 +409,7 @@ function RoomMakeUpPageNew() {
   async function handleSaveDraft() {
     if (!selectedRoom) { showNotification('Please select a room', 'error'); return; }
 
-    // === KONTROL 1: Cek duplikat room makeup di tanggal yang sama (semua status ditolak) ===
-    if (!isEditing) {
-      const { data: dupCheck } = await supabase.from('room_makeups')
-        .select('id, makeup_number, status')
-        .eq('organization_id', selectedOrg.id)
-        .eq('room_id', selectedRoom)
-        .eq('makeup_date', makeupDate)
-        .limit(1);
-      if (dupCheck && dupCheck.length > 0) {
-        const roomNum = rooms.find(r => r.id === selectedRoom)?.room_number || '';
-        const statusLabel = dupCheck[0].status === 'CONFIRMED' ? 'sudah dikonfirmasi' : 'belum dikonfirmasi';
-        showNotification(`Room ${roomNum} sudah memiliki dokumen (${dupCheck[0].makeup_number}) untuk tanggal ${makeupDate} (${statusLabel}). Tidak bisa membuat duplikat.`, 'error');
-        return;
-      }
-    }
-
-    // === KONTROL 2: Cek room makeup tanggal sebelumnya yang belum CONFIRMED ===
+    // === KONTROL: Cek room makeup tanggal sebelumnya yang belum CONFIRMED ===
     if (!isEditing) {
       const { data: prevUnconfirmed } = await supabase.from('room_makeups')
         .select('id, makeup_number, makeup_date, status')
