@@ -98,7 +98,7 @@ function RoomAdditionalRequestPage() {
 
     const unitCost = (overrideUnitCost !== undefined && overrideUnitCost !== null) ? overrideUnitCost : (sb ? parseFloat(sb.avg_cost) || 0 : 0);
     const totalCost = qty * unitCost;
-    const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty);
+    const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty, warehouseId);
 
     const { error: mvErr } = await supabase.from('stock_movements').insert({
       organization_id: selectedOrg.id, item_id: itemId,

@@ -771,7 +771,7 @@ function RoomMakeUpPageNew() {
     // For OUT movements: always use this warehouse's avg_cost
     const unitCost = (overrideUnitCost !== undefined && overrideUnitCost !== null) ? overrideUnitCost : (sb ? parseFloat(sb.avg_cost) || 0 : 0);
     const totalCost = qty * unitCost;
-    const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty);
+    const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty, warehouseId);
     await supabase.from('stock_movements').insert({
       organization_id: selectedOrg.id, item_id: itemId, movement_type: movementType, quantity: qty,
       unit_cost: unitCost, total_cost: totalCost, balance_after: balAfter, reference_type: refType,
