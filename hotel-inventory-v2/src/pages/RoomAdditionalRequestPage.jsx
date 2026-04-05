@@ -3,7 +3,8 @@ import { supabase } from '../services/supabase';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatDate, formatDateSys, formatNumber, getLocalDateString } from '../utils/format';
-import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
+import { checkPeriodLock } from '../utils/stock.js';
+import { recordMovement } from '../services/stockService.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Input, Select, Badge } from '../components/FormElements';
@@ -12,6 +13,7 @@ import { Modal } from '../components/Modal';
 import { FormField } from '../components/FormField';
 import { StatusBadge } from '../components/StatusBadge';
 import { SearchableItemSelect } from '../components/SearchableItemSelect';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 import { PageLoader } from '../components/PageLoader';
 
 function RoomAdditionalRequestPage() {
@@ -81,37 +83,33 @@ function RoomAdditionalRequestPage() {
 
   // ==================== STOCK MOVEMENT HELPER ====================
   async function doStockMovement(itemId, movementType, qty, warehouseId, refType, refNumber, notesText, dept, refId, overrideUnitCost) {
-    const { data: sb } = await supabase.from('stock_balance')
-      .select('id, quantity, avg_cost, total_value')
-      .eq('organization_id', selectedOrg.id)
-      .eq('item_id', itemId)
-      .eq('warehouse_id', warehouseId)
-      .maybeSingle();
-
-    // Validate: OUT movements must have sufficient stock (except ADJUSTMENT which is manual correction)
-    if (movementType === 'OUT' && refType !== 'ADJUSTMENT') {
-      const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
-      if (currentQty < qty) {
-        throw new Error(`Stock tidak cukup di warehouse untuk item ini. Tersedia: ${currentQty}, diminta: ${qty}. Pastikan item yang dipilih sudah benar.`);
-      }
+    // Unit cost resolution (samakan dengan RoomMakeUpPageNew):
+    //   - IN with override → srcCost
+    //   - IN/OUT without override → fetch current avg_cost warehouse target
+    // Jangan kirim 0 — itu akan mendilusi avg_cost destination via trigger WAC.
+    let unitCost = null;
+    if (overrideUnitCost !== undefined && overrideUnitCost !== null) {
+      unitCost = overrideUnitCost;
+    } else {
+      const { data: sb } = await supabase.from('stock_balance')
+        .select('avg_cost')
+        .eq('organization_id', selectedOrg.id).eq('item_id', itemId).eq('warehouse_id', warehouseId).maybeSingle();
+      unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
     }
-
-    const unitCost = (overrideUnitCost !== undefined && overrideUnitCost !== null) ? overrideUnitCost : (sb ? parseFloat(sb.avg_cost) || 0 : 0);
-    const totalCost = qty * unitCost;
-    const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty, warehouseId);
-
-    const { error: mvErr } = await supabase.from('stock_movements').insert({
-      organization_id: selectedOrg.id, item_id: itemId,
-      movement_type: movementType, quantity: qty,
-      unit_cost: unitCost, total_cost: totalCost,
-      balance_after: balAfter, reference_type: refType,
-      reference_number: refNumber, reference_id: refId || null,
-      warehouse_id: warehouseId,
-      notes: notesText, created_by: currentUser?.id,
-      department_id: dept || null,
+    const { error: mvErr } = await recordMovement({
+      organizationId: selectedOrg.id,
+      itemId,
+      warehouseId,
+      movementType,
+      quantity: qty,
+      referenceType: refType,
+      referenceNumber: refNumber,
+      referenceId: refId || null,
+      unitCost,
+      departmentId: dept || null,
+      notes: notesText,
     });
-    if (mvErr) throw new Error('Stock movement insert failed: ' + mvErr.message);
-    // stock_balance is now updated atomically by DB trigger: trg_sync_stock_balance
+    if (mvErr) throw new Error('Stock movement failed: ' + mvErr.message);
   }
 
   // ==================== GENERATE REQUEST NUMBER ====================
@@ -274,12 +272,30 @@ function RoomAdditionalRequestPage() {
     if (!(await showConfirm(`Confirm request ${record.request_number}? Transfer and/or consumption documents will be created.`, { variant: 'warning' }))) return;
 
     setSaving(true);
+    // Track docs yang dibuat selama attempt — dipakai catch block untuk rollback
+    // partial-fail. Tanpa ini, kalau error terjadi setelah transfer dibuat tapi
+    // sebelum stock movements selesai, user retry akan menggandakan dokumen.
+    let createdTransferId = null;
+    let createdTransferNumber = null;
+    let createdConsumptionId = null;
+    let createdConsumptionNumber = null;
     try {
-      // Re-verify AR status from DB to prevent double confirm
-      const { data: freshAR } = await supabase.from('room_additional_requests')
-        .select('status').eq('id', record.id).single();
-      if (!freshAR || freshAR.status !== 'draft') {
-        showNotification('Request has already been confirmed or is no longer in draft status.', 'warning');
+      // Strict optimistic lock: atomically flip draft -> processing and verify that
+      // exactly 1 row was affected. Prior implementation only did a SELECT status
+      // check which is race-vulnerable: two parallel confirm clicks both read
+      // "draft" and both ran the stock movements, creating duplicate transfers &
+      // consumption docs. `.select()` forces PostgREST to return the updated rows;
+      // if length === 0 a concurrent session already grabbed the lock so we abort.
+      const { data: lockRows, error: lockErr } = await supabase
+        .from('room_additional_requests')
+        .update({ status: 'processing' })
+        .eq('id', record.id)
+        .eq('status', 'draft')
+        .select('id');
+      if (lockErr) throw lockErr;
+      if (!lockRows || lockRows.length === 0) {
+        showNotification('Request sudah dikonfirmasi atau sedang diproses sesi lain.', 'warning');
+        setSaving(false);
         return;
       }
 
@@ -304,6 +320,7 @@ function RoomAdditionalRequestPage() {
       // ==================== LINEN → Transfer Document ====================
       if (linenList.length > 0) {
         const trNumber = await generateDocNumber('transfers', 'transfer_number', 'TR');
+        createdTransferNumber = trNumber;
 
         // Create transfer doc (auto-confirmed)
         const { data: tr, error: trErr } = await supabase.from('transfers').insert({
@@ -316,6 +333,7 @@ function RoomAdditionalRequestPage() {
           notes: `Auto-generated from ${record.request_number}`,
         }).select().single();
         if (trErr) throw new Error('Failed to create transfer: ' + trErr.message);
+        createdTransferId = tr.id;
 
         // Insert transfer_items
         for (const li of linenList) {
@@ -327,19 +345,31 @@ function RoomAdditionalRequestPage() {
           });
         }
 
-        // Stock movements per linen item (OUT from HK + IN to Room)
+        // Stock movements per linen item (OUT from HK + IN to Room).
+        // IMPORTANT: tangkap srcCost (HK store avg_cost) SEBELUM OUT supaya IN
+        // ke room memakai cost source, bukan cost destination. Tanpa ini IN
+        // akan pakai avg_cost room (hasil fetch dari doStockMovement helper
+        // setelah OUT), yang bisa berbeda dan menggeser weighted average room.
         for (const li of linenList) {
           const qty = parseFloat(li.quantity);
+          const { data: srcSb } = await supabase.from('stock_balance')
+            .select('avg_cost')
+            .eq('organization_id', selectedOrg.id)
+            .eq('item_id', li.item_id)
+            .eq('warehouse_id', hkStore.id)
+            .maybeSingle();
+          const srcCost = srcSb ? parseFloat(srcSb.avg_cost) || 0 : 0;
           await doStockMovement(li.item_id, 'OUT', qty, hkStore.id, 'TRANSFER', trNumber,
             `Transfer to ${room.room_number || 'Room'}`, userDept?.id, null);
           await doStockMovement(li.item_id, 'IN', qty, room.warehouse_id, 'TRANSFER', trNumber,
-            `Transfer from ${hkStore.code || 'HK'}`, userDept?.id, null);
+            `Transfer from ${hkStore.code || 'HK'}`, userDept?.id, null, srcCost);
         }
       }
 
       // ==================== AMENITY → Room Consumption Document ====================
       if (amenityList.length > 0) {
         const rcNumber = await generateDocNumber('room_consumption', 'consumption_number', 'RC');
+        createdConsumptionNumber = rcNumber;
 
         // Create room_consumption doc (makeup_id = null since from AR, not from Room Makeup)
         const { data: con, error: conErr } = await supabase.from('room_consumption').insert({
@@ -352,6 +382,7 @@ function RoomAdditionalRequestPage() {
           created_by: currentUser?.id,
         }).select().single();
         if (conErr) throw new Error('Failed to create consumption: ' + conErr.message);
+        createdConsumptionId = con.id;
 
         // Insert room_consumption_items + stock movements
         for (const ai of amenityList) {
@@ -393,7 +424,40 @@ function RoomAdditionalRequestPage() {
       showNotification('Request confirmed successfully', 'success');
       await loadAll();
     } catch (err) {
-      showNotification('Error confirming request: ' + err.message, 'error');
+      // Rollback partial-fail: delete stock_movements + docs yang sudah dibuat
+      // di attempt ini. Tanpa rollback ini, retry user akan menggandakan doc
+      // transfer/consumption dan stock movements. Order penting: delete
+      // stock_movements DULU (supaya trg_revert_stock_movement jalan), baru
+      // delete parent docs.
+      try {
+        const refNumbers = [createdTransferNumber, createdConsumptionNumber].filter(Boolean);
+        if (refNumbers.length > 0) {
+          const { data: orphaned } = await supabase.from('stock_movements')
+            .select('id')
+            .in('reference_number', refNumbers);
+          if (orphaned && orphaned.length > 0) {
+            await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+          }
+        }
+        if (createdTransferId) {
+          await supabase.from('transfer_items').delete().eq('transfer_id', createdTransferId);
+          await supabase.from('transfers').delete().eq('id', createdTransferId);
+        }
+        if (createdConsumptionId) {
+          await supabase.from('room_consumption_items').delete().eq('consumption_id', createdConsumptionId);
+          await supabase.from('room_consumption').delete().eq('id', createdConsumptionId);
+        }
+      } catch (cleanupErr) {
+        console.error('[AR confirm rollback] cleanup failed:', cleanupErr);
+      }
+      // Rollback lock: processing -> draft so the user can retry (only if still processing).
+      try {
+        await supabase.from('room_additional_requests')
+          .update({ status: 'draft' })
+          .eq('id', record.id)
+          .eq('status', 'processing');
+      } catch (_) { /* best-effort */ }
+      showNotification('Error confirming request: ' + err.message + '. Status dikembalikan ke draft (dokumen & movements di attempt ini sudah di-rollback).', 'error');
     } finally {
       setSaving(false);
     }
@@ -583,8 +647,8 @@ function RoomAdditionalRequestPage() {
                           />
                         </td>
                         <td className="px-3 py-2">
-                          <input type="number" min="1" value={item.quantity}
-                            onChange={e => updateItem('linen', idx, 'quantity', parseInt(e.target.value) || 1)}
+                          <input {...intQtyInputProps} min={1} value={item.quantity}
+                            onChange={e => updateItem('linen', idx, 'quantity', Math.max(1, toIntQty(e.target.value)))}
                             className="w-full px-2 py-1 border border-gray-300 rounded text-xs text-right" />
                         </td>
                         <td className="px-3 py-2 text-center">
@@ -624,8 +688,8 @@ function RoomAdditionalRequestPage() {
                           />
                         </td>
                         <td className="px-3 py-2">
-                          <input type="number" min="1" value={item.quantity}
-                            onChange={e => updateItem('amenity', idx, 'quantity', parseInt(e.target.value) || 1)}
+                          <input {...intQtyInputProps} min={1} value={item.quantity}
+                            onChange={e => updateItem('amenity', idx, 'quantity', Math.max(1, toIntQty(e.target.value)))}
                             className="w-full px-2 py-1 border border-gray-300 rounded text-xs text-right" />
                         </td>
                         <td className="px-3 py-2 text-center">

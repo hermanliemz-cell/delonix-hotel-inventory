@@ -2,7 +2,6 @@ import React, { useRef, useCallback } from 'react';
 import { Icons } from './Icons';
 
 export function Modal({ open, onClose, title, children, size = 'md' }) {
-  if (!open) return null;
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
   const contentRef = useRef(null);
 
@@ -12,6 +11,8 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
       onClose();
     }
   }, [onClose]);
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4" onMouseDown={handleBackdropMouseDown}>

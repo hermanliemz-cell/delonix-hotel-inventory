@@ -3,8 +3,9 @@ import { supabase } from '../services/supabase.js';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatNumber, formatDateSys, getLocalDateString } from '../utils/format';
-import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
+import { checkPeriodLock } from '../utils/stock.js';
 import { getCategoryConfig, LINEN_STATUS_WAREHOUSE_MAP } from '../utils/categoryConfig';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -170,13 +171,14 @@ function OpeningBalancePage() {
 
   // ---- CATEGORY DETAIL (OPNAME) VIEW ----
   function updateDetail(itemId, statusType, field, value) {
+    const sanitized = field === 'quantity' ? toIntQty(value) : value;
     setDetails(prev => ({
       ...prev,
       [itemId]: {
         ...(prev[itemId] || {}),
         [statusType]: {
           ...(prev[itemId]?.[statusType] || { quantity: 0, unit_cost: 0 }),
-          [field]: value
+          [field]: sanitized
         }
       }
     }));
@@ -369,174 +371,70 @@ function OpeningBalancePage() {
         if (error) throw error;
       }
 
-      // For linen items where all qty became 0: zero out old OB room balances
-      if (isLinen) {
-        const zeroLinenItemIds = catItems
-          .filter(item => {
-            const itemDetails = details[item.id] || {};
-            const totalQ = Object.entries(itemDetails)
+      // ============================================================
+      // Fase 6 — Atomic OB save via RPC fn_set_opening_balance.
+      // RPC melakukan: delete OB lama (per affected item) → insert OB baru
+      // → trigger auto-sync stock_balance → run_reconciliation safety net.
+      // Semua direct write ke stock_movements / stock_balance sudah dipindah
+      // ke server-side supaya Fase 6b REVOKE aman.
+      //
+      // Affected items dihitung dari SELURUH catItems supaya linen dengan
+      // totalQty=0 (tidak muncul di balanceUpserts untuk kasus in_use) tetap
+      // memicu hapus OB movement lama. Untuk non-linen & linen lain, entry
+      // qty=0 sudah ada di balanceUpserts jadi item_id-nya ikut terdaftar.
+      // ============================================================
+      if (balanceUpserts.length > 0 || catItems.length > 0) {
+        // Build affected item set:
+        // - Semua item dari balanceUpserts (qty>0 dan qty=0)
+        // - PLUS: untuk linen, semua catItems yang totalQty=0 (edge case in_use→0)
+        const affectedSet = new Set(balanceUpserts.map(b => b.item_id));
+        if (isLinen) {
+          for (const item of catItems) {
+            const itemD = details[item.id] || {};
+            const totalQ = Object.entries(itemD)
               .filter(([k]) => k !== '_purchase_cost')
               .reduce((s, [, v]) => s + (parseFloat(v.quantity) || 0), 0);
-            return totalQ === 0;
-          })
-          .map(item => item.id);
-
-        if (zeroLinenItemIds.length > 0) {
-          // Find existing OB movements in room warehouses for these items and zero their balances
-          const roomWhIds = rooms.map(r => r.warehouse_id).filter(Boolean);
-          if (roomWhIds.length > 0) {
-            // Get all warehouses (room + status warehouses) that had OB for these items
-            const { data: oldOBMov } = await supabase.from('stock_movements')
-              .select('item_id, warehouse_id')
-              .eq('organization_id', selectedOrg.id)
-              .eq('reference_type', 'OPENING_BALANCE')
-              .in('item_id', zeroLinenItemIds);
-
-            if (oldOBMov && oldOBMov.length > 0) {
-              // Zero out stock_balance for each old OB item+warehouse combo
-              for (const mov of oldOBMov) {
-                await supabase.from('stock_balance')
-                  .update({ quantity: 0, total_value: 0, updated_at: new Date().toISOString() })
-                  .eq('organization_id', selectedOrg.id)
-                  .eq('item_id', mov.item_id)
-                  .eq('warehouse_id', mov.warehouse_id);
-              }
-            }
-
-            // Delete old OB stock_movements for these zero-qty items
-            await supabase.from('stock_movements')
-              .delete()
-              .eq('organization_id', selectedOrg.id)
-              .eq('reference_type', 'OPENING_BALANCE')
-              .in('item_id', zeroLinenItemIds);
+            if (totalQ === 0) affectedSet.add(item.id);
           }
         }
-      }
 
-      // Upsert stock_balance - for linen, use warehouse constraint
-      // IMPORTANT: When editing OB, we must preserve non-OB movement effects on stock_balance
-      if (balanceUpserts.length > 0) {
-        // Fetch non-OB movements for affected items to adjust stock_balance correctly
-        const affectedItemIds = [...new Set(balanceUpserts.map(b => b.item_id))];
-        // Use pagination to avoid Supabase default 1000-row limit (total linen movements can exceed 1000)
-        const nonOBMovements = await fetchAllRows(
-          supabase.from('stock_movements')
-            .select('item_id, warehouse_id, movement_type, quantity')
-            .eq('organization_id', selectedOrg.id)
-            .neq('reference_type', 'OPENING_BALANCE')
-            .in('item_id', affectedItemIds)
-        );
-
-        // Build net non-OB movement per item+warehouse
-        const nonOBNet = {};
-        (nonOBMovements || []).forEach(m => {
-          const key = m.item_id + '|' + m.warehouse_id;
-          if (!nonOBNet[key]) nonOBNet[key] = 0;
-          nonOBNet[key] += m.movement_type === 'IN' ? parseFloat(m.quantity) : -parseFloat(m.quantity);
-        });
-
-        // Clean up internal props and adjust quantity to include non-OB movements
-        const cleanUpserts = balanceUpserts.map(b => {
-          const { _status, _is_room, ...rest } = b;
-          const key = b.item_id + '|' + b.warehouse_id;
-          const adjustment = nonOBNet[key] || 0;
-          return {
-            ...rest,
-            quantity: b.quantity + adjustment,
-            total_value: (b.quantity + adjustment) * (b.avg_cost || 0)
-          };
-        });
-
-        // Use org+item+warehouse as the unique constraint for all items
-        const { error } = await supabase.from('stock_balance')
-          .upsert(cleanUpserts, { onConflict: 'organization_id,item_id,warehouse_id' });
-        if (error) throw error;
-      }
-
-      // Insert/replace stock_movements for opening balance
-      if (balanceUpserts.length > 0) {
-        const movItemIds = [...new Set(balanceUpserts.map(b => b.item_id))];
-        // Delete old OB movements for all affected items (including those now qty=0)
-        await supabase.from('stock_movements')
-          .delete()
-          .eq('organization_id', selectedOrg.id)
-          .eq('reference_type', 'OPENING_BALANCE')
-          .in('item_id', movItemIds);
-
-        // Use obDate as created_at so OB always sorts first chronologically
-        const obTimestamp = obDate ? new Date(obDate + 'T00:00:00').toISOString() : new Date().toISOString();
-        // Only insert movements for items with qty > 0 (skip zero qty)
-        const movementInserts = balanceUpserts.filter(b => b.quantity > 0).map(b => ({
-          organization_id: b.organization_id,
+        // Build p_movements payload untuk RPC.
+        // Untuk item yang ada di affectedSet tapi TIDAK di balanceUpserts
+        // (linen zero-qty), kita tetap perlu kirim 1 entry "phantom" qty=0
+        // supaya RPC menghitungnya sebagai affected (dan menghapus OB lama).
+        const obMovements = balanceUpserts.map(b => ({
           item_id: b.item_id,
-          movement_type: 'IN',
-          quantity: b.quantity,
-          unit_cost: b.avg_cost,
-          total_cost: b.total_value,
-          balance_after: b.quantity,
-          reference_type: 'OPENING_BALANCE',
-          reference_number: 'OB-' + (selectedCategory?.code || 'OB'),
-          notes: 'Opening Balance - ' + (selectedCategory?.name || '') + (b._status ? ' [' + b._status + ']' : ''),
           warehouse_id: b.warehouse_id || null,
           department_id: b.department_id || null,
-          created_by: currentUser?.id || null,
-          created_at: obTimestamp,
+          quantity: b.quantity,
+          unit_cost: b.avg_cost || 0,
+          reference_number: 'OB-' + (selectedCategory?.code || 'OB'),
+          notes: 'Opening Balance - ' + (selectedCategory?.name || '') + (b._status ? ' [' + b._status + ']' : ''),
         }));
-        if (movementInserts.length > 0) {
-          const { error: smErr } = await supabase.from('stock_movements').insert(movementInserts);
-          // stock movements warning handled silently
-        }
-      }
-
-      // POST-SAVE RECONCILIATION: Verify stock_balance matches sum of all movements
-      // This catches any edge cases where the upsert above didn't properly update
-      if (balanceUpserts.length > 0) {
-        const reconItemIds = [...new Set(balanceUpserts.map(b => b.item_id))];
-        // Get all movements (including new OB movements just inserted) per item+warehouse
-        // Use pagination to avoid Supabase default 1000-row limit (v1.0.21 fix: was truncating >1000 movements, v1.0.22 fix: race condition on stock_balance - moved to DB trigger)
-        const allMovements = await fetchAllRows(
-          supabase.from('stock_movements')
-            .select('item_id, warehouse_id, movement_type, quantity')
-            .eq('organization_id', selectedOrg.id)
-            .in('item_id', reconItemIds)
-        );
-
-        // Build expected balance per item+warehouse from movements
-        const expectedBal = {};
-        (allMovements || []).forEach(m => {
-          const key = m.item_id + '|' + m.warehouse_id;
-          if (!expectedBal[key]) expectedBal[key] = { item_id: m.item_id, warehouse_id: m.warehouse_id, qty: 0 };
-          expectedBal[key].qty += m.movement_type === 'IN' ? parseFloat(m.quantity) : -parseFloat(m.quantity);
-        });
-
-        // Also include zero-qty balanceUpserts (warehouses that should be 0 even if no movements)
-        balanceUpserts.forEach(b => {
-          const key = b.item_id + '|' + b.warehouse_id;
-          if (!expectedBal[key]) expectedBal[key] = { item_id: b.item_id, warehouse_id: b.warehouse_id, qty: 0 };
-        });
-
-        // Read current stock_balance for these items (also paginated for safety)
-        const currentBalances = await fetchAllRows(
-          supabase.from('stock_balance')
-            .select('id, item_id, warehouse_id, quantity, avg_cost')
-            .eq('organization_id', selectedOrg.id)
-            .in('item_id', reconItemIds)
-        );
-
-        // Fix any mismatches
-        for (const [key, expected] of Object.entries(expectedBal)) {
-          const current = (currentBalances || []).find(
-            cb => cb.item_id === expected.item_id && cb.warehouse_id === expected.warehouse_id
-          );
-          const expectedQty = Math.max(0, expected.qty);
-          if (current && Math.abs(parseFloat(current.quantity) - expectedQty) > 0.001) {
-            await supabase.from('stock_balance').update({
-              quantity: expectedQty,
-              total_value: expectedQty * (current.avg_cost || 0),
-              updated_at: new Date().toISOString()
-            }).eq('id', current.id);
+        // Tambahkan phantom entry untuk zero-qty linen items yang belum masuk
+        const balanceItemIds = new Set(balanceUpserts.map(b => b.item_id));
+        for (const itemId of affectedSet) {
+          if (!balanceItemIds.has(itemId)) {
+            obMovements.push({
+              item_id: itemId,
+              warehouse_id: null,
+              department_id: null,
+              quantity: 0,
+              unit_cost: 0,
+              reference_number: 'OB-' + (selectedCategory?.code || 'OB'),
+              notes: 'Opening Balance zero-out (' + (selectedCategory?.name || '') + ')',
+            });
           }
         }
+
+        const { error: obRpcErr } = await supabase.rpc('fn_set_opening_balance', {
+          p_organization_id: selectedOrg.id,
+          p_category_id: selectedCategory.id,
+          p_ob_date: obDate,
+          p_movements: obMovements,
+          p_created_by: currentUser?.id || null,
+        });
+        if (obRpcErr) throw obRpcErr;
       }
 
       // FIFO entries (same as before)

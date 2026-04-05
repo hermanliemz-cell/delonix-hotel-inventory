@@ -12,6 +12,7 @@ import { FormField } from '../components/FormField';
 import { Badge } from '../components/Badge';
 import { StatusBadge } from '../components/StatusBadge';
 import { SearchableItemSelect } from '../components/SearchableItemSelect';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 
 function PurchaseOrderPage() {
   const { selectedOrg, showNotification, showConfirm, currentUser } = useApp();
@@ -417,8 +418,8 @@ function PurchaseOrderPage() {
                       <SearchableItemSelect items={items} value={line.item_id} onChange={v => updateLine(idx, 'item_id', v)} placeholder={t('pr.selectItem')} />
                     </td>
                     <td className="p-2 text-center text-sm text-gray-600">{line.item_id ? puAbbr : '-'}</td>
-                    <td className="p-2"><input type="number" value={line.quantity} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value)||0)}
-                      className="w-full px-2 py-1 border rounded text-sm text-right" min="1" /></td>
+                    <td className="p-2"><input {...intQtyInputProps} value={line.quantity} onChange={e => updateLine(idx, 'quantity', toIntQty(e.target.value))}
+                      className="w-full px-2 py-1 border rounded text-sm text-right" /></td>
                     <td className="p-2"><input type="number" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', parseFloat(e.target.value)||0)}
                       className="w-full px-2 py-1 border rounded text-sm text-right" min="0" /></td>
                     <td className="p-2"><input type="number" value={line.discount_percent} onChange={e => updateLine(idx, 'discount_percent', parseFloat(e.target.value)||0)}

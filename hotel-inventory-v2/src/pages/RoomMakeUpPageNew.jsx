@@ -3,7 +3,8 @@ import { supabase } from '../services/supabase';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatNumber, formatDate, formatDateSys, getLocalDateString } from '../utils/format';
-import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
+import { checkPeriodLock } from '../utils/stock.js';
+import { recordMovement } from '../services/stockService.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Input, Select, Badge } from '../components/FormElements';
@@ -12,6 +13,7 @@ import { Modal } from '../components/Modal';
 import { FormField } from '../components/FormField';
 import { StatusBadge } from '../components/StatusBadge';
 import { PageLoader } from '../components/PageLoader';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 
 function RoomMakeUpPageNew() {
   const { t } = useTranslation();
@@ -671,8 +673,33 @@ function RoomMakeUpPageNew() {
       if (freshMu?.status === 'CONFIRMED') { showNotification('Sudah dikonfirmasi.', 'error'); setSaving(false); loadAll(); return; }
       if (freshMu?.status === 'PROCESSING') { showNotification('Sedang diproses oleh sesi lain.', 'error'); setSaving(false); loadAll(); return; }
 
-      const { error: procErr } = await supabase.from('room_makeups').update({ status: 'PROCESSING' }).eq('id', mu.id).eq('status', 'DRAFT');
+      // Strict optimistic lock: transition DRAFT -> PROCESSING ATOMICALLY.
+      // `.select()` forces PostgREST to return the affected rows; if length === 0
+      // it means a concurrent request already grabbed the lock (or status changed),
+      // so we MUST abort and NOT run stock movements. Prior implementation had only
+      // `.eq('status','DRAFT')` tanpa `.select()` → tidak bisa membedakan "0 rows affected"
+      // dari "success", menyebabkan double-confirm & duplicate stock movements
+      // (root cause insiden MU-DAS-0400 duplicates di 2026-04-06).
+      const { data: lockRows, error: procErr } = await supabase
+        .from('room_makeups')
+        .update({ status: 'PROCESSING' })
+        .eq('id', mu.id)
+        .eq('status', 'DRAFT')
+        .select('id');
       if (procErr) throw procErr;
+      if (!lockRows || lockRows.length === 0) {
+        showNotification('Gagal mengunci dokumen — sedang diproses oleh sesi lain atau status sudah berubah. Refresh halaman.', 'error');
+        setSaving(false);
+        loadAll();
+        return;
+      }
+
+      // Idempotency watermark: record attempt start so the catch block can
+      // delete only the stock_movements inserted by THIS attempt. Penting —
+      // tanpa ini, partial-fail (mis. stock dirty tidak cukup di tengah loop)
+      // akan meninggalkan movements yg sudah ter-insert, dan retry berikutnya
+      // akan menambah duplikat (root cause 221 extra rows insiden 2026-04-04).
+      const attemptStartedAt = new Date().toISOString();
 
       const room = rooms.find(r => r.id === mu.room_id);
       const hkStore = warehouses.find(w => w.warehouse_type === 'store' && w.code === 'HK') || warehouses.find(w => w.warehouse_type === 'store' && w.name?.toLowerCase().includes('housekeeping'));
@@ -767,8 +794,28 @@ function RoomMakeUpPageNew() {
       showNotification('Room makeup confirmed! Stock movements processed.');
       loadAll();
     } catch (err) {
+      // Rollback stock_movements yang sudah ter-insert di attempt ini.
+      // DELETE akan men-trigger trg_revert_stock_movement → stock_balance
+      // ter-revert otomatis di dalam transaksi DB yang sama per-row.
+      // Cakupan: semua movements dengan reference_number = makeupNumber dan
+      // created_at >= attemptStartedAt (watermark awal attempt).
+      // CATATAN: referenceType cover MAKEUP-LINEN REPLACE, MAKEUP-DIRTY,
+      // DAMAGE, ITEM_LOST, MAKEUP-TO-HK, dan CONSUMPTION (untuk amenities).
+      try {
+        const { data: orphaned, error: selErr } = await supabase.from('stock_movements')
+          .select('id, reference_type')
+          .eq('reference_number', mu.makeup_number)
+          .gte('created_at', attemptStartedAt);
+        if (!selErr && orphaned && orphaned.length > 0) {
+          const ids = orphaned.map(o => o.id);
+          await supabase.from('stock_movements').delete().in('id', ids);
+        }
+      } catch (cleanupErr) {
+        // Log tapi jangan ganggu status rewind — cleanup best-effort.
+        console.error('[confirm rollback] cleanup movements failed:', cleanupErr);
+      }
       try { await supabase.from('room_makeups').update({ status: 'DRAFT' }).eq('id', mu.id).eq('status', 'PROCESSING'); } catch (e) {}
-      showNotification('Error: ' + err.message + '. Status dikembalikan ke DRAFT.', 'error');
+      showNotification('Error: ' + err.message + '. Status dikembalikan ke DRAFT (stock movements attempt ini sudah di-rollback).', 'error');
       loadAll();
     }
     setSaving(false);
@@ -776,28 +823,42 @@ function RoomMakeUpPageNew() {
 
   // ==================== STOCK MOVEMENT HELPER ====================
   async function doStockMovement(itemId, movementType, qty, warehouseId, refType, refNumber, notesText, dept, refId, overrideUnitCost) {
-    const { data: sb } = await supabase.from('stock_balance')
-      .select('id, quantity, avg_cost, total_value')
-      .eq('organization_id', selectedOrg.id).eq('item_id', itemId).eq('warehouse_id', warehouseId).maybeSingle();
-    // Validate: OUT movements must have sufficient stock (except ADJUSTMENT which is manual correction)
-    if (movementType === 'OUT' && refType !== 'ADJUSTMENT') {
-      const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
-      if (currentQty < qty) {
-        throw new Error(`Stock tidak cukup di warehouse untuk item ini. Tersedia: ${currentQty}, diminta: ${qty}. Pastikan item yang dipilih sudah benar.`);
-      }
+    // Unit cost resolution rules:
+    //   1. IN with overrideUnitCost (srcCost dari source warehouse) → pakai itu.
+    //      Ini preservasi weighted-average saat memindahkan stok antar warehouse.
+    //   2. OUT → fetch avg_cost dari warehouse itu sendiri (COGS basis).
+    //   3. IN tanpa override → fetch avg_cost DESTINATION yang sedang berjalan.
+    //      Cara ini membuat trigger WAC tidak mengubah avg (new_avg = old_avg).
+    //      Sebelumnya kode mengirim unitCost=0 yang BUG karena trigger pakai
+    //      `COALESCE(NEW.unit_cost, v_old_avg)`; karena record_movement RPC
+    //      melakukan `COALESCE(p_unit_cost, 0)`, trigger TIDAK PERNAH menerima
+    //      NULL → fallback ke v_old_avg mati → 0 dipakai langsung → dilusi avg
+    //      destination ke 0. Ini menyumbang corruption unit_cost di masa lalu.
+    //   Trigger DB auto-reject jika stock tidak cukup untuk OUT.
+    let unitCost = null;
+    if (overrideUnitCost !== undefined && overrideUnitCost !== null) {
+      unitCost = overrideUnitCost;
+    } else {
+      // Fetch current avg_cost dari warehouse target (destination untuk IN, self untuk OUT)
+      const { data: sb } = await supabase.from('stock_balance')
+        .select('avg_cost')
+        .eq('organization_id', selectedOrg.id).eq('item_id', itemId).eq('warehouse_id', warehouseId).maybeSingle();
+      unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
     }
-    // For IN movements: use overrideUnitCost (from source warehouse) if provided
-    // For OUT movements: always use this warehouse's avg_cost
-    const unitCost = (overrideUnitCost !== undefined && overrideUnitCost !== null) ? overrideUnitCost : (sb ? parseFloat(sb.avg_cost) || 0 : 0);
-    const totalCost = qty * unitCost;
-    const balAfter = await getBalanceAfter(selectedOrg.id, itemId, movementType, qty, warehouseId);
-    await supabase.from('stock_movements').insert({
-      organization_id: selectedOrg.id, item_id: itemId, movement_type: movementType, quantity: qty,
-      unit_cost: unitCost, total_cost: totalCost, balance_after: balAfter, reference_type: refType,
-      reference_number: refNumber, reference_id: refId || null, warehouse_id: warehouseId,
-      notes: notesText, created_by: currentUser?.id, department_id: dept || null,
+    const { error } = await recordMovement({
+      organizationId: selectedOrg.id,
+      itemId,
+      warehouseId,
+      movementType,
+      quantity: qty,
+      referenceType: refType,
+      referenceNumber: refNumber,
+      referenceId: refId || null,
+      unitCost,
+      departmentId: dept || null,
+      notes: notesText,
     });
-    // stock_balance is now updated atomically by DB trigger: trg_sync_stock_balance
+    if (error) throw error;
   }
 
   function toggleSection(key) { setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] })); }
@@ -1278,26 +1339,26 @@ function RoomMakeUpPageNew() {
                                       {!isView ? (
                                         <>
                                           <td className="text-center px-2 py-2">
-                                            <input type="number" min="0" max={maxStock - act.damageQty - act.lostQty - (act.toHkQty || 0)} value={act.dirtyQty || ''}
-                                              onChange={e => updateAction('dirtyQty', Math.max(0, parseInt(e.target.value) || 0))}
+                                            <input {...intQtyInputProps} max={maxStock - act.damageQty - act.lostQty - (act.toHkQty || 0)} value={act.dirtyQty || ''}
+                                              onChange={e => updateAction('dirtyQty', toIntQty(e.target.value))}
                                               placeholder="0"
                                               className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.dirtyQty > 0 ? 'border-yellow-400 bg-yellow-50 text-yellow-800' : 'border-gray-300'}`} />
                                           </td>
                                           <td className="text-center px-2 py-2">
-                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.lostQty - (act.toHkQty || 0)} value={act.damageQty || ''}
-                                              onChange={e => updateAction('damageQty', Math.max(0, parseInt(e.target.value) || 0))}
+                                            <input {...intQtyInputProps} max={maxStock - act.dirtyQty - act.lostQty - (act.toHkQty || 0)} value={act.damageQty || ''}
+                                              onChange={e => updateAction('damageQty', toIntQty(e.target.value))}
                                               placeholder="0"
                                               className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.damageQty > 0 ? 'border-orange-400 bg-orange-50 text-orange-800' : 'border-gray-300'}`} />
                                           </td>
                                           <td className="text-center px-2 py-2">
-                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.damageQty - (act.toHkQty || 0)} value={act.lostQty || ''}
-                                              onChange={e => updateAction('lostQty', Math.max(0, parseInt(e.target.value) || 0))}
+                                            <input {...intQtyInputProps} max={maxStock - act.dirtyQty - act.damageQty - (act.toHkQty || 0)} value={act.lostQty || ''}
+                                              onChange={e => updateAction('lostQty', toIntQty(e.target.value))}
                                               placeholder="0"
                                               className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.lostQty > 0 ? 'border-red-400 bg-red-50 text-red-800' : 'border-gray-300'}`} />
                                           </td>
                                           <td className="text-center px-2 py-2">
-                                            <input type="number" min="0" max={maxStock - act.dirtyQty - act.damageQty - act.lostQty} value={act.toHkQty || ''}
-                                              onChange={e => updateAction('toHkQty', Math.max(0, parseInt(e.target.value) || 0))}
+                                            <input {...intQtyInputProps} max={maxStock - act.dirtyQty - act.damageQty - act.lostQty} value={act.toHkQty || ''}
+                                              onChange={e => updateAction('toHkQty', toIntQty(e.target.value))}
                                               placeholder="0"
                                               className={`w-full px-2 py-1.5 border rounded-lg text-xs text-center font-semibold min-h-[36px] ${act.toHkQty > 0 ? 'border-teal-400 bg-teal-50 text-teal-800' : 'border-gray-300'}`} />
                                           </td>

@@ -4,6 +4,7 @@ import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatNumber, formatDateSys, getLocalDateString } from '../utils/format';
 import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
+import { recordMovement, deleteMovementsByRef } from '../services/stockService.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -11,6 +12,7 @@ import { DataTable } from '../components/DataTable';
 import { Button, Input, Select } from '../components/FormElements';
 import { FormField } from '../components/FormField';
 import { Badge } from '../components/Badge';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 
 function PurchaseReceivedPage() {
   const { selectedOrg, currentUser, showNotification, showConfirm } = useApp();
@@ -221,24 +223,20 @@ function PurchaseReceivedPage() {
         const unitPrice = parseFloat(item.unit_price) || 0;
         const totalCost = qty * unitPrice;
 
-        const grBalAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
-        const { error: smErr } = await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id,
-          item_id: item.item_id,
-          department_id: grDepartmentId,
-          movement_type: 'IN',
+        const { error: smErr } = await recordMovement({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          warehouseId: item.warehouse_id || null,
+          departmentId: grDepartmentId,
+          movementType: 'IN',
           quantity: qty,
-          unit_cost: unitPrice,
-          total_cost: totalCost,
-          balance_after: grBalAfter,
-          reference_type: 'GR',
-          reference_number: gr.gr_number,
+          unitCost: unitPrice,
+          referenceType: 'GR',
+          referenceNumber: gr.gr_number,
+          referenceId: gr.id,
           notes: 'Goods received from ' + (gr.purchase_invoices?.pi_number || 'PI'),
-          warehouse_id: item.warehouse_id || null,
-          created_by: currentUser?.id || null,
         });
         if (smErr) throw new Error('Stock movement error: ' + smErr.message);
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       // Update GR status to CONFIRMED
@@ -304,18 +302,13 @@ function PurchaseReceivedPage() {
       const { data: grItems } = await supabase.from('purchase_received_items').select('*').eq('gr_id', gr.id);
       if (!grItems || grItems.length === 0) throw new Error('No items found');
 
-      // Reverse stock movements for each item — stock_balance reversed by DB trigger
-      for (const item of grItems) {
-        const qty = parseFloat(item.received_qty);
-        if (qty <= 0) continue;
-
-        // Delete the stock movement for this GR — stock_balance is reversed atomically by DB trigger: trg_stock_movements_after_delete
-        await supabase.from('stock_movements').delete()
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', item.item_id)
-          .eq('reference_type', 'GR')
-          .eq('reference_number', gr.gr_number);
-      }
+      // Reverse stock movements via RPC (trigger auto-revert stock_balance)
+      const { error: delErr } = await deleteMovementsByRef({
+        organizationId: selectedOrg.id,
+        referenceType: 'GR',
+        referenceId: gr.id,
+      });
+      if (delErr) throw delErr;
 
       // Revert GR status to DRAFT
       await supabase.from('purchase_received').update({ status: 'DRAFT' }).eq('id', gr.id);
@@ -423,8 +416,8 @@ function PurchaseReceivedPage() {
                       <td className="p-2 text-right">{line.prev_received > 0 ? <span className="text-blue-600">{formatNumber(line.prev_received)}</span> : <span className="text-gray-300">0</span>}</td>
                       <td className="p-2 text-right">{line.remaining > 0 ? <span className="text-orange-600 font-medium">{formatNumber(line.remaining)}</span> : <span className="text-green-600 font-medium">Done</span>}</td>
                       <td className="p-2">
-                        <input type="number" min="0" max={line.remaining} step="0.01"
-                          value={line.received_qty} onChange={e => updateLine(idx, 'received_qty', parseFloat(e.target.value) || 0)}
+                        <input {...intQtyInputProps} max={line.remaining}
+                          value={line.received_qty} onChange={e => updateLine(idx, 'received_qty', toIntQty(e.target.value))}
                           className="w-full px-2 py-1 border rounded text-sm text-right" disabled={line.remaining <= 0} />
                       </td>
                       <td className="p-2">

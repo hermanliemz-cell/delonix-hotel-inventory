@@ -3,7 +3,9 @@ import { supabase } from '../services/supabase.js';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatNumber, formatDate, formatDateSys } from '../utils/format';
-import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
+import { checkPeriodLock } from '../utils/stock.js';
+import { recordTransfer } from '../services/stockService.js';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 import { Button } from '../components/FormElements';
 import { PageHeader } from '../components/PageHeader';
 import { PageLoader } from '../components/PageLoader';
@@ -204,67 +206,37 @@ function LaundryPage() {
         if (!stockItem) continue;
 
         const qty = item.qty;
-        const balanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty, dirtyWarehouse.id);
 
-        // OUT from dirty warehouse
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id,
-          department_id: deptId,
-          item_id: item.item_id,
-          movement_type: 'OUT',
+        // Atomic transfer: OUT from dirty + IN to laundry via RPC (Fase 6).
+        // unitCost=null → record_transfer RPC akan fetch avg_cost LIVE dari
+        // source warehouse (dirty) di dalam transaksi. Ini lebih aman daripada
+        // mengirim `stockItem.avg_cost` yang bisa stale kalau ada operasi
+        // concurrent atau `dirtyItems` di-load beberapa menit lalu.
+        const { error: transferErr } = await recordTransfer({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          sourceWarehouseId: dirtyWarehouse.id,
+          destWarehouseId: laundryWarehouse.id,
           quantity: qty,
-          unit_cost: stockItem.avg_cost || 0,
-          total_cost: (qty * (stockItem.avg_cost || 0)),
-          balance_after: balanceAfter,
-          reference_type: 'LAUNDRY_SEND',
-          reference_number: refNumber,
-          reference_id: item.item_id,
+          referenceType: 'LAUNDRY_SEND',
+          referenceNumber: refNumber,
+          referenceId: item.item_id,
+          unitCost: null,
+          departmentId: deptId,
           notes: item.notes,
-          warehouse_id: dirtyWarehouse.id,
-          vendor_id: selectedVendor,
-          created_by: currentUser?.id || null,
-          created_at: new Date().toISOString()
+          vendorId: selectedVendor,
         });
-
-        // IN to laundry warehouse
-        const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty, laundryWarehouse.id);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id,
-          department_id: deptId,
-          item_id: item.item_id,
-          movement_type: 'IN',
-          quantity: qty,
-          unit_cost: stockItem.avg_cost || 0,
-          total_cost: (qty * (stockItem.avg_cost || 0)),
-          balance_after: inBalanceAfter,
-          reference_type: 'LAUNDRY_SEND',
-          reference_number: refNumber,
-          reference_id: item.item_id,
-          notes: item.notes,
-          warehouse_id: laundryWarehouse.id,
-          vendor_id: selectedVendor,
-          created_by: currentUser?.id || null,
-          created_at: new Date().toISOString()
-        });
-
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        if (transferErr) throw transferErr;
       }
 
       showNotification('Items sent to laundry successfully (Ref: ' + refNumber + ')', 'success');
       setSelectedItems({});
       loadAll();
     } catch (e) {
-      // Cleanup partial movements on error
-      try {
-        await supabase.from('stock_movements')
-          .delete()
-          .eq('reference_number', refNumber)
-          .eq('reference_type', 'LAUNDRY_SEND')
-          .eq('organization_id', selectedOrg.id);
-      } catch (cleanupErr) {
-        // cleanup error silently handled
-      }
-      showNotification('Error sending to laundry: ' + e.message + '. Data telah di-rollback.', 'error');
+      // Note: recordTransfer per item adalah atomic (OUT+IN satu transaction).
+      // Jika loop fail di tengah, item sebelumnya sudah berhasil ditransfer dan
+      // balance konsisten. Tidak perlu cleanup — user bisa re-send item yang gagal.
+      showNotification('Error sending to laundry: ' + e.message + '. Cek riwayat dan kirim ulang item yang gagal.', 'error');
       loadAll();
     }
     savingRef.current = false;
@@ -313,68 +285,34 @@ function LaundryPage() {
         if (!stockItem) continue;
 
         const qty = item.qty;
-        const balanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty, laundryWarehouse.id);
 
-        // OUT from laundry warehouse
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id,
-          department_id: deptId,
-          item_id: item.item_id,
-          movement_type: 'OUT',
+        // Atomic transfer: OUT from laundry + IN to store via RPC (Fase 6).
+        // unitCost=null → record_transfer RPC akan fetch avg_cost LIVE dari
+        // source warehouse (laundry) di dalam transaksi. Hindari mengirim
+        // `stockItem.avg_cost` yang bisa stale atau corrupt.
+        const { error: transferErr } = await recordTransfer({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          sourceWarehouseId: laundryWarehouse.id,
+          destWarehouseId: storeWarehouse.id,
           quantity: qty,
-          unit_cost: stockItem.avg_cost || 0,
-          total_cost: (qty * (stockItem.avg_cost || 0)),
-          balance_after: balanceAfter,
-          reference_type: 'LAUNDRY_RECEIVE',
-          reference_number: refNumber,
-          reference_id: item.item_id,
+          referenceType: 'LAUNDRY_RECEIVE',
+          referenceNumber: refNumber,
+          referenceId: item.item_id,
+          unitCost: null,
+          departmentId: deptId,
           notes: item.notes,
-          warehouse_id: laundryWarehouse.id,
-          vendor_id: selectedVendor,
-          created_by: currentUser?.id || null,
-          created_at: new Date().toISOString()
+          vendorId: selectedVendor,
         });
-
-        // IN to store warehouse
-        const inBalanceAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty, storeWarehouse.id);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id,
-          department_id: deptId,
-          item_id: item.item_id,
-          movement_type: 'IN',
-          quantity: qty,
-          unit_cost: stockItem.avg_cost || 0,
-          total_cost: (qty * (stockItem.avg_cost || 0)),
-          balance_after: inBalanceAfter,
-          reference_type: 'LAUNDRY_RECEIVE',
-          reference_number: refNumber,
-          reference_id: item.item_id,
-          notes: item.notes,
-          warehouse_id: storeWarehouse.id,
-          vendor_id: selectedVendor,
-          created_by: currentUser?.id || null,
-          created_at: new Date().toISOString()
-        });
-
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
-        // Note: OUT from laundry warehouse is also handled by the same trigger
+        if (transferErr) throw transferErr;
       }
 
       showNotification('Items received from laundry successfully (Ref: ' + refNumber + ')', 'success');
       setSelectedItems({});
       loadAll();
     } catch (e) {
-      // Cleanup partial movements on error
-      try {
-        await supabase.from('stock_movements')
-          .delete()
-          .eq('reference_number', refNumber)
-          .eq('reference_type', 'LAUNDRY_RECEIVE')
-          .eq('organization_id', selectedOrg.id);
-      } catch (cleanupErr) {
-        // cleanup error silently handled
-      }
-      showNotification('Error receiving from laundry: ' + e.message + '. Data telah di-rollback.', 'error');
+      // recordTransfer per item adalah atomic. Partial batch tidak perlu cleanup.
+      showNotification('Error receiving from laundry: ' + e.message + '. Cek riwayat dan receive ulang item yang gagal.', 'error');
       loadAll();
     }
     savingRef.current = false;
@@ -987,17 +925,17 @@ function LaundryPage() {
                             <td className="px-4 py-3 text-center text-sm font-medium">{item.quantity}</td>
                             <td className="px-4 py-3 text-center">
                               <input
-                                type="number"
-                                min="0"
+                                {...intQtyInputProps}
                                 max={item.quantity}
                                 placeholder="0"
                                 value={selectedItems[item.item_id]?.qty || ''}
                                 onChange={e => {
+                                  const intVal = toIntQty(e.target.value);
                                   const newSel = { ...selectedItems };
                                   newSel[item.item_id] = {
                                     ...newSel[item.item_id],
-                                    qty: e.target.value,
-                                    selected: !!e.target.value
+                                    qty: intVal,
+                                    selected: intVal > 0
                                   };
                                   setSelectedItems(newSel);
                                 }}

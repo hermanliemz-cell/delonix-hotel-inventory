@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase.js';
 import { useApp, useTranslation } from '../hooks/index.js';
 import { formatDate, formatDateSys, getLocalDateString } from '../utils/format.js';
 import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
+import { recordMovement, deleteMovementsByRef } from '../services/stockService.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -173,27 +174,22 @@ function SingleItemUsagePage() {
       }).eq('id', record.id);
       if (updErr) throw updErr;
 
-      // Stock movement OUT
+      // Stock movement OUT via RPC (Fase 6: RPC migration)
       const deptName = record.departments?.name || '';
-      const siuBalAfter = await getBalanceAfter(selectedOrg.id, record.item_id, 'OUT', qty);
-      await supabase.from('stock_movements').insert({
-        organization_id: selectedOrg.id,
-        item_id: record.item_id,
-        warehouse_id: record.warehouse_id,
-        department_id: record.department_id || null,
-        movement_type: 'OUT',
+      const { error: mvErr } = await recordMovement({
+        organizationId: selectedOrg.id,
+        itemId: record.item_id,
+        warehouseId: record.warehouse_id,
+        departmentId: record.department_id || null,
+        movementType: 'OUT',
         quantity: qty,
-        unit_cost: avgCost,
-        total_cost: qty * avgCost,
-        balance_after: siuBalAfter,
-        reference_type: 'USAGE',
-        reference_id: record.id,
-        reference_number: record.usage_number,
+        unitCost: avgCost,
+        referenceType: 'USAGE',
+        referenceId: record.id,
+        referenceNumber: record.usage_number,
         notes: `Single usage: ${record.usage_number} - Dept: ${deptName}`,
-        created_by: currentUser?.id || null,
       });
-
-      // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+      if (mvErr) throw mvErr;
 
       showNotification(`${record.usage_number} berhasil dikonfirmasi. Stok berkurang ${qty}.`, 'success');
       loadAll();
@@ -219,11 +215,13 @@ function SingleItemUsagePage() {
     try {
       const qty = parseFloat(record.quantity);
 
-      // Hapus stock movement asli SIU dari bincard
-      // stock_balance will be automatically recalculated by DB trigger (trg_sync_stock_balance) on DELETE
-      await supabase.from('stock_movements').delete()
-        .eq('reference_type', 'USAGE')
-        .eq('reference_id', record.id);
+      // Hapus stock movement asli SIU via RPC (trigger BEFORE DELETE akan revert stock_balance)
+      const { error: delErr } = await deleteMovementsByRef({
+        organizationId: selectedOrg.id,
+        referenceType: 'USAGE',
+        referenceId: record.id,
+      });
+      if (delErr) throw delErr;
 
       // Update status back to DRAFT
       const { error: updErr } = await supabase.from('single_item_usage').update({

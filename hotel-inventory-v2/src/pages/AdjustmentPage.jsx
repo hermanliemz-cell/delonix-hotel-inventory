@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabase';
+import { recordMovement } from '../services/stockService.js';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { Icons } from '../components/Icons';
 import { formatCurrency, formatNumber, formatDate, formatDateSys, getLocalDateString } from '../utils/format';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 import { Badge } from '../components/Badge';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
@@ -174,19 +176,20 @@ export default function AdjustmentPage() {
         const unitCost = parseFloat(ai.unit_cost) || 0;
         const totalCost = parseFloat(ai.total_cost) || 0;
 
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: ai.item_id,
-          warehouse_id: adj.warehouse_id,
-          movement_type: qty >= 0 ? 'IN' : 'OUT',
-          quantity: Math.abs(qty), unit_cost: unitCost,
-          total_cost: Math.abs(totalCost),
-          reference_type: 'ADJUSTMENT', reference_number: adj.adj_number,
-          reference_id: adj.id,
-          department_id: adj.department_id || null,
+        const { error: mvErr } = await recordMovement({
+          organizationId: selectedOrg.id,
+          itemId: ai.item_id,
+          warehouseId: adj.warehouse_id,
+          movementType: qty >= 0 ? 'IN' : 'OUT',
+          quantity: Math.abs(qty),
+          unitCost: unitCost,
+          referenceType: 'ADJUSTMENT',
+          referenceNumber: adj.adj_number,
+          referenceId: adj.id,
+          departmentId: adj.department_id || null,
           notes: ai.notes || 'Stock Adjustment',
-          created_by: currentUser?.id,
         });
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        if (mvErr) throw mvErr;
       }
 
       await supabase.from('adjustments').update({
@@ -309,8 +312,8 @@ export default function AdjustmentPage() {
                       )}
                     </div>
                   </td>
-                  <td className="p-2"><input type="number" value={line.quantity} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value)||0)}
-                    className="w-full px-2 py-1 border rounded text-sm text-right" step="any" /></td>
+                  <td className="p-2"><input {...intQtyInputProps} value={line.quantity} onChange={e => updateLine(idx, 'quantity', toIntQty(e.target.value))}
+                    className="w-full px-2 py-1 border rounded text-sm text-right" /></td>
                   <td className="p-2"><input type="number" value={line.unit_cost} onChange={e => updateLine(idx, 'unit_cost', parseFloat(e.target.value)||0)}
                     className="w-full px-2 py-1 border rounded text-sm text-right" min="0" step="any" /></td>
                   <td className="p-2 text-right">

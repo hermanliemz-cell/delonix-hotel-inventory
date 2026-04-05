@@ -11,6 +11,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
 import { DataTable } from '../components/DataTable';
 import { TreeSelect } from '../components/TreeSelect';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 
 function StockOpnamePage() {
   const { selectedOrg, currentUser, showNotification, showConfirm } = useApp();
@@ -529,11 +530,10 @@ function StockOpnamePage() {
                         <td className="p-2 text-right text-gray-500">{det.system_qty}</td>
                         <td className="p-2">
                           <input
-                            type="number"
+                            {...intQtyInputProps}
                             value={det.physical_qty}
-                            onChange={e => updateCountingDetail(idx, 'physical_qty', parseFloat(e.target.value) || 0)}
+                            onChange={e => updateCountingDetail(idx, 'physical_qty', toIntQty(e.target.value))}
                             className="w-full px-2 py-1 border rounded text-sm text-right"
-                            min="0"
                           />
                         </td>
                         <td className={`p-2 text-right font-medium ${det.variance_qty < 0 ? 'text-red-600' : det.variance_qty > 0 ? 'text-green-600' : ''}`}>

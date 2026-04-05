@@ -170,7 +170,7 @@ function LoginPage() {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v2.0.01 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">v2.0.05 &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -553,7 +553,7 @@ function MainLayout() {
                         {selectedOrg.code}
                       </span>
                     </div>
-                    <p className="text-[10px] text-gray-400 leading-none hidden sm:block">v2.0.01</p>
+                    <p className="text-[10px] text-gray-400 leading-none hidden sm:block">v2.0.05</p>
                   </div>
                 );
               })()}

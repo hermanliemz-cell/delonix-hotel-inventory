@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase.js';
 import { useApp, useTranslation } from '../hooks/index.js';
 import { formatNumber, formatDate, formatDateSys, getLocalDateString } from '../utils/format.js';
-import { getBalanceAfter } from '../utils/stock.js';
+import { recordTransfer } from '../services/stockService.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -11,6 +11,7 @@ import { FormField } from '../components/FormField';
 import { StatusBadge } from '../components/StatusBadge';
 import { Tab } from '../components/Tab';
 import { Button, Input, Select, Badge } from '../components/FormElements';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 
 function TransferPage() {
   const { t } = useTranslation();
@@ -186,56 +187,21 @@ function TransferPage() {
         const qty = parseFloat(item.quantity);
         if (qty <= 0) continue;
 
-        // Get avg_cost from stock_balance (source warehouse)
-        const { data: sb } = await supabase.from('stock_balance')
-          .select('id, quantity, avg_cost, total_value')
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', tr.from_warehouse_id)
-          .maybeSingle();
-
-        const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
-        const totalCost = qty * unitCost;
-
-        // OUT from source warehouse
-        const trOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty, tr.from_warehouse_id);
-        const { error: outErr } = await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id,
-          item_id: item.item_id,
-          movement_type: 'OUT',
+        // Atomic OUT+IN via RPC (Fase 6). unit_cost diambil otomatis dari source balance jika null.
+        const { error: transferErr } = await recordTransfer({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          sourceWarehouseId: tr.from_warehouse_id,
+          destWarehouseId: tr.to_warehouse_id,
           quantity: qty,
-          unit_cost: unitCost,
-          total_cost: totalCost,
-          balance_after: trOutBal,
-          reference_type: 'TRANSFER',
-          reference_number: tr.transfer_number,
-          warehouse_id: tr.from_warehouse_id,
-          notes: `Transfer to ${warehouses.find(w => w.id === tr.to_warehouse_id)?.code || 'warehouse'}`,
-          created_by: currentUser?.id || null,
-          department_id: currentUser?.department_id || null,
+          referenceType: 'TRANSFER',
+          referenceNumber: tr.transfer_number,
+          referenceId: tr.id,
+          unitCost: null,
+          departmentId: currentUser?.department_id || null,
+          notes: `Transfer ${warehouses.find(w => w.id === tr.from_warehouse_id)?.code || ''} → ${warehouses.find(w => w.id === tr.to_warehouse_id)?.code || ''}`,
         });
-        if (outErr) throw new Error('OUT movement: ' + outErr.message);
-
-        // IN to destination warehouse
-        const trInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty, tr.to_warehouse_id);
-        const { error: inErr } = await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id,
-          item_id: item.item_id,
-          movement_type: 'IN',
-          quantity: qty,
-          unit_cost: unitCost,
-          total_cost: totalCost,
-          balance_after: trInBal,
-          reference_type: 'TRANSFER',
-          reference_number: tr.transfer_number,
-          warehouse_id: tr.to_warehouse_id,
-          notes: `Transfer from ${warehouses.find(w => w.id === tr.from_warehouse_id)?.code || 'warehouse'}`,
-          created_by: currentUser?.id || null,
-          department_id: currentUser?.department_id || null,
-        });
-        if (inErr) throw new Error('IN movement: ' + inErr.message);
-
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        if (transferErr) throw new Error('Transfer movement: ' + transferErr.message);
       }
 
       await supabase.from('transfers').update({
@@ -280,27 +246,21 @@ function TransferPage() {
           setSaving(false); return;
         }
 
-        // Reverse: IN back to source warehouse
-        const revInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty, tr.from_warehouse_id);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.from_warehouse_id,
-          movement_type: 'IN', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
-          balance_after: revInBal, reference_type: 'TRANSFER-REV', reference_number: tr.transfer_number,
-          notes: 'Revoke: return from ' + (warehouses.find(w => w.id === tr.to_warehouse_id)?.code || 'warehouse'),
-          created_by: currentUser?.id || null, department_id: currentUser?.department_id || null,
+        // Reverse atomic: OUT from dest + IN back to source via RPC (Fase 6)
+        const { error: revErr } = await recordTransfer({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          sourceWarehouseId: tr.to_warehouse_id,
+          destWarehouseId: tr.from_warehouse_id,
+          quantity: qty,
+          referenceType: 'TRANSFER-REV',
+          referenceNumber: tr.transfer_number,
+          referenceId: tr.id,
+          unitCost: unitCost,
+          departmentId: currentUser?.department_id || null,
+          notes: 'Revoke: return ' + (warehouses.find(w => w.id === tr.to_warehouse_id)?.code || '') + ' → ' + (warehouses.find(w => w.id === tr.from_warehouse_id)?.code || ''),
         });
-
-        // Reverse: OUT from destination warehouse
-        const revOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty, tr.to_warehouse_id);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.to_warehouse_id,
-          movement_type: 'OUT', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
-          balance_after: revOutBal, reference_type: 'TRANSFER-REV', reference_number: tr.transfer_number,
-          notes: 'Revoke: return to ' + (warehouses.find(w => w.id === tr.from_warehouse_id)?.code || 'warehouse'),
-          created_by: currentUser?.id || null, department_id: currentUser?.department_id || null,
-        });
-
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        if (revErr) throw new Error('Revoke movement: ' + revErr.message);
       }
 
       await supabase.from('transfers').update({
@@ -417,7 +377,7 @@ function TransferPage() {
                         </select>
                       </td>
                       <td className="px-3 py-2 text-center">
-                        <input type="number" value={ti.quantity} min="0" onChange={e => updateTransferItem(idx, 'quantity', e.target.value)}
+                        <input {...intQtyInputProps} value={ti.quantity} onChange={e => updateTransferItem(idx, 'quantity', toIntQty(e.target.value))}
                           className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-center" />
                       </td>
                       <td className="px-3 py-2 text-center">

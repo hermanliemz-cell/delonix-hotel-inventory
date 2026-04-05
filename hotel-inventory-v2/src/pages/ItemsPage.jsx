@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase.js';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatNumber } from '../utils/format';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -405,8 +406,12 @@ function ItemsPage() {
       // No relations — confirm delete
       if (!(await showConfirm(`Hapus item "${item.name}" (${item.code})?`, { variant: 'danger' }))) return;
 
-      // Clean up only orphan zero-balance stock rows
-      await supabase.from('stock_balance').delete().eq('item_id', item.id).eq('quantity', 0);
+      // Clean up only orphan zero-balance stock rows via RPC (Fase 6: server-side).
+      // Direct DELETE ke stock_balance sudah di-REVOKE di Fase 6b.
+      await supabase.rpc('fn_delete_orphan_stock_balance', {
+        p_organization_id: selectedOrg?.id,
+        p_item_id: item.id,
+      });
 
       const { error } = await supabase.from('items').delete().eq('id', item.id);
       if (error) throw error;
@@ -593,13 +598,13 @@ function ItemsPage() {
             <p className="text-xs text-gray-400 mt-1">{t('items.conversionHint')}</p>
           </FormField>
           <FormField label={t('items.minStock')}>
-            <Input type="number" value={form.min_stock} onChange={e => setForm({...form, min_stock: parseFloat(e.target.value) || 0})} />
+            <Input {...intQtyInputProps} value={form.min_stock} onChange={e => setForm({...form, min_stock: toIntQty(e.target.value)})} />
           </FormField>
           <FormField label={t('items.maxStock')}>
-            <Input type="number" value={form.max_stock} onChange={e => setForm({...form, max_stock: parseFloat(e.target.value) || 0})} />
+            <Input {...intQtyInputProps} value={form.max_stock} onChange={e => setForm({...form, max_stock: toIntQty(e.target.value)})} />
           </FormField>
           <FormField label={t('items.reorderPoint')}>
-            <Input type="number" value={form.reorder_point} onChange={e => setForm({...form, reorder_point: parseFloat(e.target.value) || 0})} />
+            <Input {...intQtyInputProps} value={form.reorder_point} onChange={e => setForm({...form, reorder_point: toIntQty(e.target.value)})} />
           </FormField>
           <FormField label={t('items.defaultWarehouse')}>
             <Select value={form.default_warehouse_id} onChange={e => setForm({...form, default_warehouse_id: e.target.value})}>

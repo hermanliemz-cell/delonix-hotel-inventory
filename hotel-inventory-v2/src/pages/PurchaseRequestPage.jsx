@@ -12,6 +12,7 @@ import { TreeSelect } from '../components/TreeSelect';
 import { SearchableItemSelect } from '../components/SearchableItemSelect';
 import { StatusBadge } from '../components/StatusBadge';
 import { formatCurrency, formatDate, formatNumber, formatDateSys, getLocalDateString } from '../utils/format';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 
 export default function PurchaseRequestPage() {
   const { selectedOrg, showNotification, showConfirm, currentUser } = useApp();
@@ -371,8 +372,8 @@ export default function PurchaseRequestPage() {
                   <td className="p-2">
                     <SearchableItemSelect items={filteredItems} value={line.item_id} onChange={v => updateLine(idx, 'item_id', v)} placeholder={form.category_id ? t('pr.selectItem') : 'Pilih kategori dulu...'} disabled={!form.category_id} />
                   </td>
-                  <td className="p-2"><input type="number" value={line.quantity} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value)||0)}
-                    className="w-full px-2 py-1 border rounded text-sm text-right" min="1" disabled={!form.category_id} /></td>
+                  <td className="p-2"><input {...intQtyInputProps} value={line.quantity} onChange={e => updateLine(idx, 'quantity', toIntQty(e.target.value))}
+                    className="w-full px-2 py-1 border rounded text-sm text-right" disabled={!form.category_id} /></td>
                   <td className="p-2 text-center text-sm text-gray-600">{line.item_id ? puName : '-'}</td>
                   <td className="p-2">{lineItems.length > 1 && <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-600"><Icons.Trash /></button>}</td>
                 </tr>

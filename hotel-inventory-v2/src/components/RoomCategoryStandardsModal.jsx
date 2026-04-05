@@ -5,6 +5,7 @@ import { Icons } from './Icons';
 import { Modal } from './Modal';
 import { Button, Select } from './FormElements';
 import { TreeSelect } from './TreeSelect';
+import { intQtyInputProps, toIntQty } from '../utils/qtyInput';
 
 function RoomCategoryStandardsModal({ room, open, onClose, standardType, parentCategoryCode, title, colorScheme, allRooms }) {
   const { showNotification, showConfirm, selectedOrg } = useApp();
@@ -247,8 +248,8 @@ function RoomCategoryStandardsModal({ room, open, onClose, standardType, parentC
                           <TreeSelect value={editCategoryId} onChange={v => setEditCategoryId(v)} categories={editAvailableCategories} placeholder="-- Pilih Kategori --" />
                         </td>
                         <td className="px-2 py-2">
-                          <input type="number" min="1" value={s.quantity || 1}
-                            onChange={e => { const updated = [...localItems]; updated[idx] = { ...updated[idx], quantity: parseInt(e.target.value) || 1 }; setLocalItems(updated); setHasChanges(true); }}
+                          <input {...intQtyInputProps} min="1" value={s.quantity || 1}
+                            onChange={e => { const updated = [...localItems]; updated[idx] = { ...updated[idx], quantity: toIntQty(e.target.value) || 1 }; setLocalItems(updated); setHasChanges(true); }}
                             className="w-16 text-center border border-gray-300 rounded px-1 py-0.5 text-sm" />
                         </td>
                         <td className="px-2 py-2">
@@ -264,8 +265,8 @@ function RoomCategoryStandardsModal({ room, open, onClose, standardType, parentC
                         <td className="px-3 py-2"><span className="font-mono text-xs bg-white px-1.5 py-0.5 rounded">{s.item_categories?.code}</span></td>
                         <td className="px-3 py-2 font-medium">{s.item_categories?.name}</td>
                         <td className="px-2 py-2 text-center">
-                          <input type="number" min="1" value={s.quantity || 1}
-                            onChange={e => { const updated = [...localItems]; updated[idx] = { ...updated[idx], quantity: parseInt(e.target.value) || 1 }; setLocalItems(updated); setHasChanges(true); }}
+                          <input {...intQtyInputProps} min="1" value={s.quantity || 1}
+                            onChange={e => { const updated = [...localItems]; updated[idx] = { ...updated[idx], quantity: toIntQty(e.target.value) || 1 }; setLocalItems(updated); setHasChanges(true); }}
                             className="w-16 text-center border border-gray-300 rounded px-1 py-0.5 text-sm" />
                         </td>
                         <td className="px-2 py-2">

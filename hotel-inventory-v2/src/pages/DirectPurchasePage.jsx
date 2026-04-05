@@ -4,6 +4,7 @@ import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatNumber, formatDateSys, getLocalDateString } from '../utils/format';
 import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
+import { recordMovement, deleteMovementsByRef } from '../services/stockService.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
@@ -12,6 +13,7 @@ import { Button, Input, Select } from '../components/FormElements';
 import { FormField } from '../components/FormField';
 import { Badge } from '../components/Badge';
 import { StatusBadge } from '../components/StatusBadge';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 import { SearchableItemSelect } from '../components/SearchableItemSelect';
 import { TreeSelect } from '../components/TreeSelect';
 
@@ -233,25 +235,21 @@ function DirectPurchasePage() {
         const unitPrice = parseFloat(item.unit_price) || 0;
         const totalCost = qty * unitPrice;
 
-        // Create stock movement IN
-        const dpBalAfter = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
-        const { error: smErr } = await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id,
-          item_id: item.item_id,
-          movement_type: 'IN',
+        // Create stock movement IN via RPC (Fase 6)
+        const { error: smErr } = await recordMovement({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          warehouseId: item.warehouse_id || null,
+          movementType: 'IN',
           quantity: qty,
-          unit_cost: unitPrice,
-          total_cost: totalCost,
-          balance_after: dpBalAfter,
-          reference_type: 'DIRECT_PURCHASE',
-          reference_number: dp.purchase_number,
-          warehouse_id: item.warehouse_id || null,
-          department_id: dp.department_id || null,
+          unitCost: unitPrice,
+          referenceType: 'DIRECT_PURCHASE',
+          referenceNumber: dp.purchase_number,
+          referenceId: dp.id,
+          departmentId: dp.department_id || null,
           notes: 'Direct purchase from ' + dp.purchase_location,
-          created_by: currentUser?.id || null,
         });
         if (smErr) throw new Error('Stock movement error: ' + smErr.message);
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       await supabase.from('direct_purchases').update({
@@ -295,16 +293,13 @@ function DirectPurchasePage() {
     if (!(await showConfirm(`Revoke ${dp.purchase_number}? Stok akan dikembalikan.`, { variant: 'danger' }))) return;
     setSaving(true);
     try {
-      const dpItems = dp.direct_purchase_items || [];
-      for (const item of dpItems) {
-        const qty = parseFloat(item.quantity);
-        if (qty <= 0) continue;
-        // Delete stock movement — stock_balance is reversed atomically by DB trigger: trg_stock_movements_after_delete
-        await supabase.from('stock_movements').delete()
-          .eq('reference_type', 'DIRECT_PURCHASE')
-          .eq('reference_number', dp.purchase_number)
-          .eq('item_id', item.item_id);
-      }
+      // Delete semua movement DP ini via RPC (trigger auto-revert stock_balance)
+      const { error: delErr } = await deleteMovementsByRef({
+        organizationId: selectedOrg.id,
+        referenceType: 'DIRECT_PURCHASE',
+        referenceId: dp.id,
+      });
+      if (delErr) throw delErr;
       // Update status back to APPROVED
       await supabase.from('direct_purchases').update({
         status: 'APPROVED', confirmed_by: null, confirmed_at: null,
@@ -485,7 +480,7 @@ function DirectPurchasePage() {
                           <SearchableItemSelect items={filteredDpItems} value={pi.item_id} onChange={v => handleItemSelect(idx, v)} placeholder={t('dp.selectItem')} />
                         </td>
                         <td className="px-3 py-2 text-center">
-                          <input type="number" value={pi.quantity} min="0" onChange={e => updateItem(idx, 'quantity', e.target.value)}
+                          <input {...intQtyInputProps} value={pi.quantity} onChange={e => updateItem(idx, 'quantity', toIntQty(e.target.value))}
                             className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-center" />
                         </td>
                         <td className="px-3 py-2 text-center">

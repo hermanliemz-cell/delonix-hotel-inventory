@@ -107,18 +107,29 @@ function BinCardPage() {
   // Load movements - filtered at DB level for efficiency
   async function loadMovements(itemId, warehouseId) {
     setLoading(true);
-    let query = supabase.from('stock_movements')
-      .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
-      .eq('organization_id', selectedOrg.id);
-    // Filter by item at DB level if selected — much more efficient
-    if (itemId) query = query.eq('item_id', itemId);
-    // Filter by warehouse at DB level if selected
-    if (warehouseId) query = query.eq('warehouse_id', warehouseId);
-    query = query.order('created_at', { ascending: true });
-    // No limit — we need ALL movements for accurate running balance
-    // For safety, cap at 10000 (still very fast)
-    query = query.limit(10000);
-    const { data } = await query;
+    // Paginate — Supabase cap 1000 rows per-request secara default, jadi pakai range()
+    // untuk fetch semua. Tanpa ini, item dengan >1000 movements akan terpotong dan
+    // running balance jadi salah (LIN-012 punya 1083 movements → hilang 83 terakhir).
+    const PAGE = 1000;
+    const buildQuery = () => {
+      let q = supabase.from('stock_movements')
+        .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
+        .eq('organization_id', selectedOrg.id);
+      if (itemId) q = q.eq('item_id', itemId);
+      if (warehouseId) q = q.eq('warehouse_id', warehouseId);
+      return q.order('created_at', { ascending: true });
+    };
+    let data = [];
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data: page, error } = await buildQuery().range(from, from + PAGE - 1);
+      if (error || !page) break;
+      data = data.concat(page);
+      if (page.length < PAGE) break;
+      from += PAGE;
+      if (from >= 50000) break; // safety guard
+    }
 
     // Resolve from/to warehouse by finding counterpart movements
     // Each movement is paired with its counterpart (opposite direction, same ref+item, closest created_at)
@@ -241,20 +252,26 @@ function BinCardPage() {
   };
 
   const movementsWithBalance = React.useMemo(() => {
-    // Step A: Identify transfer-like pairs (same reference_number + item_id + reference_type, one OUT + one IN)
-    const transferPairs = {}; // key -> { out: movement, in: movement }
+    // Step A: Identify transfer-like groups (1:1 pairing, extras treated as normal)
+    const transferGroups = {}; // key -> { outs: [], ins: [] }
     movements.forEach(m => {
       if (isTransferLike(m.reference_type)) {
         const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
-        if (!transferPairs[key]) transferPairs[key] = {};
-        if (m.movement_type === 'OUT') transferPairs[key].out = m;
-        else if (m.movement_type === 'IN') transferPairs[key].in = m;
+        if (!transferGroups[key]) transferGroups[key] = { outs: [], ins: [] };
+        if (m.movement_type === 'OUT') transferGroups[key].outs.push(m);
+        else if (m.movement_type === 'IN') transferGroups[key].ins.push(m);
       }
     });
-    // Build set of transfer IN ids to skip (merged into the OUT row)
+    // Build 1:1 pairs; extra unpaired OUTs/INs stay as normal movements
+    const pairedIds = new Set();
     const skipIds = new Set();
-    Object.values(transferPairs).forEach(pair => {
-      if (pair.out && pair.in) skipIds.add(pair.in.id);
+    Object.values(transferGroups).forEach(group => {
+      const pairCount = Math.min(group.outs.length, group.ins.length);
+      for (let i = 0; i < pairCount; i++) {
+        pairedIds.add(group.outs[i].id);
+        pairedIds.add(group.ins[i].id);
+        skipIds.add(group.ins[i].id); // IN side merged into OUT row
+      }
     });
 
     // Step B: Build merged movement list
@@ -262,20 +279,21 @@ function BinCardPage() {
     movements.forEach(m => {
       if (skipIds.has(m.id)) return; // skip transfer IN (merged into OUT row)
       if (isTransferLike(m.reference_type)) {
-        const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
-        const pair = transferPairs[key] || {};
-        if (pair.out && pair.in) {
-          // Real transfer pair (OUT+IN) — merge as single transfer row
-          const transferQty = pair.out.quantity || 0;
+        if (pairedIds.has(m.id)) {
+          // OUT side of a paired transfer — merge with its IN counterpart
+          const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
+          const group = transferGroups[key];
+          const pairIdx = group.outs.indexOf(m);
+          const pairedIn = group.ins[pairIdx];
           merged.push({
             ...m,
             _is_transfer: true,
-            _transfer_qty: transferQty,
-            _from_warehouse_id: pair.out.warehouse_id,
-            _to_warehouse_id: pair.in.warehouse_id,
+            _transfer_qty: m.quantity || 0,
+            _from_warehouse_id: m.warehouse_id,
+            _to_warehouse_id: pairedIn ? pairedIn.warehouse_id : m.warehouse_id,
           });
         } else {
-          // Only OUT or only IN — treat as normal movement
+          // Unpaired extra (duplicate or incomplete) — treat as normal movement
           merged.push({ ...m, _is_transfer: false, _transfer_qty: 0 });
         }
       } else {

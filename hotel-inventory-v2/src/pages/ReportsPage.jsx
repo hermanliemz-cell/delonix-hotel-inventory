@@ -217,6 +217,34 @@ function ReportsPage() {
     return { totalValue: 0, totalItems: 0 };
   }, [reportType, arrData]);
 
+  // Purchase summary totals (computed unconditionally to follow hooks rules)
+  const purchaseTotals = useMemo(() => {
+    if (reportType !== 'purchase' || Array.isArray(data) || !data || !data.pos) {
+      return { totalPOValue: 0, totalPIValue: 0, posLen: 0, pisLen: 0 };
+    }
+    return {
+      totalPOValue: data.pos.reduce((s, r) => s + (r.total_amount || 0), 0),
+      totalPIValue: (data.pis || []).reduce((s, r) => s + (r.total_amount || 0), 0),
+      posLen: data.pos.length,
+      pisLen: (data.pis || []).length,
+    };
+  }, [reportType, data]);
+
+  // Linen summary totals (computed unconditionally to follow hooks rules)
+  const linenTotals = useMemo(() => {
+    if (reportType !== 'linen') {
+      return { totalStore: 0, totalRoom: 0, totalDirty: 0, totalLaundry: 0, totalDamage: 0, totalGrand: 0 };
+    }
+    return {
+      totalStore: arrData.reduce((s, r) => s + (r.store || 0), 0),
+      totalRoom: arrData.reduce((s, r) => s + (r.room || 0), 0),
+      totalDirty: arrData.reduce((s, r) => s + (r.dirty || 0), 0),
+      totalLaundry: arrData.reduce((s, r) => s + (r.laundry || 0), 0),
+      totalDamage: arrData.reduce((s, r) => s + (r.damage || 0), 0),
+      totalGrand: arrData.reduce((s, r) => s + (r.total || 0), 0),
+    };
+  }, [reportType, arrData]);
+
   // Report menu items
   const reportMenuItems = [
     { id: 'stock-in-rooms', label: 'Linen Stock in Room', desc: 'Laporan stok linen di setiap kamar, perbandingan qty aktual vs setup', icon: Icons.Building, color: 'purple' },
@@ -358,18 +386,14 @@ function ReportsPage() {
       )}
 
       {/* Purchase summary cards */}
-      {reportType === 'purchase' && !Array.isArray(data) && data.pos && useMemo(() => {
-        const totalPOValue = data.pos.reduce((s,r) => s+(r.total_amount||0), 0);
-        const totalPIValue = data.pis.reduce((s,r) => s+(r.total_amount||0), 0);
-        return (
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-            <StatCard title={t('reports.totalPO')} value={formatNumber(data.pos.length)} icon={Icons.ShoppingCart} color="blue" />
-            <StatCard title={t('reports.totalPOValue')} value={formatCurrency(totalPOValue)} icon={Icons.Database} color="green" />
-            <StatCard title={t('reports.totalPI')} value={formatNumber(data.pis.length)} icon={Icons.ClipboardList} color="purple" />
-            <StatCard title={t('reports.totalPIValue')} value={formatCurrency(totalPIValue)} icon={Icons.Database} color="orange" />
-          </div>
-        );
-      }, [data.pos, data.pis, t])}
+      {reportType === 'purchase' && !Array.isArray(data) && data.pos && (
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+          <StatCard title={t('reports.totalPO')} value={formatNumber(purchaseTotals.posLen)} icon={Icons.ShoppingCart} color="blue" />
+          <StatCard title={t('reports.totalPOValue')} value={formatCurrency(purchaseTotals.totalPOValue)} icon={Icons.Database} color="green" />
+          <StatCard title={t('reports.totalPI')} value={formatNumber(purchaseTotals.pisLen)} icon={Icons.ClipboardList} color="purple" />
+          <StatCard title={t('reports.totalPIValue')} value={formatCurrency(purchaseTotals.totalPIValue)} icon={Icons.Database} color="orange" />
+        </div>
+      )}
 
       {/* Report data tables */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -447,42 +471,32 @@ function ReportsPage() {
         {reportType === 'linen' && (
           <div>
             {/* Linen Summary */}
-            {useMemo(() => {
-              const totalStore = arrData.reduce((s,r) => s + r.store, 0);
-              const totalRoom = arrData.reduce((s,r) => s + r.room, 0);
-              const totalDirty = arrData.reduce((s,r) => s + r.dirty, 0);
-              const totalLaundry = arrData.reduce((s,r) => s + r.laundry, 0);
-              const totalDamage = arrData.reduce((s,r) => s + r.damage, 0);
-              const totalGrand = arrData.reduce((s,r) => s + r.total, 0);
-              return (
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 p-4 border-b border-gray-100">
-                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-green-600 font-medium">HK Store (Bersih)</div>
-                    <div className="text-lg font-bold text-green-700">{totalStore}</div>
-                  </div>
-                  <div className="bg-purple-50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-purple-600 font-medium">In Room</div>
-                    <div className="text-lg font-bold text-purple-700">{totalRoom}</div>
-                  </div>
-                  <div className="bg-orange-50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-orange-600 font-medium">Dirty</div>
-                    <div className="text-lg font-bold text-orange-700">{totalDirty}</div>
-                  </div>
-                  <div className="bg-cyan-50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-cyan-600 font-medium">In Laundry</div>
-                    <div className="text-lg font-bold text-cyan-700">{totalLaundry}</div>
-                  </div>
-                  <div className="bg-red-50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-red-600 font-medium">Damaged</div>
-                    <div className="text-lg font-bold text-red-700">{totalDamage}</div>
-                  </div>
-                  <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-blue-600 font-medium">Grand Total</div>
-                    <div className="text-lg font-bold text-blue-700">{totalGrand}</div>
-                  </div>
-                </div>
-              );
-            }, [arrData])}
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 p-4 border-b border-gray-100">
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-green-600 font-medium">HK Store (Bersih)</div>
+                <div className="text-lg font-bold text-green-700">{linenTotals.totalStore}</div>
+              </div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-purple-600 font-medium">In Room</div>
+                <div className="text-lg font-bold text-purple-700">{linenTotals.totalRoom}</div>
+              </div>
+              <div className="bg-orange-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-orange-600 font-medium">Dirty</div>
+                <div className="text-lg font-bold text-orange-700">{linenTotals.totalDirty}</div>
+              </div>
+              <div className="bg-cyan-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-cyan-600 font-medium">In Laundry</div>
+                <div className="text-lg font-bold text-cyan-700">{linenTotals.totalLaundry}</div>
+              </div>
+              <div className="bg-red-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-red-600 font-medium">Damaged</div>
+                <div className="text-lg font-bold text-red-700">{linenTotals.totalDamage}</div>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-blue-600 font-medium">Grand Total</div>
+                <div className="text-lg font-bold text-blue-700">{linenTotals.totalGrand}</div>
+              </div>
+            </div>
             {/* Linen Table */}
             {loading ? (
               <PageLoader />
@@ -520,27 +534,16 @@ function ReportsPage() {
                     ))}
                   </tbody>
                   <tfoot>
-                    {useMemo(() => {
-                      const footerStore = arrData.reduce((s,r) => s + r.store, 0);
-                      const footerRoom = arrData.reduce((s,r) => s + r.room, 0);
-                      const footerDirty = arrData.reduce((s,r) => s + r.dirty, 0);
-                      const footerLaundry = arrData.reduce((s,r) => s + r.laundry, 0);
-                      const footerDamage = arrData.reduce((s,r) => s + r.damage, 0);
-                      const footerTotal = arrData.reduce((s,r) => s + r.total, 0);
-                      const footerValue = arrData.reduce((s,r) => s + r.totalValue, 0);
-                      return (
-                        <tr className="bg-gray-100 border-t-2 border-gray-200 font-bold">
-                          <td colSpan={2} className="px-4 py-3 text-sm text-gray-700">TOTAL</td>
-                          <td className="px-3 py-3 text-center text-sm text-green-700 bg-green-50">{footerStore}</td>
-                          <td className="px-3 py-3 text-center text-sm text-purple-700 bg-purple-50">{footerRoom}</td>
-                          <td className="px-3 py-3 text-center text-sm text-orange-700 bg-orange-50">{footerDirty}</td>
-                          <td className="px-3 py-3 text-center text-sm text-cyan-700 bg-cyan-50">{footerLaundry}</td>
-                          <td className="px-3 py-3 text-center text-sm text-red-700 bg-red-50">{footerDamage}</td>
-                          <td className="px-3 py-3 text-center text-sm text-blue-700 bg-blue-50">{footerTotal}</td>
-                          <td className="px-4 py-3 text-right text-sm text-gray-700">{formatCurrency(Math.round(footerValue))}</td>
-                        </tr>
-                      );
-                    }, [arrData])}
+                    <tr className="bg-gray-100 border-t-2 border-gray-200 font-bold">
+                      <td colSpan={2} className="px-4 py-3 text-sm text-gray-700">TOTAL</td>
+                      <td className="px-3 py-3 text-center text-sm text-green-700 bg-green-50">{linenTotals.totalStore}</td>
+                      <td className="px-3 py-3 text-center text-sm text-purple-700 bg-purple-50">{linenTotals.totalRoom}</td>
+                      <td className="px-3 py-3 text-center text-sm text-orange-700 bg-orange-50">{linenTotals.totalDirty}</td>
+                      <td className="px-3 py-3 text-center text-sm text-cyan-700 bg-cyan-50">{linenTotals.totalLaundry}</td>
+                      <td className="px-3 py-3 text-center text-sm text-red-700 bg-red-50">{linenTotals.totalDamage}</td>
+                      <td className="px-3 py-3 text-center text-sm text-blue-700 bg-blue-50">{linenTotals.totalGrand}</td>
+                      <td className="px-4 py-3 text-right text-sm text-gray-700">{formatCurrency(Math.round(arrData.reduce((s,r) => s + (r.totalValue || 0), 0)))}</td>
+                    </tr>
                   </tfoot>
                 </table>
               </div>

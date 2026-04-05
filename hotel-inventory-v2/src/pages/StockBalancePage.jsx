@@ -83,25 +83,38 @@ function StockBalancePage() {
     // Load warehouses
     const { data: whData } = await supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name');
     setBincardWarehouses(whData || []);
-    // Load movements (exclude transfer/laundry — internal warehouse movements)
-    const { data } = await supabase.from('stock_movements')
-      .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
-      .eq('organization_id', selectedOrg.id).eq('item_id', itemId)
-      .order('created_at', { ascending: true }).limit(10000);
-    setBincardMovements(data || []);
+    // Load movements — paginate untuk lewati cap 1000 rows default Supabase
+    const allMovs = await fetchAllBincardMovements(selectedOrg.id, itemId, null);
+    setBincardMovements(allMovs);
     setBincardLoading(false);
+  }
+
+  // Helper: paginate fetch untuk bypass limit 1000 rows per-request Supabase
+  async function fetchAllBincardMovements(orgId, itemId, whId) {
+    const PAGE = 1000;
+    let all = [];
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      let q = supabase.from('stock_movements')
+        .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
+        .eq('organization_id', orgId).eq('item_id', itemId);
+      if (whId) q = q.eq('warehouse_id', whId);
+      const { data, error } = await q.order('created_at', { ascending: true }).range(from, from + PAGE - 1);
+      if (error || !data) break;
+      all = all.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+      if (from >= 50000) break; // safety guard
+    }
+    return all;
   }
 
   async function reloadBincardMovements(whId) {
     if (!bincardItem) return;
     setBincardLoading(true);
-    let query = supabase.from('stock_movements')
-      .select('*, items(code, name, category_id, units:unit_id(abbreviation)), departments!left(code), users:created_by(username, full_name)')
-      .eq('organization_id', selectedOrg.id).eq('item_id', bincardItem.id)
-      .order('created_at', { ascending: true }).limit(10000);
-    if (whId) query = query.eq('warehouse_id', whId);
-    const { data } = await query;
-    setBincardMovements(data || []);
+    const allMovs = await fetchAllBincardMovements(selectedOrg.id, bincardItem.id, whId || null);
+    setBincardMovements(allMovs);
     setBincardLoading(false);
   }
 
@@ -129,97 +142,14 @@ function StockBalancePage() {
     if (!(await showConfirm('Reconcile akan menghitung ulang semua saldo stok dari data mutasi (stock movements) dan memperbaiki selisih. Lanjutkan?', { variant: 'warning' }))) return;
     setReconciling(true);
     try {
-      // Step 1: Get true avg_cost per item from OPENING_BALANCE
-      const { data: obData } = await supabase.from('stock_movements')
-        .select('item_id, unit_cost')
-        .eq('organization_id', selectedOrg.id)
-        .eq('reference_type', 'OPENING_BALANCE')
-        .eq('movement_type', 'IN');
-      const itemTrueCost = {};
-      (obData || []).forEach(m => {
-        if (!itemTrueCost[m.item_id]) itemTrueCost[m.item_id] = parseFloat(m.unit_cost) || 0;
+      // Fase 6: delegasi ke DB RPC inventory.run_reconciliation (server-side, aman dari race condition).
+      const { data, error } = await supabase.rpc('run_reconciliation', {
+        p_organization_id: selectedOrg.id,
       });
-
-      // Step 2: Get all stock_movements (paginated)
-      let allMov = [];
-      let offset = 0;
-      while (true) {
-        const { data: page } = await supabase.from('stock_movements')
-          .select('item_id, warehouse_id, movement_type, quantity')
-          .eq('organization_id', selectedOrg.id)
-          .range(offset, offset + 999);
-        allMov = allMov.concat(page || []);
-        if (!page || page.length < 1000) break;
-        offset += 1000;
-      }
-
-      // Step 3: Calculate net qty per item+warehouse from movements (bin card)
-      const binCard = {};
-      allMov.forEach(m => {
-        const k = m.item_id + '|' + m.warehouse_id;
-        if (!binCard[k]) binCard[k] = { item_id: m.item_id, warehouse_id: m.warehouse_id, net: 0 };
-        binCard[k].net += (m.movement_type === 'IN' ? 1 : -1) * parseFloat(m.quantity);
-      });
-
-      // Step 4: Get all stock_balance records (paginated)
-      let allSB = [];
-      offset = 0;
-      while (true) {
-        const { data: page } = await supabase.from('stock_balance')
-          .select('id, item_id, warehouse_id, quantity, avg_cost, total_value')
-          .eq('organization_id', selectedOrg.id)
-          .range(offset, offset + 999);
-        allSB = allSB.concat(page || []);
-        if (!page || page.length < 1000) break;
-        offset += 1000;
-      }
-      const sbMap = {};
-      allSB.forEach(r => { sbMap[r.item_id + '|' + r.warehouse_id] = r; });
-
-      // Step 5: Find and fix discrepancies
-      const corrections = [];
-      const allKeys = new Set([...Object.keys(binCard), ...Object.keys(sbMap)]);
-      for (const k of allKeys) {
-        const bc = binCard[k];
-        const sb = sbMap[k];
-        const correctQty = bc ? Math.max(0, bc.net) : 0;
-        const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
-        const itemId = bc?.item_id || sb?.item_id;
-        const whId = bc?.warehouse_id || sb?.warehouse_id;
-        const trueCost = itemTrueCost[itemId];
-        const correctAvg = trueCost !== undefined ? trueCost : (sb ? parseFloat(sb.avg_cost) || 0 : 0);
-        const currentAvg = sb ? parseFloat(sb.avg_cost) || 0 : 0;
-        const correctTotal = correctQty * correctAvg;
-
-        if (Math.abs(currentQty - correctQty) > 0.001 || Math.abs(currentAvg - correctAvg) > 0.01) {
-          if (sb) {
-            await supabase.from('stock_balance').update({
-              quantity: correctQty, avg_cost: correctAvg, total_value: correctTotal,
-              updated_at: new Date().toISOString(),
-            }).eq('id', sb.id);
-          }
-          corrections.push({
-            item_id: itemId, old_qty: currentQty, new_qty: correctQty,
-            diff: correctQty - currentQty, old_avg_cost: currentAvg, new_avg_cost: correctAvg,
-          });
-        }
-      }
-
-      // Step 6: Get item names for display
-      if (corrections.length > 0) {
-        const itemIds = [...new Set(corrections.map(c => c.item_id))];
-        const { data: items } = await supabase.from('items').select('id, code, name').in('id', itemIds);
-        const itemMap = {};
-        (items || []).forEach(i => { itemMap[i.id] = i; });
-        const details = corrections.map(d => {
-          const it = itemMap[d.item_id];
-          let line = `${it?.code || d.item_id.substring(0,8)} ${(it?.name || '').substring(0,30)} | Qty: ${d.old_qty} → ${d.new_qty} (${d.diff > 0 ? '+' : ''}${d.diff})`;
-          if (d.old_avg_cost !== d.new_avg_cost) {
-            line += ` | Avg: ${Math.round(d.old_avg_cost).toLocaleString('id-ID')} → ${Math.round(d.new_avg_cost).toLocaleString('id-ID')}`;
-          }
-          return line;
-        }).join('\n');
-        showNotification(`Reconcile selesai! ${corrections.length} item dikoreksi.\n${details}`, 'success');
+      if (error) throw error;
+      const count = Array.isArray(data) ? data.length : (typeof data === 'number' ? data : 0);
+      if (count > 0) {
+        showNotification(`Reconcile selesai! ${count} item dikoreksi.`, 'success');
       } else {
         showNotification('Semua saldo sudah sinkron, tidak ada koreksi diperlukan.', 'info');
       }
@@ -388,14 +318,13 @@ function StockBalancePage() {
         const breakdown = locationItem._whBreakdown || [];
         const roomRows = breakdown.filter(wh => wh.warehouse_type === 'room');
         const nonRoomRows = breakdown.filter(wh => wh.warehouse_type !== 'room');
-        const { roomTotalQty, roomTotalValue, roomAvgCost, grandTotalQty, grandTotalValue } = useMemo(() => {
-          const rtq = roomRows.reduce((s, wh) => s + wh.quantity, 0);
-          const rtv = roomRows.reduce((s, wh) => s + wh.total_value, 0);
-          const rac = rtq > 0 ? rtv / rtq : 0;
-          const gtq = breakdown.reduce((s, wh) => s + wh.quantity, 0);
-          const gtv = breakdown.reduce((s, wh) => s + wh.total_value, 0);
-          return { roomTotalQty: rtq, roomTotalValue: rtv, roomAvgCost: rac, grandTotalQty: gtq, grandTotalValue: gtv };
-        }, [breakdown, roomRows]);
+        // NOTE: jangan pakai useMemo di sini — ini IIFE conditional, hook akan bikin
+        // "Rendered more hooks than during the previous render" saat modal dibuka/ditutup.
+        const roomTotalQty = roomRows.reduce((s, wh) => s + wh.quantity, 0);
+        const roomTotalValue = roomRows.reduce((s, wh) => s + wh.total_value, 0);
+        const roomAvgCost = roomTotalQty > 0 ? roomTotalValue / roomTotalQty : 0;
+        const grandTotalQty = breakdown.reduce((s, wh) => s + wh.quantity, 0);
+        const grandTotalValue = breakdown.reduce((s, wh) => s + wh.total_value, 0);
         return (
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-8" onClick={() => setLocationItem(null)}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[700px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -484,36 +413,45 @@ function StockBalancePage() {
           const tz = window.__systemSettings?.timezone || 'Asia/Bangkok';
           return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(utcStr));
         }
-        // Identify transfer-like pairs and merge
+        // Identify transfer-like pairs and merge (1:1 pairing, extras treated as normal)
         const bcIsTransferLike = (refType) => ['TRANSFER', 'MAKEUP-LINEN REPLACE', 'MAKEUP-DIRTY', 'DAMAGE'].includes(refType);
-        const bcTransferPairs = {};
+        // Collect ALL outs and ins per key (not just last one)
+        const bcTransferGroups = {};
         bincardMovements.forEach(m => {
           if (bcIsTransferLike(m.reference_type)) {
             const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
-            if (!bcTransferPairs[key]) bcTransferPairs[key] = {};
-            if (m.movement_type === 'OUT') bcTransferPairs[key].out = m;
-            else if (m.movement_type === 'IN') bcTransferPairs[key].in = m;
+            if (!bcTransferGroups[key]) bcTransferGroups[key] = { outs: [], ins: [] };
+            if (m.movement_type === 'OUT') bcTransferGroups[key].outs.push(m);
+            else if (m.movement_type === 'IN') bcTransferGroups[key].ins.push(m);
           }
         });
+        // Build 1:1 pairs; extra unpaired OUTs/INs stay as normal movements
+        const bcPairedIds = new Set();
         const bcSkipIds = new Set();
-        Object.values(bcTransferPairs).forEach(pair => {
-          if (pair.out && pair.in) bcSkipIds.add(pair.in.id);
+        Object.values(bcTransferGroups).forEach(group => {
+          const pairCount = Math.min(group.outs.length, group.ins.length);
+          for (let i = 0; i < pairCount; i++) {
+            bcPairedIds.add(group.outs[i].id);
+            bcPairedIds.add(group.ins[i].id);
+            bcSkipIds.add(group.ins[i].id); // IN side merged into OUT row
+          }
         });
         const bcMerged = [];
         bincardMovements.forEach(m => {
           if (bcSkipIds.has(m.id)) return;
           if (bcIsTransferLike(m.reference_type)) {
-            const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
-            const pair = bcTransferPairs[key] || {};
-            if (pair.out && pair.in) {
-              // Real transfer pair (OUT+IN) — merge as single transfer row
-              const transferQty = pair.out.quantity || 0;
-              bcMerged.push({ ...m, _is_transfer: true, _transfer_qty: transferQty,
-                _from_wh: pair.out.warehouse_id,
-                _to_wh: pair.in.warehouse_id,
+            if (bcPairedIds.has(m.id)) {
+              // OUT side of a paired transfer — merge with its IN counterpart
+              const key = m.reference_number + '|' + m.item_id + '|' + m.reference_type;
+              const group = bcTransferGroups[key];
+              const pairIdx = group.outs.indexOf(m);
+              const pairedIn = group.ins[pairIdx];
+              bcMerged.push({ ...m, _is_transfer: true, _transfer_qty: m.quantity || 0,
+                _from_wh: m.warehouse_id,
+                _to_wh: pairedIn ? pairedIn.warehouse_id : m.warehouse_id,
               });
             } else {
-              // Only OUT or only IN (e.g. amenity consume) — treat as normal movement
+              // Unpaired extra (duplicate or incomplete) — treat as normal movement
               bcMerged.push({ ...m, _is_transfer: false, _transfer_qty: 0 });
             }
           } else {
@@ -549,11 +487,10 @@ function StockBalancePage() {
           if (bcDateRange.to && ld > bcDateRange.to) return false;
           return true;
         });
-        const { bcTotalIn, bcTotalOut } = useMemo(() => {
-          const bti = bcFiltered.filter(m => m.movement_type === 'IN' && !m._is_transfer).reduce((s, m) => s + (m.quantity || 0), 0);
-          const bto = bcFiltered.filter(m => m.movement_type === 'OUT' && !m._is_transfer).reduce((s, m) => s + (m.quantity || 0), 0);
-          return { bcTotalIn: bti, bcTotalOut: bto };
-        }, [bcFiltered]);
+        // NOTE: jangan pakai useMemo di sini — ini IIFE conditional, hook akan bikin
+        // "Rendered more hooks than during the previous render" saat modal dibuka/ditutup.
+        const bcTotalIn = bcFiltered.filter(m => m.movement_type === 'IN' && !m._is_transfer).reduce((s, m) => s + (m.quantity || 0), 0);
+        const bcTotalOut = bcFiltered.filter(m => m.movement_type === 'OUT' && !m._is_transfer).reduce((s, m) => s + (m.quantity || 0), 0);
         // Beginning = balance of last row before filtered range
         const bcBeginning = (() => {
           if (!bcDateRange.from) return 0;

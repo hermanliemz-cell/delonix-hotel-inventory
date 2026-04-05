@@ -10,6 +10,7 @@ import { DataTable } from '../components/DataTable';
 import { Button, Badge } from '../components/FormElements';
 import { FormField } from '../components/FormField';
 import { PageLoader } from '../components/PageLoader';
+import { recordMovement, deleteMovementsByRef } from '../services/stockService.js';
 
 // Helper function to check period lock
 async function checkPeriodLock(orgId, docDate) {
@@ -165,16 +166,21 @@ function ApprovalPage() {
           if (sbData && sbData.length > 0) {
             const sb = sbData[0];
             const avgCost = parseFloat(sb.total_value) / parseFloat(sb.quantity) || 0;
-            // Create stock movement — stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
-            await supabase.from('stock_movements').insert({
-              organization_id: selectedOrg.id, item_id: wi.item_id,
-              warehouse_id: sb.warehouse_id, movement_type: 'OUT',
-              quantity: qty, unit_cost: avgCost, total_cost: qty * avgCost,
-              reference_type: 'WRITEOFF', reference_number: item._number,
-              department_id: item.department_id || null,
+            // Create stock movement via RPC (Fase 6)
+            const { error: mvErr } = await recordMovement({
+              organizationId: selectedOrg.id,
+              itemId: wi.item_id,
+              warehouseId: sb.warehouse_id,
+              movementType: 'OUT',
+              quantity: qty,
+              referenceType: 'WRITEOFF',
+              referenceNumber: item._number,
+              referenceId: item.id,
+              unitCost: avgCost,
+              departmentId: item.department_id || null,
               notes: wi.notes || 'Write-off',
-              created_by: currentUser?.id,
             });
+            if (mvErr) throw mvErr;
           }
         }
       } catch (e) { }
@@ -293,17 +299,13 @@ function ApprovalPage() {
     if (item._type === 'DIRECT_PURCHASE' && item.status === 'CONFIRMED') {
       if (!(await showConfirm(`Revoke ${item._number}? Stok akan dikembalikan.`, { variant: 'danger' }))) return;
       try {
-        // Load DP items
-        const { data: dpItems } = await supabase.from('direct_purchase_items').select('*').eq('direct_purchase_id', item.id);
-        for (const di of (dpItems || [])) {
-          const qty = parseFloat(di.quantity);
-          if (qty <= 0) continue;
-          // Delete movements — stock_balance is reversed atomically by DB trigger: trg_stock_movements_after_delete
-          await supabase.from('stock_movements').delete()
-            .eq('reference_type', 'DIRECT_PURCHASE')
-            .eq('reference_number', item._number)
-            .eq('item_id', di.item_id);
-        }
+        // Delete all movements untuk DP ini via RPC (trigger auto-revert stock_balance)
+        const { error: delErr } = await deleteMovementsByRef({
+          organizationId: selectedOrg.id,
+          referenceType: 'DIRECT_PURCHASE',
+          referenceId: item.id,
+        });
+        if (delErr) throw delErr;
         await supabase.from('direct_purchases').update({
           status: 'APPROVED', confirmed_by: null, confirmed_at: null,
           updated_at: new Date().toISOString(),
@@ -338,15 +340,13 @@ function ApprovalPage() {
     if (item._type === 'WRITEOFF' && item.status === 'APPROVED') {
       if (!(await showConfirm(`Revoke ${item._number}? Stok akan dikembalikan.`, { variant: 'danger' }))) return;
       try {
-        const { data: woItems } = await supabase.from('write_off_items').select('*').eq('wo_id', item.id);
-        for (const wi of (woItems || [])) {
-          const qty = parseFloat(wi.quantity);
-          if (qty <= 0) continue;
-          // Delete movements — stock_balance is reversed atomically by DB trigger: trg_stock_movements_after_delete
-          await supabase.from('stock_movements').delete()
-            .eq('reference_type', 'WRITEOFF').eq('reference_number', item._number)
-            .eq('item_id', wi.item_id);
-        }
+        // Delete all WRITEOFF movements via RPC (trigger auto-revert stock_balance)
+        const { error: delErr } = await deleteMovementsByRef({
+          organizationId: selectedOrg.id,
+          referenceType: 'WRITEOFF',
+          referenceId: item.id,
+        });
+        if (delErr) throw delErr;
         await supabase.from('write_offs').update({
           status: 'PENDING', approved_by: null, approved_at: null,
           updated_at: new Date().toISOString(),

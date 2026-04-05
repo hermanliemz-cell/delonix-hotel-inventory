@@ -2,7 +2,7 @@ import React, {useState, useEffect, useMemo} from 'react';
 import { supabase } from '../services/supabase.js';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
-import { getBalanceAfter } from '../utils/stock.js';
+import { recordMovement, recordTransfer } from '../services/stockService.js';
 import { Button, Input, Select, Badge } from '../components/FormElements';
 import { FormField } from '../components/FormField';
 import { Icons } from '../components/Icons';
@@ -11,6 +11,7 @@ import { Modal } from '../components/Modal';
 import { TreeSelect } from '../components/TreeSelect';
 import { SearchableItemSelect } from '../components/SearchableItemSelect';
 import { PageLoader } from '../components/PageLoader';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 
 function InUseWarehousePage() {
   const { t } = useTranslation();
@@ -257,27 +258,21 @@ function InUseWarehousePage() {
         // Update unit_cost in transfer items
         await supabase.from('in_use_transfer_items').update({ unit_cost: unitCost, total_cost: totalCost }).eq('transfer_id', tr.id).eq('item_id', item.item_id);
 
-        // OUT from source warehouse
-        const outBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.from_warehouse_id,
-          movement_type: 'OUT', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
-          balance_after: outBal, reference_type: 'IU-TRANSFER', reference_number: tr.transfer_number,
-          notes: `Transfer to In-Use Warehouse`, created_by: currentUser?.id || null,
-          department_id: currentUser?.department_id || null,
+        // Atomic OUT+IN via RPC (Fase 6)
+        const { error: trErr } = await recordTransfer({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          sourceWarehouseId: tr.from_warehouse_id,
+          destWarehouseId: inUseWarehouse.id,
+          quantity: qty,
+          referenceType: 'IU-TRANSFER',
+          referenceNumber: tr.transfer_number,
+          referenceId: tr.id,
+          unitCost: unitCost,
+          departmentId: currentUser?.department_id || null,
+          notes: `Transfer ${tr.from_wh?.code || 'warehouse'} → In-Use`,
         });
-
-        // IN to in-use warehouse
-        const inBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id,
-          movement_type: 'IN', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
-          balance_after: inBal, reference_type: 'IU-TRANSFER', reference_number: tr.transfer_number,
-          notes: `Transfer from ${tr.from_wh?.code || 'warehouse'}`, created_by: currentUser?.id || null,
-          department_id: currentUser?.department_id || null,
-        });
-
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        if (trErr) throw trErr;
       }
 
       await supabase.from('in_use_transfers').update({
@@ -312,27 +307,21 @@ function InUseWarehousePage() {
           setSaving(false); return;
         }
 
-        // Reverse: IN back to source warehouse
-        const revInBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.from_warehouse_id,
-          movement_type: 'IN', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
-          balance_after: revInBal, reference_type: 'IU-TRANSFER-REV', reference_number: tr.transfer_number,
-          notes: `Revoke: return from In-Use Warehouse`, created_by: currentUser?.id || null,
-          department_id: currentUser?.department_id || null,
+        // Atomic reverse: OUT dari in-use + IN kembali ke source via RPC (Fase 6)
+        const { error: revErr } = await recordTransfer({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          sourceWarehouseId: inUseWarehouse.id,
+          destWarehouseId: tr.from_warehouse_id,
+          quantity: qty,
+          referenceType: 'IU-TRANSFER-REV',
+          referenceNumber: tr.transfer_number,
+          referenceId: tr.id,
+          unitCost: unitCost,
+          departmentId: currentUser?.department_id || null,
+          notes: `Revoke: return In-Use → ${tr.from_wh?.code || 'warehouse'}`,
         });
-
-        // Reverse: OUT from in-use warehouse
-        const revOutBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id,
-          movement_type: 'OUT', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
-          balance_after: revOutBal, reference_type: 'IU-TRANSFER-REV', reference_number: tr.transfer_number,
-          notes: `Revoke: return to ${tr.from_wh?.code || 'warehouse'}`, created_by: currentUser?.id || null,
-          department_id: currentUser?.department_id || null,
-        });
-
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        if (revErr) throw revErr;
       }
 
       await supabase.from('in_use_transfers').update({
@@ -464,17 +453,21 @@ function InUseWarehousePage() {
         // Update deplete item costs
         await supabase.from('in_use_deplete_items').update({ unit_cost: unitCost, total_cost: totalCost }).eq('deplete_id', dp.id).eq('item_id', item.item_id);
 
-        // Stock movement OUT from in-use warehouse
-        const outBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'OUT', qty);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id,
-          movement_type: 'OUT', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
-          balance_after: outBal, reference_type: 'DEPLETED', reference_number: dp.deplete_number,
-          notes: `Depleted from In-Use Warehouse`, created_by: currentUser?.id || null,
-          department_id: currentUser?.department_id || null,
+        // Stock movement OUT dari in-use warehouse via RPC (Fase 6)
+        const { error: outErr } = await recordMovement({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          warehouseId: inUseWarehouse.id,
+          movementType: 'OUT',
+          quantity: qty,
+          referenceType: 'DEPLETED',
+          referenceNumber: dp.deplete_number,
+          referenceId: dp.id,
+          unitCost: unitCost,
+          departmentId: currentUser?.department_id || null,
+          notes: 'Depleted from In-Use Warehouse',
         });
-
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        if (outErr) throw outErr;
       }
 
       await supabase.from('in_use_depletes').update({
@@ -500,17 +493,21 @@ function InUseWarehousePage() {
         const unitCost = parseFloat(item.unit_cost) || 0;
         const totalCost = qty * unitCost;
 
-        // Reverse: IN back to in-use warehouse
-        const inBal = await getBalanceAfter(selectedOrg.id, item.item_id, 'IN', qty);
-        await supabase.from('stock_movements').insert({
-          organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id,
-          movement_type: 'IN', quantity: qty, unit_cost: unitCost, total_cost: totalCost,
-          balance_after: inBal, reference_type: 'DEPLETED-REV', reference_number: dp.deplete_number,
-          notes: `Revoke deplete: returned to In-Use Warehouse`, created_by: currentUser?.id || null,
-          department_id: currentUser?.department_id || null,
+        // Reverse: IN back to in-use warehouse via RPC (Fase 6)
+        const { error: revErr } = await recordMovement({
+          organizationId: selectedOrg.id,
+          itemId: item.item_id,
+          warehouseId: inUseWarehouse.id,
+          movementType: 'IN',
+          quantity: qty,
+          referenceType: 'DEPLETED-REV',
+          referenceNumber: dp.deplete_number,
+          referenceId: dp.id,
+          unitCost: unitCost,
+          departmentId: currentUser?.department_id || null,
+          notes: 'Revoke deplete: returned to In-Use Warehouse',
         });
-
-        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        if (revErr) throw revErr;
       }
 
       await supabase.from('in_use_depletes').update({
@@ -827,8 +824,8 @@ function InUseWarehousePage() {
                           onChange={v => updateTfItem(idx, 'item_id', v)} placeholder="Pilih item..." />
                       </td>
                       <td className="px-3 py-2">
-                        <Input type="number" min="1" value={row.quantity}
-                          onChange={e => updateTfItem(idx, 'quantity', e.target.value)} placeholder="Qty" />
+                        <Input {...intQtyInputProps} value={row.quantity}
+                          onChange={e => updateTfItem(idx, 'quantity', toIntQty(e.target.value))} placeholder="Qty" />
                       </td>
                       <td className="px-3 py-2 text-center">
                         {tfForm.items.length > 1 && (
@@ -934,8 +931,8 @@ function InUseWarehousePage() {
                         </td>
                         <td className="px-3 py-2 text-center font-medium text-gray-500">{avail ? avail.maxQty : '-'}</td>
                         <td className="px-3 py-2">
-                          <Input type="number" min="1" max={avail?.maxQty || 9999} value={row.quantity}
-                            onChange={e => updateDpItem(idx, 'quantity', e.target.value)} placeholder="Qty" />
+                          <Input {...intQtyInputProps} max={avail?.maxQty || 9999} value={row.quantity}
+                            onChange={e => updateDpItem(idx, 'quantity', toIntQty(e.target.value))} placeholder="Qty" />
                         </td>
                         <td className="px-3 py-2 text-center">
                           {dpForm.items.length > 1 && (

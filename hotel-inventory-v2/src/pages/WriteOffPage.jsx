@@ -12,6 +12,7 @@ import { FormField } from '../components/FormField';
 import { Badge } from '../components/Badge';
 import { StatusBadge } from '../components/StatusBadge';
 import { PageLoader } from '../components/PageLoader';
+import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 
 function WriteOffPage() {
   const { selectedOrg, showNotification, showConfirm, currentUser } = useApp();
@@ -283,8 +284,8 @@ function WriteOffPage() {
                       )}
                     </div>
                   </td>
-                  <td className="p-2"><input type="number" value={line.quantity} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value)||0)}
-                    className="w-full px-2 py-1 border rounded text-sm text-right" min="1" /></td>
+                  <td className="p-2"><input {...intQtyInputProps} value={line.quantity} onChange={e => updateLine(idx, 'quantity', toIntQty(e.target.value))}
+                    className="w-full px-2 py-1 border rounded text-sm text-right" /></td>
                   <td className="p-2">
                     <select value={line.reason} onChange={e => updateLine(idx, 'reason', e.target.value)}
                       className="w-full px-2 py-1 border rounded text-sm">
