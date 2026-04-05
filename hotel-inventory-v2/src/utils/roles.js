@@ -5,11 +5,11 @@ export const ROLE_PAGE_ACCESS = {
   superadmin: '*', // all pages
   gm: '*',
   warehouse: ['dashboard','items','categories','vendors','warehouses','stock','movements','pr','po','pi','gr','transfer','direct-purchase','opening-balance','writeoff','opname','single-usage','in-use-warehouse','reports','change-password'],
-  housekeeping: ['dashboard','items','room-makeup-new','room-consumption','item-lost-in-room','rmu-activity-history','room-additional-request','rooms','room-types','bed-formations','in-use-warehouse','single-usage','movements','change-password'],
+  housekeeping: ['dashboard','items','room-makeup-new','worksheet','room-consumption','item-lost-in-room','rmu-activity-history','room-additional-request','rooms','room-types','bed-formations','in-use-warehouse','single-usage','movements','change-password'],
   engineering: ['dashboard','items','stock','movements','pr','single-usage','in-use-warehouse','change-password'],
   fnb: ['dashboard','items','stock','movements','pr','single-usage','in-use-warehouse','change-password'],
   frontoffice: ['dashboard','rooms','room-types','stock','movements','change-password'],
-  opdir: ['dashboard','items','stock','movements','reports','rooms','room-makeup-new','room-consumption','item-lost-in-room','rmu-activity-history','room-additional-request','pr','po','pi','gr','transfer','opname','hotels','change-password'],
+  opdir: ['dashboard','items','stock','movements','reports','rooms','room-makeup-new','worksheet','room-consumption','item-lost-in-room','rmu-activity-history','room-additional-request','pr','po','pi','gr','transfer','opname','hotels','change-password'],
   branddir: ['dashboard','items','stock','movements','reports','hotels','change-password'],
   finhotel: ['dashboard','stock','movements','reports','pi','opname','writeoff','adjustment','hotels','change-password'],
   findir: ['dashboard','stock','movements','reports','pi','hotels','approval','opname','adjustment','change-password'],

@@ -48,6 +48,7 @@ const RoleManagementPage = lazy(() => import('./pages/RoleManagementPage.jsx'));
 const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage.jsx'));
 const CronJobsPage = lazy(() => import('./pages/CronJobsPage.jsx'));
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage.jsx'));
+const WorksheetPage = lazy(() => import('./pages/WorksheetPage.jsx'));
 
 // Route-to-pageId mapping for access control
 const ROUTE_PAGE_MAP = {
@@ -89,6 +90,7 @@ const ROUTE_PAGE_MAP = {
   '/system-settings': 'system-settings',
   '/cron-jobs': 'cron-jobs',
   '/change-password': 'change-password',
+  '/worksheet': 'worksheet',
 };
 
 // ============================================================
@@ -343,6 +345,7 @@ function MainLayout() {
       ]},
       { type: 'group', label: 'HOUSEKEEPING', icon: Icons.ClipboardList, children: [
         { id: 'room-makeup-new', label: t('menu.roomMakeupNew'), icon: Icons.ClipboardList },
+        { id: 'worksheet', label: 'Worksheet', icon: Icons.ClipboardList },
         { id: 'laundry', label: 'Laundry', icon: Icons.Truck },
         { id: 'room-consumption', label: 'Room Consumption', icon: Icons.Package },
         { id: 'item-lost-in-room', label: 'Item Lost in Room', icon: Icons.Trash },
@@ -610,6 +613,7 @@ function MainLayout() {
                   <Route path="/bed-formations" element={<ProtectedRoute pageId="bed-formations"><BedFormationsPage /></ProtectedRoute>} />
                   <Route path="/rooms" element={<ProtectedRoute pageId="rooms"><RoomsPage /></ProtectedRoute>} />
                   <Route path="/room-makeup-new" element={<ProtectedRoute pageId="room-makeup-new"><RoomMakeUpPageNew /></ProtectedRoute>} />
+                  <Route path="/worksheet" element={<ProtectedRoute pageId="worksheet"><WorksheetPage /></ProtectedRoute>} />
                   <Route path="/opening-balance" element={<ProtectedRoute pageId="opening-balance"><OpeningBalancePage /></ProtectedRoute>} />
                   <Route path="/stock" element={<ProtectedRoute pageId="stock"><StockBalancePage /></ProtectedRoute>} />
                   <Route path="/movements" element={<ProtectedRoute pageId="movements"><BinCardPage /></ProtectedRoute>} />
