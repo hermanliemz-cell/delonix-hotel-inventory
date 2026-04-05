@@ -9,7 +9,6 @@ import { DataTable } from '../components/DataTable';
 import { Button, Input, Select } from '../components/FormElements';
 import { FormField } from '../components/FormField';
 import { Badge } from '../components/Badge';
-import RoomItemsModal from '../components/RoomItemsModal';
 import RoomCategoryStandardsModal from '../components/RoomCategoryStandardsModal';
 import RoomActivityChecklistModal from '../components/RoomActivityChecklistModal';
 
@@ -112,12 +111,12 @@ function RoomsPage() {
 
   async function handleDelete(room) {
     // Check dependencies before delete
-    const [riRes, muRes] = await Promise.all([
-      supabase.from('room_items').select('id', { count: 'exact', head: true }).eq('room_id', room.id),
+    const [rcsRes, muRes] = await Promise.all([
+      supabase.from('room_category_standards').select('id', { count: 'exact', head: true }).eq('room_id', room.id),
       supabase.from('room_makeups').select('id', { count: 'exact', head: true }).eq('room_id', room.id),
     ]);
     const deps = [];
-    if (riRes.count > 0) deps.push(`${riRes.count} room item(s)`);
+    if (rcsRes.count > 0) deps.push(`${rcsRes.count} category standard(s)`);
     if (muRes.count > 0) deps.push(`${muRes.count} room makeup(s)`);
     if (deps.length > 0) {
       const msg = `Cannot delete Room "${room.room_number}" — it has linked data: ${deps.join(', ')}. Deactivate instead?`;
@@ -287,7 +286,9 @@ function RoomsPage() {
         </div>
       </Modal>
 
-      <RoomItemsModal room={itemsRoom} open={!!itemsRoom} onClose={() => setItemsRoom(null)} />
+      <RoomCategoryStandardsModal room={itemsRoom} open={!!itemsRoom} onClose={() => setItemsRoom(null)}
+        standardType="guest_amenities" parentCategoryCode="AMN" title="Guest Amenities"
+        colorScheme={{ bg: 'purple-50', header: 'purple-100', text: 'purple-800', border: 'purple-200', dot: 'purple-500' }} allRooms={rooms} />
       <RoomCategoryStandardsModal room={linenRoom} open={!!linenRoom} onClose={() => setLinenRoom(null)}
         standardType="linen" parentCategoryCode="LIN" title="Linen"
         colorScheme={{ bg: 'blue-50', header: 'blue-100', text: 'blue-800', border: 'blue-200', dot: 'blue-500' }} allRooms={rooms} />

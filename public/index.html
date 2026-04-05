@@ -4471,23 +4471,19 @@ function ItemsPage() {
       const { count: rcCount } = await supabase.from('room_consumption_items').select('id', { count: 'exact', head: true }).eq('item_id', item.id);
       if (rcCount > 0) reasons.push(`${rcCount} room consumption items`);
 
+      // Note: room_category_standards references category_id (not item_id),
+      // so deleting a single item cannot orphan a room setup — no check needed here.
+
       if (reasons.length > 0) {
         showNotification(`Item "${item.name}" (${item.code}) tidak dapat dihapus karena sudah memiliki:\n- ${reasons.join('\n- ')}`, 'error');
         return;
       }
 
-      // Check room_items (standard room config) — these will be cleaned up on delete
-      const { count: riCount } = await supabase.from('room_items').select('id', { count: 'exact', head: true }).eq('item_id', item.id);
-
       // No relations — confirm delete
-      const confirmMsg = riCount > 0
-        ? `Hapus item "${item.name}" (${item.code})?\n\nItem ini memiliki ${riCount} konfigurasi room standar yang juga akan dihapus.`
-        : `Hapus item "${item.name}" (${item.code})?`;
-      if (!(await showConfirm(confirmMsg, { variant: 'danger' }))) return;
+      if (!(await showConfirm(`Hapus item "${item.name}" (${item.code})?`, { variant: 'danger' }))) return;
 
-      // Clean up related data that can be safely removed
+      // Clean up only orphan zero-balance stock rows
       await supabase.from('stock_balance').delete().eq('item_id', item.id).eq('quantity', 0);
-      if (riCount > 0) await supabase.from('room_items').delete().eq('item_id', item.id);
 
       const { error } = await supabase.from('items').delete().eq('id', item.id);
       if (error) throw error;
