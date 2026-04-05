@@ -252,9 +252,9 @@ export default function WorksheetPage() {
             Tidak ada data room make up untuk housekeeper ini di tanggal {filterDate}.
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-700">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-800">
                 Worksheet — {hkName} — {filterDate}
               </div>
               <div className="text-xs text-gray-400">{worksheetData.rooms.length} room(s)</div>
@@ -302,39 +302,67 @@ function WorksheetTable({ data }) {
     return dataMap[makeupId]?.activity?.[actName];
   };
 
-  const colW = 28; // fixed width per sub-column in px
-  const thBase = 'py-1 text-[10px] font-semibold text-center border border-gray-300 whitespace-nowrap';
-  const tdBase = 'py-0.5 text-[10px] text-center border border-gray-200 whitespace-nowrap';
-  const tdLeft = 'px-2 py-0.5 text-[10px] text-left border border-gray-200 whitespace-nowrap';
-  const segmentHeader = 'px-2 py-1 text-[11px] font-bold text-left border border-gray-300 bg-blue-50 text-blue-800';
-  const subSegmentHeader = 'px-2 py-0.5 text-[10px] font-semibold text-left border border-gray-300 bg-gray-50 text-gray-700';
+  const colW = 36; // fixed width per sub-column in px
+  const firstColW = 320; // widened Item/Activity column
+  const totalCols = 1 + rooms.length * linenSubCols.length;
+
+  // Modern flat styling: subtle borders, lighter typography, clean hover.
+  // Unified palette with app primary (blue) + soft neutrals.
+  const thBase = 'py-2.5 text-[11px] font-semibold text-center whitespace-nowrap';
+  const tdBase = 'py-1.5 text-[11px] text-center whitespace-nowrap border-b border-b-gray-100 border-l border-l-gray-100';
+  const tdLeft = 'px-3 py-1.5 text-[11px] text-left whitespace-nowrap border-b border-b-gray-100';
+
+  // Sticky segment/sub-segment label helper. The <td> spans all columns and
+  // carries the background color so the band fully stretches from the first
+  // column to the rightmost room column. An inner sticky div keeps the label
+  // pinned to the left during horizontal scroll.
+  //
+  // Two levels:
+  //   level 1 (top-level: Linen & Amenities, Activity Check List) → darker band
+  //   level 2 (sub-level: Linen, Guest Amenities) → lighter band
+  const StickyBand = ({ children, level = 1 }) => {
+    const styles = level === 1
+      ? { td: 'bg-gray-200', text: 'text-gray-800 font-bold', border: 'border-gray-300' }
+      : { td: 'bg-gray-50', text: 'text-gray-500 font-semibold', border: 'border-gray-200' };
+    return (
+      <tr>
+        <td colSpan={totalCols} className={`p-0 border-y ${styles.border} ${styles.td}`}>
+          <div className={`${styles.td} ${styles.text} sticky left-0 px-3 py-2 text-[11px] tracking-wider uppercase`}
+            style={{ width: firstColW, minWidth: firstColW }}>
+            {children}
+          </div>
+        </td>
+      </tr>
+    );
+  };
 
   return (
-    <table className="border-collapse text-[10px]" style={{ tableLayout: 'fixed', width: 180 + rooms.length * linenSubCols.length * colW }}>
+    <table className="border-collapse text-[11px] bg-white" style={{ tableLayout: 'fixed', width: firstColW + rooms.length * linenSubCols.length * colW }}>
       <colgroup>
-        <col style={{ width: 180 }} />
+        <col style={{ width: firstColW }} />
         {rooms.map(r => linenSubCols.map(col => (
           <col key={`${r.makeupId}-${col}`} style={{ width: colW }} />
         )))}
       </colgroup>
       <thead>
         {/* Row 1: Room Numbers */}
-        <tr className="bg-primary-600 text-white">
-          <th className={`${thBase} bg-primary-600 text-white sticky left-0 z-10 text-left px-2`} rowSpan={2}>
+        <tr>
+          <th className={`${thBase} sticky left-0 z-20 bg-gray-100 text-gray-700 text-left px-3 border-b border-b-gray-400 border-r border-r-gray-400`} rowSpan={2}>
             Item / Activity
           </th>
           {rooms.map(r => (
-            <th key={r.makeupId} className={`${thBase} bg-primary-600 text-white`}
+            <th key={r.makeupId} className={`${thBase} bg-gray-100 text-gray-700 border-b border-b-gray-400 border-l border-l-gray-400`}
               colSpan={linenSubCols.length}>
               {r.roomNumber}
             </th>
           ))}
         </tr>
         {/* Row 2: Sub-columns (ORI|DIR|DMG|LOST|REP repeated per room) */}
-        <tr className="bg-primary-500 text-white">
+        <tr>
           {rooms.map(r => (
-            linenSubCols.map(col => (
-              <th key={`${r.makeupId}-${col}`} className={`${thBase} bg-primary-500 text-white`}>
+            linenSubCols.map((col, idx) => (
+              <th key={`${r.makeupId}-${col}`}
+                className={`py-1.5 text-[9px] font-semibold tracking-wider text-center whitespace-nowrap bg-gray-50 text-gray-500 border-b border-b-gray-400 border-l ${idx === 0 ? 'border-l-gray-400' : 'border-l-gray-200'}`}>
                 {col}
               </th>
             ))
@@ -344,35 +372,27 @@ function WorksheetTable({ data }) {
       <tbody>
         {/* ==================== SEGMENT 1: LINEN & AMENITIES ==================== */}
         {(hasLinen || hasAmenity) && (
-          <tr>
-            <td className={segmentHeader} colSpan={1 + rooms.length * linenSubCols.length}>
-              Linen &amp; Amenities
-            </td>
-          </tr>
+          <StickyBand level={1}>Linen &amp; Amenities</StickyBand>
         )}
 
         {/* Sub-segment: Linen */}
         {hasLinen && (
           <>
-            <tr>
-              <td className={subSegmentHeader} colSpan={1 + rooms.length * linenSubCols.length}>
-                Linen
-              </td>
-            </tr>
+            <StickyBand level={2}>Linen</StickyBand>
             {linenItems.map(item => (
-              <tr key={item.id} className="hover:bg-yellow-50">
-                <td className={`${tdLeft} sticky left-0 bg-white z-[5] font-medium truncate`}>
+              <tr key={item.id} className="hover:bg-amber-50/60 transition-colors">
+                <td className={`${tdLeft} sticky left-0 bg-white z-[5] font-medium text-gray-800 truncate border-r border-r-gray-400`}>
                   {item.name}
-                  {item.unit && <span className="text-gray-400 ml-1">({item.unit})</span>}
                 </td>
                 {rooms.map(r => (
-                  linenSubCols.map(col => {
+                  linenSubCols.map((col, idx) => {
                     const val = getLinenVal(r.makeupId, item.id, col);
-                    let cellClass = tdBase;
-                    if (col === 'DMG' && val) cellClass += ' bg-orange-50 text-orange-700 font-bold';
-                    else if (col === 'LOST' && val) cellClass += ' bg-red-50 text-red-700 font-bold';
-                    else if (col === 'REP' && val) cellClass += ' bg-green-50 text-green-700 font-bold';
-                    else if (col === 'DIR' && val) cellClass += ' bg-blue-50 text-blue-700';
+                    let cellClass = tdBase + (idx === 0 ? ' !border-l-gray-400' : '');
+                    if (col === 'DMG' && val) cellClass += ' bg-orange-50 text-orange-700 font-semibold';
+                    else if (col === 'LOST' && val) cellClass += ' bg-red-50 text-red-700 font-semibold';
+                    else if (col === 'REP' && val) cellClass += ' bg-emerald-50 text-emerald-700 font-semibold';
+                    else if (col === 'DIR' && val) cellClass += ' bg-sky-50 text-sky-700';
+                    else cellClass += ' text-gray-700';
                     return (
                       <td key={`${r.makeupId}-${item.id}-${col}`} className={cellClass}>
                         {val || ''}
@@ -388,23 +408,17 @@ function WorksheetTable({ data }) {
         {/* Sub-segment: Guest Amenities */}
         {hasAmenity && (
           <>
-            <tr>
-              <td className={subSegmentHeader} colSpan={1 + rooms.length * linenSubCols.length}>
-                Guest Amenities
-              </td>
-            </tr>
+            <StickyBand level={2}>Guest Amenities</StickyBand>
             {amenityItems.map(item => (
-              <tr key={item.id} className="hover:bg-yellow-50">
-                <td className={`${tdLeft} sticky left-0 bg-white z-[5] font-medium truncate`}>
+              <tr key={item.id} className="hover:bg-amber-50/60 transition-colors">
+                <td className={`${tdLeft} sticky left-0 bg-white z-[5] font-medium text-gray-800 truncate border-r border-r-gray-400`}>
                   {item.name}
-                  {item.unit && <span className="text-gray-400 ml-1">({item.unit})</span>}
                 </td>
                 {rooms.map(r => {
-                  // Amenity only has CONS column — span all 5 sub-cols merged
                   const val = getAmenityVal(r.makeupId, item.id);
                   return (
                     <td key={`${r.makeupId}-${item.id}-cons`}
-                      className={`${tdBase} ${val ? 'bg-purple-50 text-purple-700 font-semibold' : ''}`}
+                      className={`${tdBase} !border-l-gray-400 ${val ? 'bg-violet-50 text-violet-700 font-semibold' : 'text-gray-700'}`}
                       colSpan={linenSubCols.length}>
                       {val || ''}
                     </td>
@@ -418,25 +432,20 @@ function WorksheetTable({ data }) {
         {/* ==================== SEGMENT 2: ACTIVITY CHECK LIST ==================== */}
         {hasActivity && (
           <>
-            <tr>
-              <td className={`${segmentHeader} bg-emerald-50 text-emerald-800`}
-                colSpan={1 + rooms.length * linenSubCols.length}>
-                Activity Check List
-              </td>
-            </tr>
+            <StickyBand level={1}>Activity Check List</StickyBand>
             {activities.map(act => (
-              <tr key={act.name} className="hover:bg-yellow-50">
-                <td className={`${tdLeft} sticky left-0 bg-white z-[5] font-medium truncate`}>
+              <tr key={act.name} className="hover:bg-amber-50/60 transition-colors">
+                <td className={`${tdLeft} sticky left-0 bg-white z-[5] font-medium text-gray-800 truncate border-r border-r-gray-400`}>
                   {act.name}
                 </td>
                 {rooms.map(r => {
                   const isDone = getActivityVal(r.makeupId, act.name);
                   return (
                     <td key={`${r.makeupId}-${act.name}`}
-                      className={`${tdBase} ${isDone === true ? 'bg-green-50' : isDone === false ? 'bg-red-50' : ''}`}
+                      className={`${tdBase} !border-l-gray-400 ${isDone === true ? 'bg-emerald-50' : isDone === false ? 'bg-red-50' : ''}`}
                       colSpan={linenSubCols.length}>
                       {isDone === true ? (
-                        <span className="text-green-600 font-bold">&#10003;</span>
+                        <span className="text-emerald-600 font-bold">&#10003;</span>
                       ) : isDone === false ? (
                         <span className="text-red-400">&#10007;</span>
                       ) : ''}
@@ -451,7 +460,7 @@ function WorksheetTable({ data }) {
         {/* Empty state */}
         {!hasLinen && !hasAmenity && !hasActivity && (
           <tr>
-            <td className={`${tdBase} text-gray-400 py-4`} colSpan={1 + rooms.length * linenSubCols.length}>
+            <td className="text-[11px] text-gray-400 py-8 text-center" colSpan={totalCols}>
               Tidak ada data item atau activity.
             </td>
           </tr>
