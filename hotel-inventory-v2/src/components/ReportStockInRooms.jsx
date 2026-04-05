@@ -23,6 +23,8 @@ export function ReportStockInRooms({ onBack }) {
   const [expandedCats, setExpandedCats] = useState({});
   const [filterActive, setFilterActive] = useState('active');
   const [linenCatIds, setLinenCatIds] = useState([]);
+  const [roomTypes, setRoomTypes] = useState([]);
+  const [filterRoomType, setFilterRoomType] = useState('');
 
   // Load categories & determine linen category IDs
   useEffect(() => {
@@ -40,6 +42,26 @@ export function ReportStockInRooms({ onBack }) {
     }
   }, [selectedOrg]);
 
+  // Load room types
+  useEffect(() => {
+    if (selectedOrg) {
+      supabase.from('rooms').select('room_type_id, room_types(id, name)')
+        .eq('organization_id', selectedOrg.id).eq('is_active', true)
+        .then(({ data: roomData }) => {
+          const seen = {};
+          const types = [];
+          (roomData || []).forEach(r => {
+            if (r.room_types && !seen[r.room_types.id]) {
+              seen[r.room_types.id] = true;
+              types.push(r.room_types);
+            }
+          });
+          types.sort((a, b) => a.name.localeCompare(b.name));
+          setRoomTypes(types);
+        });
+    }
+  }, [selectedOrg]);
+
   // Load linen items for item filter dropdown
   React.useEffect(() => {
     if (selectedOrg && linenCatIds.length > 0) {
@@ -50,7 +72,10 @@ export function ReportStockInRooms({ onBack }) {
         .order('code');
       if (filterActive === 'active') q = q.eq('is_active', true);
       else if (filterActive === 'inactive') q = q.eq('is_active', false);
-      q.then(({ data: items }) => setAllItemsList(items || []));
+      q.then(({ data: items }) => {
+        setAllItemsList(items || []);
+        setFilterItemIds([]);
+      });
     }
   }, [selectedOrg, filterActive, linenCatIds]);
 
@@ -127,12 +152,13 @@ export function ReportStockInRooms({ onBack }) {
     setLoading(true);
     try {
       // 1. Get all active rooms with warehouse_id
-      const { data: roomList } = await supabase.from('rooms')
-        .select('id, room_number, floor, warehouse_id, room_types(name)')
+      let roomQ = supabase.from('rooms')
+        .select('id, room_number, floor, warehouse_id, room_type_id, room_types(name)')
         .eq('organization_id', selectedOrg.id)
         .eq('is_active', true)
-        .not('warehouse_id', 'is', null)
-        .order('room_number');
+        .not('warehouse_id', 'is', null);
+      if (filterRoomType) roomQ = roomQ.eq('room_type_id', filterRoomType);
+      const { data: roomList } = await roomQ.order('room_number');
       setRooms(roomList || []);
 
       // 2. Get linen items only
@@ -321,6 +347,17 @@ export function ReportStockInRooms({ onBack }) {
                 )}
               </div>
             )}
+          </div>
+
+          <div className="min-w-[140px]">
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Room Type</label>
+            <select value={filterRoomType} onChange={e => setFilterRoomType(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+              <option value="">Semua Room Type</option>
+              {roomTypes.map(rt => (
+                <option key={rt.id} value={rt.id}>{rt.name}</option>
+              ))}
+            </select>
           </div>
 
           <div className="min-w-[140px]">
