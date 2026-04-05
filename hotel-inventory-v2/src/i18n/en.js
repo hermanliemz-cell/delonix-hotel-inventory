@@ -3,7 +3,7 @@ export default {
   'app.title': 'Hotel Inventory',
   'app.subtitle': 'Management System',
   'app.loading': 'Loading inventory system...',
-  'app.version': 'v2.0.0',
+  'app.version': 'v2.0.01',
   'app.accessDenied': 'Access Denied',
   'app.noPermission': 'You do not have permission to access this page.',
   'app.maintenance.title': 'System Under Maintenance',

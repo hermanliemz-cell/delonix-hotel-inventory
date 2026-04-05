@@ -277,34 +277,7 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // Update stock_balance manually after OUT from source
-        {
-          const { data: _sbSrc } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.from_warehouse_id).maybeSingle();
-          if (_sbSrc) {
-            const _newQtySrc = Math.max(0, (parseFloat(_sbSrc.quantity) || 0) - qty);
-            const _avgCostSrc = parseFloat(_sbSrc.avg_cost) || 0;
-            await supabase.from('stock_balance').update({ quantity: _newQtySrc, total_value: _newQtySrc * _avgCostSrc, avg_cost: _newQtySrc > 0 ? _avgCostSrc : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbSrc.id);
-          }
-        }
-
-        // Update stock_balance manually after IN to in-use
-        {
-          const { data: _sbIU } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
-          const _oldQtyIU = _sbIU ? parseFloat(_sbIU.quantity) || 0 : 0;
-          const _oldTotalIU = _sbIU ? parseFloat(_sbIU.total_value) || 0 : 0;
-          const _newQtyIU = _oldQtyIU + qty;
-          const _newTotalIU = _oldTotalIU + totalCost;
-          const _newAvgIU = _newQtyIU > 0 ? _newTotalIU / _newQtyIU : 0;
-          if (_sbIU) {
-            await supabase.from('stock_balance').update({ quantity: _newQtyIU, total_value: _newTotalIU, avg_cost: _newAvgIU, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbIU.id);
-          } else {
-            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id, quantity: qty, avg_cost: unitCost, total_value: totalCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-          }
-        }
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       await supabase.from('in_use_transfers').update({
@@ -359,34 +332,7 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // Update stock_balance manually after IN to source (reverse)
-        {
-          const { data: _sbRevSrc } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.from_warehouse_id).maybeSingle();
-          const _oldQtyRevSrc = _sbRevSrc ? parseFloat(_sbRevSrc.quantity) || 0 : 0;
-          const _oldTotalRevSrc = _sbRevSrc ? parseFloat(_sbRevSrc.total_value) || 0 : 0;
-          const _newQtyRevSrc = _oldQtyRevSrc + qty;
-          const _newTotalRevSrc = _oldTotalRevSrc + totalCost;
-          const _newAvgRevSrc = _newQtyRevSrc > 0 ? _newTotalRevSrc / _newQtyRevSrc : 0;
-          if (_sbRevSrc) {
-            await supabase.from('stock_balance').update({ quantity: _newQtyRevSrc, total_value: _newTotalRevSrc, avg_cost: _newAvgRevSrc, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbRevSrc.id);
-          } else {
-            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: tr.from_warehouse_id, quantity: qty, avg_cost: unitCost, total_value: totalCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-          }
-        }
-
-        // Update stock_balance manually after OUT from in-use (reverse)
-        {
-          const { data: _sbRevIU } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
-          if (_sbRevIU) {
-            const _newQtyRevIU = Math.max(0, (parseFloat(_sbRevIU.quantity) || 0) - qty);
-            const _avgCostRevIU = parseFloat(_sbRevIU.avg_cost) || 0;
-            await supabase.from('stock_balance').update({ quantity: _newQtyRevIU, total_value: _newQtyRevIU * _avgCostRevIU, avg_cost: _newQtyRevIU > 0 ? _avgCostRevIU : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbRevIU.id);
-          }
-        }
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       await supabase.from('in_use_transfers').update({
@@ -528,17 +474,7 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // Update stock_balance manually after OUT from in-use (deplete)
-        {
-          const { data: _sbDeplete } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
-          if (_sbDeplete) {
-            const _newQtyDeplete = Math.max(0, (parseFloat(_sbDeplete.quantity) || 0) - qty);
-            const _avgCostDeplete = parseFloat(_sbDeplete.avg_cost) || 0;
-            await supabase.from('stock_balance').update({ quantity: _newQtyDeplete, total_value: _newQtyDeplete * _avgCostDeplete, avg_cost: _newQtyDeplete > 0 ? _avgCostDeplete : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbDeplete.id);
-          }
-        }
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       await supabase.from('in_use_depletes').update({
@@ -574,22 +510,7 @@ function InUseWarehousePage() {
           department_id: currentUser?.department_id || null,
         });
 
-        // Update stock_balance manually after IN to in-use (revoke deplete)
-        {
-          const { data: _sbRevDep } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
-          const _oldQtyRevDep = _sbRevDep ? parseFloat(_sbRevDep.quantity) || 0 : 0;
-          const _oldTotalRevDep = _sbRevDep ? parseFloat(_sbRevDep.total_value) || 0 : 0;
-          const _newQtyRevDep = _oldQtyRevDep + qty;
-          const _newTotalRevDep = _oldTotalRevDep + totalCost;
-          const _newAvgRevDep = _newQtyRevDep > 0 ? _newTotalRevDep / _newQtyRevDep : 0;
-          if (_sbRevDep) {
-            await supabase.from('stock_balance').update({ quantity: _newQtyRevDep, total_value: _newTotalRevDep, avg_cost: _newAvgRevDep, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbRevDep.id);
-          } else {
-            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: inUseWarehouse.id, quantity: qty, avg_cost: unitCost, total_value: totalCost, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-          }
-        }
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       await supabase.from('in_use_depletes').update({

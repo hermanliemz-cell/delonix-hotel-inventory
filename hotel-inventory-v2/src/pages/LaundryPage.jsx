@@ -247,34 +247,7 @@ function LaundryPage() {
           created_at: new Date().toISOString()
         });
 
-        // Update stock_balance manually after OUT from dirty
-        {
-          const { data: _sbDirty } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', dirtyWarehouse.id).maybeSingle();
-          if (_sbDirty) {
-            const _newQtyDirty = Math.max(0, (parseFloat(_sbDirty.quantity) || 0) - qty);
-            const _avgCostDirty = parseFloat(_sbDirty.avg_cost) || 0;
-            await supabase.from('stock_balance').update({ quantity: _newQtyDirty, total_value: _newQtyDirty * _avgCostDirty, avg_cost: _newQtyDirty > 0 ? _avgCostDirty : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbDirty.id);
-          }
-        }
-
-        // Update stock_balance manually after IN to laundry
-        {
-          const { data: _sbLaundry } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', laundryWarehouse.id).maybeSingle();
-          const _oldQtyLaundry = _sbLaundry ? parseFloat(_sbLaundry.quantity) || 0 : 0;
-          const _oldTotalLaundry = _sbLaundry ? parseFloat(_sbLaundry.total_value) || 0 : 0;
-          const _newQtyLaundry = _oldQtyLaundry + qty;
-          const _newTotalLaundry = _oldTotalLaundry + (qty * (stockItem.avg_cost || 0));
-          const _newAvgLaundry = _newQtyLaundry > 0 ? _newTotalLaundry / _newQtyLaundry : 0;
-          if (_sbLaundry) {
-            await supabase.from('stock_balance').update({ quantity: _newQtyLaundry, total_value: _newTotalLaundry, avg_cost: _newAvgLaundry, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbLaundry.id);
-          } else {
-            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: laundryWarehouse.id, quantity: qty, avg_cost: stockItem.avg_cost || 0, total_value: qty * (stockItem.avg_cost || 0), last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-          }
-        }
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       showNotification('Items sent to laundry successfully (Ref: ' + refNumber + ')', 'success');
@@ -383,22 +356,8 @@ function LaundryPage() {
           created_at: new Date().toISOString()
         });
 
-        // Update stock_balance manually after IN to store
-        {
-          const { data: _sbStore } = await supabase.from('stock_balance')
-            .select('id, quantity, avg_cost, total_value')
-            .eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', storeWarehouse.id).maybeSingle();
-          const _oldQtyStore = _sbStore ? parseFloat(_sbStore.quantity) || 0 : 0;
-          const _oldTotalStore = _sbStore ? parseFloat(_sbStore.total_value) || 0 : 0;
-          const _newQtyStore = _oldQtyStore + qty;
-          const _newTotalStore = _oldTotalStore + (qty * (stockItem.avg_cost || 0));
-          const _newAvgStore = _newQtyStore > 0 ? _newTotalStore / _newQtyStore : 0;
-          if (_sbStore) {
-            await supabase.from('stock_balance').update({ quantity: _newQtyStore, total_value: _newTotalStore, avg_cost: _newAvgStore, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbStore.id);
-          } else {
-            await supabase.from('stock_balance').insert({ organization_id: selectedOrg.id, item_id: item.item_id, warehouse_id: storeWarehouse.id, quantity: qty, avg_cost: stockItem.avg_cost || 0, total_value: qty * (stockItem.avg_cost || 0), last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-          }
-        }
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
+        // Note: OUT from laundry warehouse is also handled by the same trigger
       }
 
       showNotification('Items received from laundry successfully (Ref: ' + refNumber + ')', 'success');

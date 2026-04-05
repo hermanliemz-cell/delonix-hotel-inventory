@@ -164,15 +164,8 @@ function ApprovalPage() {
             .gt('quantity', 0).order('quantity', { ascending: false }).limit(1);
           if (sbData && sbData.length > 0) {
             const sb = sbData[0];
-            const newQty = parseFloat(sb.quantity) - qty;
             const avgCost = parseFloat(sb.total_value) / parseFloat(sb.quantity) || 0;
-            const newTotalValue = newQty > 0 ? newQty * avgCost : 0;
-            await supabase.from('stock_balance').update({
-              quantity: newQty, total_value: newTotalValue,
-              avg_cost: newQty > 0 ? avgCost : 0,
-              updated_at: now,
-            }).eq('id', sb.id);
-            // Create stock movement
+            // Create stock movement — stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
             await supabase.from('stock_movements').insert({
               organization_id: selectedOrg.id, item_id: wi.item_id,
               warehouse_id: sb.warehouse_id, movement_type: 'OUT',
@@ -305,19 +298,7 @@ function ApprovalPage() {
         for (const di of (dpItems || [])) {
           const qty = parseFloat(di.quantity);
           if (qty <= 0) continue;
-          const { data: stockData } = await supabase.from('stock_balance')
-            .select('id, quantity, total_value')
-            .eq('item_id', di.item_id).eq('warehouse_id', di.warehouse_id).single();
-          if (stockData) {
-            const newQty = parseFloat(stockData.quantity) - qty;
-            const unitPrice = parseFloat(di.unit_price) || 0;
-            const newTotalValue = parseFloat(stockData.total_value) - (qty * unitPrice);
-            await supabase.from('stock_balance').update({
-              quantity: newQty, total_value: newTotalValue,
-              avg_cost: newQty > 0 ? newTotalValue / newQty : 0,
-              updated_at: new Date().toISOString(),
-            }).eq('id', stockData.id);
-          }
+          // Delete movements — stock_balance is reversed atomically by DB trigger: trg_stock_movements_after_delete
           await supabase.from('stock_movements').delete()
             .eq('reference_type', 'DIRECT_PURCHASE')
             .eq('reference_number', item._number)
@@ -361,27 +342,7 @@ function ApprovalPage() {
         for (const wi of (woItems || [])) {
           const qty = parseFloat(wi.quantity);
           if (qty <= 0) continue;
-          // Find stock movement to get warehouse_id
-          const { data: mvData } = await supabase.from('stock_movements')
-            .select('warehouse_id, unit_cost')
-            .eq('reference_type', 'WRITEOFF').eq('reference_number', item._number)
-            .eq('item_id', wi.item_id).limit(1);
-          const warehouseId = mvData?.[0]?.warehouse_id;
-          const unitCost = mvData?.[0]?.unit_cost || 0;
-          if (warehouseId) {
-            const { data: sbData } = await supabase.from('stock_balance')
-              .select('id, quantity, total_value')
-              .eq('item_id', wi.item_id).eq('warehouse_id', warehouseId).single();
-            if (sbData) {
-              const newQty = parseFloat(sbData.quantity) + qty;
-              const newTotalValue = parseFloat(sbData.total_value) + (qty * unitCost);
-              await supabase.from('stock_balance').update({
-                quantity: newQty, total_value: newTotalValue,
-                avg_cost: newQty > 0 ? newTotalValue / newQty : 0,
-                updated_at: new Date().toISOString(),
-              }).eq('id', sbData.id);
-            }
-          }
+          // Delete movements — stock_balance is reversed atomically by DB trigger: trg_stock_movements_after_delete
           await supabase.from('stock_movements').delete()
             .eq('reference_type', 'WRITEOFF').eq('reference_number', item._number)
             .eq('item_id', wi.item_id);

@@ -251,36 +251,7 @@ function DirectPurchasePage() {
           created_by: currentUser?.id || null,
         });
         if (smErr) throw new Error('Stock movement error: ' + smErr.message);
-
-        // Update stock_balance
-        const { data: existing } = await supabase.from('stock_balance')
-          .select('id, quantity, avg_cost, total_value')
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', item.item_id)
-          .maybeSingle();
-
-        if (existing) {
-          const newQty = parseFloat(existing.quantity) + qty;
-          const newTotalValue = parseFloat(existing.total_value) + totalCost;
-          const newAvgCost = newQty > 0 ? newTotalValue / newQty : 0;
-          await supabase.from('stock_balance').update({
-            quantity: newQty,
-            avg_cost: newAvgCost,
-            total_value: newTotalValue,
-            last_movement_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }).eq('id', existing.id);
-        } else {
-          await supabase.from('stock_balance').insert({
-            organization_id: selectedOrg.id,
-            item_id: item.item_id,
-            quantity: qty,
-            avg_cost: unitPrice,
-            total_value: totalCost,
-            last_movement_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-        }
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       await supabase.from('direct_purchases').update({
@@ -328,24 +299,7 @@ function DirectPurchasePage() {
       for (const item of dpItems) {
         const qty = parseFloat(item.quantity);
         if (qty <= 0) continue;
-        // Reverse stock: subtract qty
-        const { data: stockData } = await supabase.from('stock_balance')
-          .select('id, quantity, total_value')
-          .eq('item_id', item.item_id)
-          .eq('warehouse_id', item.warehouse_id)
-          .single();
-        if (stockData) {
-          const newQty = parseFloat(stockData.quantity) - qty;
-          const unitPrice = parseFloat(item.unit_price) || 0;
-          const newTotalValue = parseFloat(stockData.total_value) - (qty * unitPrice);
-          await supabase.from('stock_balance').update({
-            quantity: newQty,
-            total_value: newTotalValue,
-            avg_cost: newQty > 0 ? newTotalValue / newQty : 0,
-            updated_at: new Date().toISOString(),
-          }).eq('id', stockData.id);
-        }
-        // Delete stock movement
+        // Delete stock movement — stock_balance is reversed atomically by DB trigger: trg_stock_movements_after_delete
         await supabase.from('stock_movements').delete()
           .eq('reference_type', 'DIRECT_PURCHASE')
           .eq('reference_number', dp.purchase_number)

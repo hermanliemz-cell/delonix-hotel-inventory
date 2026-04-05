@@ -193,17 +193,7 @@ function SingleItemUsagePage() {
         created_by: currentUser?.id || null,
       });
 
-      // Update stock_balance manually after OUT (single usage)
-      {
-        const { data: _sbSIU } = await supabase.from('stock_balance')
-          .select('id, quantity, avg_cost, total_value')
-          .eq('organization_id', selectedOrg.id).eq('item_id', record.item_id).eq('warehouse_id', record.warehouse_id).maybeSingle();
-        if (_sbSIU) {
-          const _newQtySIU = Math.max(0, (parseFloat(_sbSIU.quantity) || 0) - qty);
-          const _avgCostSIU = parseFloat(_sbSIU.avg_cost) || 0;
-          await supabase.from('stock_balance').update({ quantity: _newQtySIU, total_value: _newQtySIU * _avgCostSIU, avg_cost: _newQtySIU > 0 ? _avgCostSIU : 0, last_movement_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', _sbSIU.id);
-        }
-      }
+      // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
 
       showNotification(`${record.usage_number} berhasil dikonfirmasi. Stok berkurang ${qty}.`, 'success');
       loadAll();

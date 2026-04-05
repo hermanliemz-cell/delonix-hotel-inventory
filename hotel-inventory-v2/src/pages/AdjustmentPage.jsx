@@ -174,31 +174,6 @@ export default function AdjustmentPage() {
         const unitCost = parseFloat(ai.unit_cost) || 0;
         const totalCost = parseFloat(ai.total_cost) || 0;
 
-        const { data: sbData } = await supabase.from('stock_balance')
-          .select('id, quantity, total_value, avg_cost')
-          .eq('item_id', ai.item_id)
-          .eq('warehouse_id', adj.warehouse_id)
-          .eq('organization_id', selectedOrg.id)
-          .maybeSingle();
-
-        if (sbData) {
-          const oldQty = parseFloat(sbData.quantity) || 0;
-          const oldTotalValue = parseFloat(sbData.total_value) || 0;
-          const newQty = oldQty + qty;
-          const newTotalValue = oldTotalValue + totalCost;
-          const newAvgCost = newQty !== 0 ? Math.abs(newTotalValue / newQty) : 0;
-          await supabase.from('stock_balance').update({
-            quantity: newQty, total_value: newTotalValue,
-            avg_cost: newAvgCost, updated_at: now,
-          }).eq('id', sbData.id);
-        } else {
-          await supabase.from('stock_balance').insert({
-            organization_id: selectedOrg.id, item_id: ai.item_id,
-            warehouse_id: adj.warehouse_id, quantity: qty,
-            avg_cost: unitCost, total_value: totalCost,
-          });
-        }
-
         await supabase.from('stock_movements').insert({
           organization_id: selectedOrg.id, item_id: ai.item_id,
           warehouse_id: adj.warehouse_id,
@@ -211,6 +186,7 @@ export default function AdjustmentPage() {
           notes: ai.notes || 'Stock Adjustment',
           created_by: currentUser?.id,
         });
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       await supabase.from('adjustments').update({

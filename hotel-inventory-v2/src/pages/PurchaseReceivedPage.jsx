@@ -238,36 +238,7 @@ function PurchaseReceivedPage() {
           created_by: currentUser?.id || null,
         });
         if (smErr) throw new Error('Stock movement error: ' + smErr.message);
-
-        // Upsert stock_balance: get current balance then update
-        const { data: existing, error: sbErr } = await supabase.from('stock_balance')
-          .select('id, quantity, avg_cost, total_value')
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', item.item_id)
-          .maybeSingle();
-
-        if (existing) {
-          const newQty = parseFloat(existing.quantity) + qty;
-          const newTotalValue = parseFloat(existing.total_value) + totalCost;
-          const newAvgCost = newQty > 0 ? newTotalValue / newQty : 0;
-          await supabase.from('stock_balance').update({
-            quantity: newQty,
-            avg_cost: newAvgCost,
-            total_value: newTotalValue,
-            last_movement_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }).eq('id', existing.id);
-        } else {
-          await supabase.from('stock_balance').insert({
-            organization_id: selectedOrg.id,
-            item_id: item.item_id,
-            quantity: qty,
-            avg_cost: unitPrice,
-            total_value: totalCost,
-            last_movement_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-        }
+        // stock_balance is updated atomically by DB trigger: trg_sync_stock_balance
       }
 
       // Update GR status to CONFIRMED
@@ -333,38 +304,17 @@ function PurchaseReceivedPage() {
       const { data: grItems } = await supabase.from('purchase_received_items').select('*').eq('gr_id', gr.id);
       if (!grItems || grItems.length === 0) throw new Error('No items found');
 
-      // Reverse stock movements and stock balance for each item
+      // Reverse stock movements for each item — stock_balance reversed by DB trigger
       for (const item of grItems) {
         const qty = parseFloat(item.received_qty);
         if (qty <= 0) continue;
-        const unitPrice = parseFloat(item.unit_price) || 0;
-        const totalCost = qty * unitPrice;
 
-        // Delete the stock movement for this GR
+        // Delete the stock movement for this GR — stock_balance is reversed atomically by DB trigger: trg_stock_movements_after_delete
         await supabase.from('stock_movements').delete()
           .eq('organization_id', selectedOrg.id)
           .eq('item_id', item.item_id)
           .eq('reference_type', 'GR')
           .eq('reference_number', gr.gr_number);
-
-        // Reduce stock balance
-        const { data: existing } = await supabase.from('stock_balance')
-          .select('id, quantity, avg_cost, total_value')
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', item.item_id)
-          .maybeSingle();
-
-        if (existing) {
-          const newQty = Math.max(0, parseFloat(existing.quantity) - qty);
-          const newTotalValue = Math.max(0, parseFloat(existing.total_value) - totalCost);
-          const newAvgCost = newQty > 0 ? newTotalValue / newQty : 0;
-          await supabase.from('stock_balance').update({
-            quantity: newQty,
-            avg_cost: newAvgCost,
-            total_value: newTotalValue,
-            updated_at: new Date().toISOString(),
-          }).eq('id', existing.id);
-        }
       }
 
       // Revert GR status to DRAFT
