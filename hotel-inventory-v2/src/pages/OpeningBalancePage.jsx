@@ -3,7 +3,7 @@ import { supabase } from '../services/supabase.js';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatNumber, formatDateSys, getLocalDateString } from '../utils/format';
-import { getBalanceAfter } from '../utils/stock.js';
+import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
 import { getCategoryConfig, LINEN_STATUS_WAREHOUSE_MAP } from '../utils/categoryConfig';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';

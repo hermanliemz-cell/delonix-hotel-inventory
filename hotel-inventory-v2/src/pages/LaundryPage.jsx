@@ -3,7 +3,7 @@ import { supabase } from '../services/supabase.js';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatNumber, formatDate, formatDateSys } from '../utils/format';
-import { getBalanceAfter } from '../utils/stock.js';
+import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
 import { Button } from '../components/FormElements';
 import { PageHeader } from '../components/PageHeader';
 import { PageLoader } from '../components/PageLoader';

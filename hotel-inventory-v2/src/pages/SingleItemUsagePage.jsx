@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase.js';
 import { useApp, useTranslation } from '../hooks/index.js';
 import { formatDate, formatDateSys, getLocalDateString } from '../utils/format.js';
-import { getBalanceAfter } from '../utils/stock.js';
+import { checkPeriodLock, getBalanceAfter } from '../utils/stock.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';

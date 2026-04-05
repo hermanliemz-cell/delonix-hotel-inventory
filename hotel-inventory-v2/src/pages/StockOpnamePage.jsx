@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase.js';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatDate, formatDateSys, getLocalDateString } from '../utils/format';
+import { checkPeriodLock } from '../utils/stock.js';
 import { Button, Input, Select, Badge } from '../components/FormElements';
 import { FormField } from '../components/FormField';
 import { Icons } from '../components/Icons';

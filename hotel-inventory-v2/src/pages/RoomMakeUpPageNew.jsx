@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase';
 import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatNumber, formatDate, formatDateSys, getLocalDateString } from '../utils/format';
+import { checkPeriodLock } from '../utils/stock.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Input, Select, Badge } from '../components/FormElements';
@@ -407,6 +408,7 @@ function RoomMakeUpPageNew() {
 
   // ==================== SAVE DRAFT ====================
   async function handleSaveDraft() {
+    if (!currentUser?.id) { showNotification('Session expired. Silakan login ulang.', 'error'); return; }
     if (!selectedRoom) { showNotification('Please select a room', 'error'); return; }
 
     // === KONTROL: Cek room makeup tanggal sebelumnya yang belum CONFIRMED ===
@@ -466,7 +468,7 @@ function RoomMakeUpPageNew() {
       if (isEditing && viewing) {
         muId = viewing.id;
         makeupNumber = viewing.makeup_number;
-        const { error: upErr } = await supabase.from('room_makeups').update({ notes, makeup_date: makeupDate }).eq('id', muId);
+        const { error: upErr } = await supabase.from('room_makeups').update({ notes, makeup_date: makeupDate, created_by: currentUser?.id || null, department_id: userDept?.id || null }).eq('id', muId);
         if (upErr) throw upErr;
         await supabase.from('room_makeup_items').delete().eq('makeup_id', muId);
         const { data: oldCon } = await supabase.from('room_consumption').select('id').eq('makeup_id', muId);

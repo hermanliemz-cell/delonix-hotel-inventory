@@ -583,11 +583,12 @@ function MainLayout() {
           {/* Confirm Dialog */}
           {confirmDialog && (
             <ConfirmDialog
+              open={true}
               message={confirmDialog.message}
               title={confirmDialog.title}
               variant={confirmDialog.variant}
               onConfirm={() => { confirmDialog.resolve(true); setConfirmDialog(null); }}
-              onCancel={() => { confirmDialog.resolve(false); setConfirmDialog(null); }}
+              onClose={() => { confirmDialog.resolve(false); setConfirmDialog(null); }}
             />
           )}
 
