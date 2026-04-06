@@ -23,6 +23,7 @@ function StockBalancePage() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterWarehouse, setFilterWarehouse] = useState('');
   const [filterItem, setFilterItem] = useState('');
+  const [filterItemStatus, setFilterItemStatus] = useState('active');
   const [reconciling, setReconciling] = useState(false);
   // Location modal state
   const [locationItem, setLocationItem] = useState(null);
@@ -125,7 +126,7 @@ function StockBalancePage() {
     setLoading(true);
     const [stockRes, catRes, whRes, itemRes] = await Promise.all([
       supabase.from('stock_balance')
-        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name, warehouse_type)')
+        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, is_active, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name, warehouse_type)')
         .eq('organization_id', selectedOrg.id)
         .order('updated_at', { ascending: false }),
       supabase.from('item_categories').select('id, code, name, parent_id').eq('is_active', true).order('name'),
@@ -177,7 +178,8 @@ function StockBalancePage() {
     const matchCat = !matchingCatIds || matchingCatIds.has(s.items?.item_categories?.id);
     const matchWh = !filterWarehouse || s.warehouse_id === filterWarehouse;
     const matchItem = !filterItem || s.item_id === filterItem;
-    return matchSearch && matchCat && matchWh && matchItem;
+    const matchStatus = filterItemStatus === '' ? true : filterItemStatus === 'active' ? s.items?.is_active === true : s.items?.is_active === false;
+    return matchSearch && matchCat && matchWh && matchItem && matchStatus;
   });
 
   // Group by item_id: aggregate qty and total_value, weighted avg cost, keep warehouse breakdown
@@ -251,8 +253,14 @@ function StockBalancePage() {
             <option value="">{t('stock.allWarehouses') || 'Semua Gudang'}</option>
             {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
           </select>
-          {(filterCategory || filterWarehouse || filterItem) && (
-            <button onClick={() => { setFilterCategory(''); setFilterWarehouse(''); setFilterItem(''); }}
+          <select value={filterItemStatus} onChange={e=>setFilterItemStatus(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
+            <option value="">Semua Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Non-Active</option>
+          </select>
+          {(filterCategory || filterWarehouse || filterItem || filterItemStatus !== 'active') && (
+            <button onClick={() => { setFilterCategory(''); setFilterWarehouse(''); setFilterItem(''); setFilterItemStatus('active'); }}
               className="px-3 py-2 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg">
               {t('common.clearFilters')}
             </button>
