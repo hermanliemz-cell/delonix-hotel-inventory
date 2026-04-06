@@ -7,7 +7,7 @@ import { Icons } from './components/Icons.jsx';
 import { NotificationContainer } from './components/NotificationContainer.jsx';
 import { ConfirmDialog } from './components/ConfirmDialog.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
-import { initVersionCheck } from './utils/versionCheck.js';
+import { initVersionCheck, checkVersionBeforeLogin, APP_VERSION } from './utils/versionCheck.js';
 import { FullPageLoader } from './components/PageLoader.jsx';
 
 // Lazy-loaded page imports — each page is only downloaded when the user navigates to it
@@ -112,6 +112,10 @@ function LoginPage() {
     setShowMaintenanceBlock(false);
     setLoading(true);
     try {
+      // Check if running latest version before allowing login
+      const versionOk = await checkVersionBeforeLogin();
+      if (!versionOk) return; // page is reloading to get latest version
+
       const success = await handleLogin(username, password);
       if (success) {
         navigate('/dashboard');
@@ -170,7 +174,7 @@ function LoginPage() {
             {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
-        <p className="text-center text-blue-300 text-xs mt-4">v2.0.06 &copy; 2026 Delonix Group</p>
+        <p className="text-center text-blue-300 text-xs mt-4">{APP_VERSION} &copy; 2026 Delonix Group</p>
       </div>
     </div>
   );
@@ -553,7 +557,7 @@ function MainLayout() {
                         {selectedOrg.code}
                       </span>
                     </div>
-                    <p className="text-[10px] text-gray-400 leading-none hidden sm:block">v2.0.06</p>
+                    <p className="text-[10px] text-gray-400 leading-none hidden sm:block">{APP_VERSION}</p>
                   </div>
                 );
               })()}

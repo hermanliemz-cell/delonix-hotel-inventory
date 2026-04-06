@@ -262,7 +262,17 @@ function DirectPurchasePage() {
       showNotification(t('dp.successConfirm'));
       setShowModal(false);
       loadAll();
-    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+    } catch (err) {
+      // Rollback: hapus movements yang sudah ter-insert
+      try {
+        const { data: orphaned } = await supabase.from('stock_movements')
+          .select('id').eq('reference_number', dp.purchase_number).eq('reference_type', 'DIRECT_PURCHASE');
+        if (orphaned && orphaned.length > 0) {
+          await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+        }
+      } catch (cleanupErr) { console.error('[dp confirm rollback]', cleanupErr); }
+      showNotification('Error: ' + err.message + '. Movements sudah di-rollback.', 'error');
+    }
     setSaving(false);
   }
 

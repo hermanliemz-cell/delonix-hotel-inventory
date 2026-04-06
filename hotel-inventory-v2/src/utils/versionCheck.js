@@ -4,7 +4,8 @@
  * instead of auto-reloading the page
  */
 
-export const APP_VERSION = 'v2.0.06';
+// Injected by Vite from package.json — no need to update manually
+export const APP_VERSION = __APP_VERSION__;
 
 /**
  * Initialize version check
@@ -34,6 +35,30 @@ export function initVersionCheck() {
 
   // Then check every 5 minutes
   setInterval(checkForUpdate, 5 * 60 * 1000);
+}
+
+/**
+ * Check version before login.
+ * Fetches /version.json (no-cache) and compares with bundled APP_VERSION.
+ * Returns true if versions match (login may proceed).
+ * If mismatch, forces a hard reload so the browser fetches the latest bundle.
+ */
+export async function checkVersionBeforeLogin() {
+  try {
+    const resp = await fetch('/version.json?_t=' + Date.now(), { cache: 'no-store' });
+    if (!resp.ok) return true; // if file missing, allow login (first deploy)
+    const data = await resp.json();
+    if (data.version && data.version !== APP_VERSION) {
+      // Force hard reload to get latest bundle
+      window.location.reload(true);
+      // Return false so caller doesn't proceed (page will reload)
+      return false;
+    }
+    return true;
+  } catch (e) {
+    // Network error — allow login to proceed
+    return true;
+  }
 }
 
 /**

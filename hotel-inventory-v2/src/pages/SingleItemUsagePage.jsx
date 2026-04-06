@@ -166,15 +166,7 @@ function SingleItemUsagePage() {
       }
       const avgCost = parseFloat(stockData.avg_cost) || 0;
 
-      // Update status to CONFIRMED
-      const { error: updErr } = await supabase.from('single_item_usage').update({
-        status: 'CONFIRMED',
-        confirmed_by: currentUser?.id || null,
-        confirmed_at: new Date().toISOString(),
-      }).eq('id', record.id);
-      if (updErr) throw updErr;
-
-      // Stock movement OUT via RPC (Fase 6: RPC migration)
+      // Stock movement OUT DULU, baru update status (agar status tidak CONFIRMED tanpa movement)
       const deptName = record.departments?.name || '';
       const { error: mvErr } = await recordMovement({
         organizationId: selectedOrg.id,
@@ -191,10 +183,26 @@ function SingleItemUsagePage() {
       });
       if (mvErr) throw mvErr;
 
+      // Update status to CONFIRMED setelah movement berhasil
+      const { error: updErr } = await supabase.from('single_item_usage').update({
+        status: 'CONFIRMED',
+        confirmed_by: currentUser?.id || null,
+        confirmed_at: new Date().toISOString(),
+      }).eq('id', record.id);
+      if (updErr) throw updErr;
+
       showNotification(`${record.usage_number} berhasil dikonfirmasi. Stok berkurang ${qty}.`, 'success');
       loadAll();
     } catch (e) {
-      showNotification('Error konfirmasi: ' + e.message, 'error');
+      // Rollback: hapus movement yang sudah ter-insert
+      try {
+        const { data: orphaned } = await supabase.from('stock_movements')
+          .select('id').eq('reference_number', record.usage_number).eq('reference_type', 'USAGE');
+        if (orphaned && orphaned.length > 0) {
+          await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+        }
+      } catch (cleanupErr) { console.error('[siu confirm rollback]', cleanupErr); }
+      showNotification('Error konfirmasi: ' + e.message + '. Movements sudah di-rollback.', 'error');
     }
     setSaving(false);
   }

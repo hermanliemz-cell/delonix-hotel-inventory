@@ -450,15 +450,6 @@ function RoomMakeUpPageNew() {
       }
     }
 
-    const invalidActs = activityList.filter(a => {
-      const check = activityChecks[a.id];
-      return !check?.isDone && !(check?.notes || '').trim();
-    });
-    if (invalidActs.length > 0) {
-      showNotification('Please provide notes for incomplete activities: ' + invalidActs.map(a => a.name).join(', '), 'error');
-      setActiveTab('activity');
-      return;
-    }
 
     const hasLinenActions = Object.values(linenActions).some(a => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0 || a.toHkQty > 0));
     const hasReplaceRows = Object.values(replaceRows).some(rows => rows.some(r => r.itemId && r.qty > 0));
@@ -1723,22 +1714,6 @@ function RoomMakeUpPageNew() {
                       {act.description && <p className="text-xs text-gray-500 mt-0.5">{act.description}</p>}
                     </div>
                   </div>
-                  {!check.isDone && (
-                    <div className="mt-3 ml-11">
-                      <textarea
-                        value={check.notes}
-                        onChange={e => setActivityChecks(prev => ({ ...prev, [act.id]: { ...prev[act.id], notes: e.target.value } }))}
-                        placeholder="Required: explain why not done..."
-                        rows="2"
-                        disabled={isView}
-                        className={`w-full px-3 py-2 border rounded-lg text-sm min-h-[60px] ${
-                          !check.notes?.trim() && !isView ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                        }`} />
-                      {!check.notes?.trim() && !isView && (
-                        <p className="text-xs text-red-500 mt-1">Notes required for incomplete activities</p>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}

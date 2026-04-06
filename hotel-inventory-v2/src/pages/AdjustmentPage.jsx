@@ -168,13 +168,38 @@ export default function AdjustmentPage() {
     if (!(await showConfirm('Confirm adjustment ' + adj.adj_number + '? Stok akan diperbarui.', { variant: 'warning' }))) return;
     try {
       const now = new Date().toISOString();
-      const { data: adjItems } = await supabase.from('adjustment_items').select('*').eq('adjustment_id', adj.id);
+      const { data: adjItems } = await supabase.from('adjustment_items').select('*, items(code, name)').eq('adjustment_id', adj.id);
       if (!adjItems || adjItems.length === 0) { showNotification('Tidak ada item untuk di-confirm', 'error'); return; }
 
+      // ====== PRE-VALIDATION: cek stok cukup untuk semua OUT adjustment ======
+      const insufficientItems = [];
+      for (const ai of adjItems) {
+        const qty = parseFloat(ai.quantity);
+        if (qty >= 0) continue; // IN adjustment — tidak perlu cek stok
+        const absQty = Math.abs(qty);
+        const { data: sb } = await supabase.from('stock_balance')
+          .select('quantity')
+          .eq('organization_id', selectedOrg.id)
+          .eq('item_id', ai.item_id)
+          .eq('warehouse_id', adj.warehouse_id)
+          .maybeSingle();
+        const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
+        if (currentQty < absQty) {
+          const itemLabel = ai.items ? `${ai.items.code} - ${ai.items.name}` : ai.item_id;
+          insufficientItems.push(`${itemLabel}: saldo=${currentQty}, diminta=${absQty}`);
+        }
+      }
+      if (insufficientItems.length > 0) {
+        const wh = warehouses.find(w => w.id === adj.warehouse_id);
+        showNotification(`Stok tidak cukup di [${wh?.code || ''} - ${wh?.name || ''}]:\n${insufficientItems.join('\n')}`, 'error');
+        return;
+      }
+
+      // ====== SEMUA STOK CUKUP — Proses movements ======
+      const attemptStartedAt = new Date().toISOString();
       for (const ai of adjItems) {
         const qty = parseFloat(ai.quantity);
         const unitCost = parseFloat(ai.unit_cost) || 0;
-        const totalCost = parseFloat(ai.total_cost) || 0;
 
         const { error: mvErr } = await recordMovement({
           organizationId: selectedOrg.id,
@@ -199,7 +224,17 @@ export default function AdjustmentPage() {
 
       showNotification(adj.adj_number + ' confirmed — stok diperbarui', 'success');
       loadAll();
-    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+    } catch (err) {
+      // Rollback: hapus movements yang sudah ter-insert
+      try {
+        const { data: orphaned } = await supabase.from('stock_movements')
+          .select('id').eq('reference_number', adj.adj_number).gte('created_at', attemptStartedAt);
+        if (orphaned && orphaned.length > 0) {
+          await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+        }
+      } catch (cleanupErr) { console.error('[adjustment confirm rollback]', cleanupErr); }
+      showNotification('Error: ' + err.message + '. Movements sudah di-rollback.', 'error');
+    }
   }
 
   const grandTotal = useMemo(() => lineItems.reduce((sum, l) => sum + (parseFloat(l.total_cost) || 0), 0), [lineItems]);

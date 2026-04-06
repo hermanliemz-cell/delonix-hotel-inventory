@@ -282,7 +282,17 @@ function InUseWarehousePage() {
       showNotification(`${tr.transfer_number} berhasil dikonfirmasi.`, 'success');
       setShowTransferModal(false);
       loadAll();
-    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+    } catch (err) {
+      // Rollback: hapus movements yang sudah ter-insert
+      try {
+        const { data: orphaned } = await supabase.from('stock_movements')
+          .select('id').eq('reference_number', tr.transfer_number).eq('reference_type', 'IU-TRANSFER');
+        if (orphaned && orphaned.length > 0) {
+          await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+        }
+      } catch (cleanupErr) { console.error('[iu-transfer confirm rollback]', cleanupErr); }
+      showNotification('Error: ' + err.message + '. Movements sudah di-rollback.', 'error');
+    }
     setSaving(false);
   }
 
@@ -435,25 +445,34 @@ function InUseWarehousePage() {
     setSaving(true);
     try {
       const dpItems = dp.in_use_deplete_items || [];
+
+      // ====== PRE-VALIDATION: cek SEMUA stok sekaligus SEBELUM create movement ======
+      const insufficientItems = [];
+      const costMap = {}; // cache avg_cost per item
       for (const item of dpItems) {
         const qty = parseFloat(item.quantity);
-
-        // CONTROL: Re-check stock is still available
         const { data: iuBal } = await supabase.from('stock_balance')
           .select('id, quantity, avg_cost').eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
-        if (!iuBal || parseFloat(iuBal.quantity) < qty) {
+        const currentQty = iuBal ? parseFloat(iuBal.quantity) || 0 : 0;
+        costMap[item.item_id] = iuBal ? parseFloat(iuBal.avg_cost) || 0 : 0;
+        if (currentQty < qty) {
           const itemName = item.items?.name || 'Unknown';
-          showNotification(`Stock ${itemName} tidak cukup di In-Use Warehouse. Tersedia: ${iuBal?.quantity || 0}`, 'error');
-          setSaving(false); return;
+          insufficientItems.push(`${itemName}: saldo=${currentQty}, diminta=${qty}`);
         }
+      }
+      if (insufficientItems.length > 0) {
+        showNotification(`Stok tidak cukup di In-Use Warehouse:\n${insufficientItems.join('\n')}`, 'error');
+        setSaving(false); return;
+      }
 
-        const unitCost = parseFloat(iuBal.avg_cost) || 0;
+      // ====== SEMUA STOK CUKUP — Proses movements ======
+      for (const item of dpItems) {
+        const qty = parseFloat(item.quantity);
+        const unitCost = costMap[item.item_id] || 0;
         const totalCost = qty * unitCost;
 
-        // Update deplete item costs
         await supabase.from('in_use_deplete_items').update({ unit_cost: unitCost, total_cost: totalCost }).eq('deplete_id', dp.id).eq('item_id', item.item_id);
 
-        // Stock movement OUT dari in-use warehouse via RPC (Fase 6)
         const { error: outErr } = await recordMovement({
           organizationId: selectedOrg.id,
           itemId: item.item_id,
@@ -477,7 +496,17 @@ function InUseWarehousePage() {
       showNotification(`${dp.deplete_number} berhasil dikonfirmasi.`, 'success');
       setShowDepleteModal(false);
       loadAll();
-    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+    } catch (err) {
+      // Rollback: hapus movements yang sudah ter-insert
+      try {
+        const { data: orphaned } = await supabase.from('stock_movements')
+          .select('id').eq('reference_number', dp.deplete_number).eq('reference_type', 'DEPLETED');
+        if (orphaned && orphaned.length > 0) {
+          await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+        }
+      } catch (cleanupErr) { console.error('[deplete confirm rollback]', cleanupErr); }
+      showNotification('Error: ' + err.message + '. Movements sudah di-rollback.', 'error');
+    }
     setSaving(false);
   }
 

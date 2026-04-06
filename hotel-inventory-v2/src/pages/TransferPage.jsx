@@ -183,11 +183,36 @@ function TransferPage() {
       const trItems = tr.transfer_items || [];
       if (trItems.length === 0) throw new Error('No items');
 
+      // ====== PRE-VALIDATION: cek semua stok source warehouse SEBELUM create movement ======
+      const insufficientItems = [];
+      for (const item of trItems) {
+        const qty = parseFloat(item.quantity);
+        if (qty <= 0) continue;
+        const { data: sb } = await supabase.from('stock_balance')
+          .select('quantity')
+          .eq('organization_id', selectedOrg.id)
+          .eq('item_id', item.item_id)
+          .eq('warehouse_id', tr.from_warehouse_id)
+          .maybeSingle();
+        const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
+        if (currentQty < qty) {
+          const itemName = item.items?.code ? `${item.items.code} - ${item.items.name}` : (item.items?.name || item.item_id);
+          insufficientItems.push(`${itemName}: saldo=${currentQty}, diminta=${qty}`);
+        }
+      }
+      if (insufficientItems.length > 0) {
+        const srcWh = warehouses.find(w => w.id === tr.from_warehouse_id);
+        showNotification(`Stok tidak cukup di [${srcWh?.code || ''} - ${srcWh?.name || ''}]:\n${insufficientItems.join('\n')}`, 'error');
+        setSaving(false);
+        return;
+      }
+
+      // ====== SEMUA STOK CUKUP — Proses movements ======
+      const attemptStartedAt = new Date().toISOString();
       for (const item of trItems) {
         const qty = parseFloat(item.quantity);
         if (qty <= 0) continue;
 
-        // Atomic OUT+IN via RPC (Fase 6). unit_cost diambil otomatis dari source balance jika null.
         const { error: transferErr } = await recordTransfer({
           organizationId: selectedOrg.id,
           itemId: item.item_id,
@@ -212,7 +237,17 @@ function TransferPage() {
       showNotification(t('transfer.successConfirm'));
       setShowModal(false);
       loadAll();
-    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+    } catch (err) {
+      // Rollback: hapus movements yang sudah ter-insert
+      try {
+        const { data: orphaned } = await supabase.from('stock_movements')
+          .select('id').eq('reference_number', tr.transfer_number).gte('created_at', attemptStartedAt);
+        if (orphaned && orphaned.length > 0) {
+          await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+        }
+      } catch (cleanupErr) { console.error('[transfer confirm rollback]', cleanupErr); }
+      showNotification('Error: ' + err.message + '. Movements sudah di-rollback.', 'error');
+    }
     setSaving(false);
   }
 

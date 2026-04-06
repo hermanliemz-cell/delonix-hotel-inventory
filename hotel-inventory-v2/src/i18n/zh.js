@@ -3,7 +3,7 @@ export default {
   'app.title': '酒店库存',
   'app.subtitle': '管理系统',
   'app.loading': '正在加载库存系统...',
-  'app.version': 'v2.0.06',
+  'app.version': __APP_VERSION__,
   'app.accessDenied': '访问被拒绝',
   'app.noPermission': '您没有权限访问此页面。',
   'app.maintenance.title': '系统维护中',
