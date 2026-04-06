@@ -317,6 +317,51 @@ function RoomAdditionalRequestPage() {
       const linenList = (items || []).filter(i => i.item_type === 'linen');
       const amenityList = (items || []).filter(i => i.item_type === 'amenity');
 
+      // ====== PRE-VALIDATION: cek semua stok SEBELUM create movement apapun ======
+      // Kumpulkan semua OUT yang dibutuhkan dari HK Store, lalu cek saldo.
+      // Jika ada yang kurang, tampilkan SEMUA item yang gagal dan ABORT.
+      const outRequirements = {}; // key: itemId → { itemId, totalQty, itemLabel }
+      for (const li of linenList) {
+        const qty = parseFloat(li.quantity);
+        if (qty <= 0) continue;
+        if (!outRequirements[li.item_id]) {
+          outRequirements[li.item_id] = { itemId: li.item_id, totalQty: 0, itemLabel: li.items ? `${li.items.code} - ${li.items.name}` : li.item_id };
+        }
+        outRequirements[li.item_id].totalQty += qty;
+      }
+      for (const ai of amenityList) {
+        const qty = parseFloat(ai.quantity);
+        if (qty <= 0) continue;
+        if (!outRequirements[ai.item_id]) {
+          outRequirements[ai.item_id] = { itemId: ai.item_id, totalQty: 0, itemLabel: ai.items ? `${ai.items.code} - ${ai.items.name}` : ai.item_id };
+        }
+        outRequirements[ai.item_id].totalQty += qty;
+      }
+
+      const insufficientItems = [];
+      for (const req of Object.values(outRequirements)) {
+        const { data: sb } = await supabase.from('stock_balance')
+          .select('quantity')
+          .eq('organization_id', selectedOrg.id)
+          .eq('item_id', req.itemId)
+          .eq('warehouse_id', hkStore.id)
+          .maybeSingle();
+        const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
+        if (currentQty < req.totalQty) {
+          insufficientItems.push(`${req.itemLabel} di [${hkStore.code}]: saldo=${currentQty}, diminta=${req.totalQty}`);
+        }
+      }
+
+      if (insufficientItems.length > 0) {
+        // ABORT — jangan buat movement apapun, kembalikan lock
+        try { await supabase.from('room_additional_requests').update({ status: 'draft' }).eq('id', record.id).eq('status', 'processing'); } catch (_) {}
+        showNotification('Stok tidak cukup:\n' + insufficientItems.join('\n'), 'error');
+        setSaving(false);
+        return;
+      }
+
+      // ====== SEMUA STOK CUKUP — Proses documents & movements ======
+
       // ==================== LINEN → Transfer Document ====================
       if (linenList.length > 0) {
         const trNumber = await generateDocNumber('transfers', 'transfer_number', 'TR');

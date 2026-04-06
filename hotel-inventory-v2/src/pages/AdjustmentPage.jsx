@@ -41,7 +41,7 @@ export default function AdjustmentPage() {
     setLoading(true);
     const [adjRes, itemRes, whRes] = await Promise.all([
       supabase.from('adjustments').select('*, departments(name, code), warehouses(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
-      supabase.from('items').select('id, code, name, usage_unit:units!items_usage_unit_id_fkey(abbreviation)').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, is_active, usage_unit:units!items_usage_unit_id_fkey(abbreviation)').eq('organization_id', selectedOrg?.id).order('code'),
       supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
     ]);
     setAdjustments(adjRes.data || []);
@@ -325,7 +325,7 @@ export default function AdjustmentPage() {
                     <div className="relative">
                       {line.item_id ? (
                         <div className="flex items-center gap-1">
-                          <span className="text-xs bg-gray-100 px-2 py-1 rounded flex-1 truncate">{items.find(i=>i.id===line.item_id)?.code} - {items.find(i=>i.id===line.item_id)?.name}</span>
+                          <span className={`text-xs px-2 py-1 rounded flex-1 truncate ${items.find(i=>i.id===line.item_id)?.is_active === false ? 'bg-red-50 text-gray-500' : 'bg-gray-100'}`}>{items.find(i=>i.id===line.item_id)?.code} - {items.find(i=>i.id===line.item_id)?.name}{items.find(i=>i.id===line.item_id)?.is_active === false ? ' (Non-Aktif)' : ''}</span>
                           <button onClick={() => { updateLine(idx, 'item_id', ''); setItemSearch({...itemSearch, [idx]: ''}); }} className="text-gray-400 hover:text-red-500 text-xs">&times;</button>
                         </div>
                       ) : (
@@ -337,8 +337,9 @@ export default function AdjustmentPage() {
                             <div className="absolute z-10 mt-1 w-full bg-white border rounded shadow-lg max-h-40 overflow-y-auto">
                               {filteredItems.slice(0, 20).map(i => (
                                 <div key={i.id} onClick={() => { updateLine(idx, 'item_id', i.id); setItemSearch({...itemSearch, [idx]: ''}); }}
-                                  className="px-2 py-1.5 text-xs hover:bg-blue-50 cursor-pointer border-b border-gray-50">
+                                  className={`px-2 py-1.5 text-xs hover:bg-blue-50 cursor-pointer border-b border-gray-50 ${!i.is_active ? 'bg-gray-50 text-gray-400' : ''}`}>
                                   <span className="font-medium">{i.code}</span> - {i.name} <span className="text-gray-400">({i.usage_unit?.abbreviation || '-'})</span>
+                                  {!i.is_active && <span className="ml-1 text-[10px] bg-red-100 text-red-500 px-1 rounded">Non-Aktif</span>}
                                 </div>
                               ))}
                             </div>
