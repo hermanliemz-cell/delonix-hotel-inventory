@@ -284,7 +284,7 @@ export function AppProvider({ children }) {
    */
   const showNotification = useCallback((message, type = 'success') => {
     setNotification({ message, type });
-    setTimeout(() => setNotification(null), 4000);
+    setTimeout(() => setNotification(null), type === 'error' ? 10000 : 4000);
   }, []);
 
   /**

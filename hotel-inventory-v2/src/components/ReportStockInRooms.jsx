@@ -12,11 +12,7 @@ export function ReportStockInRooms({ onBack }) {
   const [loading, setLoading] = useState(false);
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().slice(0, 10));
   const [categories, setCategories] = useState([]);
-  const [filterItemIds, setFilterItemIds] = useState([]);
-  const [allItemsList, setAllItemsList] = useState([]);
-  const [itemDropOpen, setItemDropOpen] = useState(false);
-  const [itemSearch, setItemSearch] = useState('');
-  const [expandedItemCats, setExpandedItemCats] = useState({});
+  const [filterLinenCat, setFilterLinenCat] = useState('');
   const [rooms, setRooms] = useState([]);
   const [data, setData] = useState([]);
   const [expandedFloors, setExpandedFloors] = useState({});
@@ -62,90 +58,12 @@ export function ReportStockInRooms({ onBack }) {
     }
   }, [selectedOrg]);
 
-  // Load linen items for item filter dropdown
-  React.useEffect(() => {
-    if (selectedOrg && linenCatIds.length > 0) {
-      let q = supabase.from('items')
-        .select('id, code, name, category_id, is_active, item_categories(id, code, name, parent_id)')
-        .eq('organization_id', selectedOrg.id)
-        .in('category_id', linenCatIds)
-        .order('code');
-      if (filterActive === 'active') q = q.eq('is_active', true);
-      else if (filterActive === 'inactive') q = q.eq('is_active', false);
-      q.then(({ data: items }) => {
-        setAllItemsList(items || []);
-        setFilterItemIds([]);
-      });
-    }
-  }, [selectedOrg, filterActive, linenCatIds]);
-
-  // Item filter dropdown ref
-  const itemDropRef = React.useRef(null);
-  React.useEffect(() => {
-    const handler = (e) => { if (itemDropRef.current && !itemDropRef.current.contains(e.target)) setItemDropOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  // Build TreeSelect data: group items by child category
-  const itemTreeData = React.useMemo(() => {
-    const tree = [];
-    const parentMap = {};
-    allItemsList.forEach(item => {
-      const cat = item.item_categories;
-      const parentId = cat?.parent_id || cat?.id || 'uncategorized';
-      const childId = cat?.parent_id ? cat.id : null;
-      if (!parentMap[parentId]) {
-        const pCat = categories.find(c => c.id === parentId);
-        parentMap[parentId] = { id: parentId, code: pCat?.code || '', name: pCat?.name || 'Uncategorized', children: {} };
-      }
-      const pNode = parentMap[parentId];
-      if (childId) {
-        if (!pNode.children[childId]) {
-          pNode.children[childId] = { id: childId, code: cat.code, name: cat.name, items: [] };
-        }
-        pNode.children[childId].items.push(item);
-      } else {
-        if (!pNode.children['_direct']) {
-          pNode.children['_direct'] = { id: '_direct', code: '', name: '', items: [] };
-        }
-        pNode.children['_direct'].items.push(item);
-      }
-    });
-    Object.values(parentMap).sort((a, b) => (a.code || '').localeCompare(b.code || '')).forEach(p => {
-      tree.push(p);
-    });
-    return tree;
-  }, [allItemsList, categories]);
-
-  // Filtered items for search
-  const filteredItemTree = React.useMemo(() => {
-    if (!itemSearch.trim()) return itemTreeData;
-    const q = itemSearch.toLowerCase();
-    return itemTreeData.map(parent => {
-      const newChildren = {};
-      Object.entries(parent.children).forEach(([key, child]) => {
-        const matchItems = child.items.filter(i => i.code.toLowerCase().includes(q) || i.name.toLowerCase().includes(q));
-        if (matchItems.length > 0) newChildren[key] = { ...child, items: matchItems };
-      });
-      if (Object.keys(newChildren).length > 0) return { ...parent, children: newChildren };
-      return null;
-    }).filter(Boolean);
-  }, [itemTreeData, itemSearch]);
-
-  function toggleFilterItem(itemId) {
-    setFilterItemIds(prev => prev.includes(itemId) ? prev.filter(i => i !== itemId) : [...prev, itemId]);
-  }
-
-  function toggleAllItemsInCat(catItems) {
-    const ids = catItems.map(i => i.id);
-    const allSelected = ids.every(id => filterItemIds.includes(id));
-    if (allSelected) {
-      setFilterItemIds(prev => prev.filter(id => !ids.includes(id)));
-    } else {
-      setFilterItemIds(prev => [...new Set([...prev, ...ids])]);
-    }
-  }
+  // Compute level-2 linen categories (children of LIN parent)
+  const linenLevel2Cats = React.useMemo(() => {
+    const linParent = categories.find(c => c.code === 'LIN' && !c.parent_id);
+    if (!linParent) return [];
+    return categories.filter(c => c.parent_id === linParent.id).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+  }, [categories]);
 
   async function generateReport() {
     if (!selectedOrg || linenCatIds.length === 0) return;
@@ -161,17 +79,15 @@ export function ReportStockInRooms({ onBack }) {
       const { data: roomList } = await roomQ.order('room_number');
       setRooms(roomList || []);
 
-      // 2. Get linen items only
+      // 2. Get linen items only (filtered by level-2 category if selected)
+      const activeCatIds = filterLinenCat ? [filterLinenCat] : linenCatIds;
       let itemQ = supabase.from('items')
         .select('id, code, name, brand, category_id, is_active, item_categories(id, code, name, parent_id)')
         .eq('organization_id', selectedOrg.id)
-        .in('category_id', linenCatIds)
+        .in('category_id', activeCatIds)
         .order('code');
       if (filterActive === 'active') itemQ = itemQ.eq('is_active', true);
       else if (filterActive === 'inactive') itemQ = itemQ.eq('is_active', false);
-      if (filterItemIds.length > 0) {
-        itemQ = itemQ.in('id', filterItemIds);
-      }
       const { data: allItems } = await itemQ;
 
       // 3. Get stock balances for room warehouses (only qty > 0)
@@ -267,86 +183,16 @@ export function ReportStockInRooms({ onBack }) {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
           </div>
 
-          {/* Item Filter TreeSelect (linen items only) */}
-          <div className="min-w-[300px] relative" ref={itemDropRef}>
-            <label className="text-xs font-medium text-gray-500 mb-1 block">Item Linen</label>
-            <button type="button" onClick={() => { setItemDropOpen(!itemDropOpen); setItemSearch(''); }}
-              className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:border-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-              <span className={filterItemIds.length > 0 ? 'text-gray-800 truncate' : 'text-gray-400'}>
-                {filterItemIds.length === 0 ? 'Semua Item Linen' : filterItemIds.length <= 2
-                  ? allItemsList.filter(i => filterItemIds.includes(i.id)).map(i => i.name).join(', ')
-                  : `${filterItemIds.length} item dipilih`}
-              </span>
-              <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${itemDropOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {itemDropOpen && (
-              <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden" style={{ minWidth: '350px' }}>
-                <div className="p-2 border-b border-gray-100">
-                  <input type="text" value={itemSearch} onChange={e => setItemSearch(e.target.value)}
-                    placeholder="Cari kode atau nama linen..."
-                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    autoFocus />
-                </div>
-                <div className="overflow-y-auto" style={{ maxHeight: '350px' }}>
-                  {filteredItemTree.length === 0 && (
-                    <div className="px-3 py-4 text-sm text-gray-400 text-center">Tidak ada item ditemukan</div>
-                  )}
-                  {filteredItemTree.map(parent => {
-                    const allParentItems = Object.values(parent.children).flatMap(c => c.items);
-                    const allParentSelected = allParentItems.length > 0 && allParentItems.every(i => filterItemIds.includes(i.id));
-                    const someParentSelected = allParentItems.some(i => filterItemIds.includes(i.id));
-                    const isExpanded = expandedItemCats[parent.id];
-                    return (
-                      <div key={parent.id}>
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-100 cursor-pointer select-none hover:bg-gray-100"
-                          onClick={() => setExpandedItemCats(prev => ({ ...prev, [parent.id]: !prev[parent.id] }))}>
-                          <span className="text-gray-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
-                          <input type="checkbox" checked={allParentSelected} ref={el => { if (el) el.indeterminate = someParentSelected && !allParentSelected; }}
-                            onChange={(e) => { e.stopPropagation(); toggleAllItemsInCat(allParentItems); }}
-                            onClick={e => e.stopPropagation()}
-                            className="w-3.5 h-3.5 rounded text-primary-600 focus:ring-primary-500 flex-shrink-0" />
-                          <span className="font-semibold text-xs text-gray-700 uppercase">{parent.code}</span>
-                          <span className="text-xs text-gray-600">{parent.name}</span>
-                          <span className="text-xs text-gray-400 ml-auto">({allParentItems.length})</span>
-                        </div>
-                        {isExpanded && Object.values(parent.children).sort((a, b) => (a.code || '').localeCompare(b.code || '')).map(child => (
-                          <div key={child.id}>
-                            {child.id !== '_direct' && (
-                              <div className="flex items-center gap-2 px-5 py-1 bg-gray-50/50 cursor-pointer select-none hover:bg-gray-50"
-                                onClick={() => toggleAllItemsInCat(child.items)}>
-                                <input type="checkbox" checked={child.items.every(i => filterItemIds.includes(i.id))}
-                                  ref={el => { if (el) el.indeterminate = child.items.some(i => filterItemIds.includes(i.id)) && !child.items.every(i => filterItemIds.includes(i.id)); }}
-                                  onChange={() => toggleAllItemsInCat(child.items)}
-                                  onClick={e => e.stopPropagation()}
-                                  className="w-3.5 h-3.5 rounded text-primary-600 focus:ring-primary-500 flex-shrink-0" />
-                                <span className="text-xs font-medium text-gray-600">{child.code} {child.name}</span>
-                                <span className="text-xs text-gray-400 ml-auto">({child.items.length})</span>
-                              </div>
-                            )}
-                            {child.items.map(item => (
-                              <label key={item.id} className="flex items-center gap-2 px-7 py-1 text-sm cursor-pointer select-none hover:bg-blue-50 transition-colors">
-                                <input type="checkbox" checked={filterItemIds.includes(item.id)} onChange={() => toggleFilterItem(item.id)}
-                                  className="w-3.5 h-3.5 rounded text-primary-600 focus:ring-primary-500 flex-shrink-0" />
-                                <span className="font-mono text-xs text-gray-500">{item.code}</span>
-                                <span className={`text-xs ${filterItemIds.includes(item.id) ? 'text-primary-700 font-medium' : 'text-gray-700'}`}>{item.name}</span>
-                              </label>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-                {filterItemIds.length > 0 && (
-                  <div className="p-2 border-t border-gray-100 flex justify-between items-center">
-                    <span className="text-xs text-gray-500">{filterItemIds.length} item dipilih</span>
-                    <button onClick={() => setFilterItemIds([])} className="text-xs text-red-500 hover:text-red-700 font-medium">Hapus Semua</button>
-                  </div>
-                )}
-              </div>
-            )}
+          {/* Category Linen Level 2 Filter */}
+          <div className="min-w-[220px]">
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Kategori Linen</label>
+            <select value={filterLinenCat} onChange={e => setFilterLinenCat(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+              <option value="">Semua Kategori Linen</option>
+              {linenLevel2Cats.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.code} - {cat.name}</option>
+              ))}
+            </select>
           </div>
 
           <div className="min-w-[140px]">

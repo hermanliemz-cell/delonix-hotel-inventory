@@ -736,18 +736,93 @@ function RoomMakeUpPageNew() {
       };
 
       const { data: muItems } = await supabase.from('room_makeup_items').select('*').eq('makeup_id', mu.id);
+
+      // ====== PRE-VALIDATION: cek semua stok SEBELUM create movement apapun ======
+      // Kumpulkan semua OUT yang dibutuhkan, lalu cek saldo per warehouse+item.
+      // Jika ada yang kurang, tampilkan SEMUA item yang gagal dan ABORT.
+      const outRequirements = {}; // key: `${warehouseId}|${itemId}` → { warehouseId, itemId, totalQty, itemLabel, whLabel }
+
+      const addOutReq = (itemId, warehouseId, qty) => {
+        if (!warehouseId || qty <= 0) return;
+        const key = `${warehouseId}|${itemId}`;
+        if (!outRequirements[key]) {
+          const item = allItems.find(i => i.id === itemId);
+          const wh = warehouses.find(w => w.id === warehouseId);
+          outRequirements[key] = {
+            warehouseId, itemId, totalQty: 0,
+            itemLabel: item ? `${item.code} - ${item.name}` : itemId,
+            whLabel: wh ? `${wh.code} - ${wh.name}` : warehouseId,
+          };
+        }
+        outRequirements[key].totalQty += qty;
+      };
+
+      // Collect OUT requirements from linen items
       for (const mi of (muItems || [])) {
         const numQty = parseFloat(mi.actual_qty);
         if (numQty <= 0) continue;
         if (mi.type === 'replace') {
           const linenItem = allItems.find(i => i.id === mi.item_id);
           const linenOutWh = linenItem?.default_warehouse_id || hkStore?.id;
-          // Get source (HK store) avg_cost BEFORE the OUT
+          addOutReq(mi.item_id, linenOutWh, numQty);
+        } else if (mi.type === 'move_to_dirty') {
+          addOutReq(mi.item_id, room?.warehouse_id, numQty);
+        } else if (mi.type === 'damage') {
+          addOutReq(mi.item_id, room?.warehouse_id, numQty);
+        } else if (mi.type === 'lost') {
+          addOutReq(mi.item_id, room?.warehouse_id, numQty);
+        } else if (mi.type === 'to_hk_store') {
+          addOutReq(mi.item_id, room?.warehouse_id, numQty);
+        }
+      }
+
+      // Collect OUT requirements from consumption items
+      const { data: consumption } = await supabase.from('room_consumption')
+        .select('*, room_consumption_items(*)').eq('makeup_id', mu.id);
+      if (consumption && consumption.length > 0) {
+        const con = consumption[0];
+        for (const ci of (con.room_consumption_items || [])) {
+          const item = allItems.find(i => i.id === ci.item_id);
+          const itemWarehouseId = item?.default_warehouse_id || hkStore?.id;
+          addOutReq(ci.item_id, itemWarehouseId, parseFloat(ci.quantity));
+        }
+      }
+
+      // Fetch actual stock balances for all required warehouse+item combos
+      const insufficientItems = [];
+      for (const req of Object.values(outRequirements)) {
+        const { data: sb } = await supabase.from('stock_balance')
+          .select('quantity')
+          .eq('organization_id', selectedOrg.id)
+          .eq('item_id', req.itemId)
+          .eq('warehouse_id', req.warehouseId)
+          .maybeSingle();
+        const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
+        if (currentQty < req.totalQty) {
+          insufficientItems.push(`${req.itemLabel} di [${req.whLabel}]: saldo=${currentQty}, diminta=${req.totalQty}`);
+        }
+      }
+
+      if (insufficientItems.length > 0) {
+        // ABORT — jangan buat movement apapun
+        try { await supabase.from('room_makeups').update({ status: 'DRAFT' }).eq('id', mu.id).eq('status', 'PROCESSING'); } catch (e) {}
+        showNotification('Stok tidak cukup:\n' + insufficientItems.join('\n'), 'error');
+        setSaving(false);
+        loadAll();
+        return;
+      }
+
+      // ====== SEMUA STOK CUKUP — Proses movements ======
+      for (const mi of (muItems || [])) {
+        const numQty = parseFloat(mi.actual_qty);
+        if (numQty <= 0) continue;
+        if (mi.type === 'replace') {
+          const linenItem = allItems.find(i => i.id === mi.item_id);
+          const linenOutWh = linenItem?.default_warehouse_id || hkStore?.id;
           const srcCost = linenOutWh === hkStore?.id ? getHkAvgCost(mi.item_id) : 0;
           if (linenOutWh) await doStockMovement(mi.item_id, 'OUT', numQty, linenOutWh, 'MAKEUP-LINEN REPLACE', makeupNumber, 'OUT from Store', dept, mu.id);
           if (room?.warehouse_id) await doStockMovement(mi.item_id, 'IN', numQty, room.warehouse_id, 'MAKEUP-LINEN REPLACE', makeupNumber, 'IN to Room ' + (room.room_number || ''), dept, mu.id, srcCost);
         } else if (mi.type === 'move_to_dirty') {
-          // Get source (room) avg_cost BEFORE the OUT
           const srcCost = getWhAvgCost(mi.item_id, room?.warehouse_id);
           if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'MAKEUP-DIRTY', makeupNumber, 'OUT from Room', dept, mu.id);
           if (dirtyWh) await doStockMovement(mi.item_id, 'IN', numQty, dirtyWh.id, 'MAKEUP-DIRTY', makeupNumber, 'IN to Dirty', dept, mu.id, srcCost);
@@ -778,8 +853,7 @@ function RoomMakeUpPageNew() {
         }
       }
 
-      const { data: consumption } = await supabase.from('room_consumption')
-        .select('*, room_consumption_items(*)').eq('makeup_id', mu.id);
+      // Process consumption movements (already pre-validated above)
       if (consumption && consumption.length > 0) {
         const con = consumption[0];
         for (const ci of (con.room_consumption_items || [])) {
@@ -802,16 +876,30 @@ function RoomMakeUpPageNew() {
       // CATATAN: referenceType cover MAKEUP-LINEN REPLACE, MAKEUP-DIRTY,
       // DAMAGE, ITEM_LOST, MAKEUP-TO-HK, dan CONSUMPTION (untuk amenities).
       try {
-        const { data: orphaned, error: selErr } = await supabase.from('stock_movements')
-          .select('id, reference_type')
+        // Rollback linen/damage/lost/toHk movements (reference_number = makeup_number)
+        const { data: orphaned1 } = await supabase.from('stock_movements')
+          .select('id')
           .eq('reference_number', mu.makeup_number)
           .gte('created_at', attemptStartedAt);
-        if (!selErr && orphaned && orphaned.length > 0) {
-          const ids = orphaned.map(o => o.id);
+        // Rollback consumption movements (reference_number = consumption_number)
+        const { data: conDocs } = await supabase.from('room_consumption')
+          .select('consumption_number').eq('makeup_id', mu.id);
+        let orphaned2 = [];
+        if (conDocs && conDocs.length > 0) {
+          for (const cd of conDocs) {
+            const { data: o2 } = await supabase.from('stock_movements')
+              .select('id')
+              .eq('reference_number', cd.consumption_number)
+              .gte('created_at', attemptStartedAt);
+            if (o2) orphaned2 = orphaned2.concat(o2);
+          }
+        }
+        const allOrphaned = [...(orphaned1 || []), ...orphaned2];
+        if (allOrphaned.length > 0) {
+          const ids = allOrphaned.map(o => o.id);
           await supabase.from('stock_movements').delete().in('id', ids);
         }
       } catch (cleanupErr) {
-        // Log tapi jangan ganggu status rewind — cleanup best-effort.
         console.error('[confirm rollback] cleanup movements failed:', cleanupErr);
       }
       try { await supabase.from('room_makeups').update({ status: 'DRAFT' }).eq('id', mu.id).eq('status', 'PROCESSING'); } catch (e) {}
@@ -858,7 +946,15 @@ function RoomMakeUpPageNew() {
       departmentId: dept || null,
       notes: notesText,
     });
-    if (error) throw error;
+    if (error) {
+      // Enrich error message with item code & name and warehouse name instead of UUIDs
+      const item = allItems.find(i => i.id === itemId);
+      const itemLabel = item ? `${item.code} - ${item.name}` : itemId;
+      const wh = warehouses.find(w => w.id === warehouseId);
+      const whLabel = wh ? `${wh.code} - ${wh.name}` : warehouseId;
+      const enriched = new Error(`Stok tidak cukup untuk ${movementType}: item [${itemLabel}], warehouse [${whLabel}], qty diminta=${qty}`);
+      throw enriched;
+    }
   }
 
   function toggleSection(key) { setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] })); }

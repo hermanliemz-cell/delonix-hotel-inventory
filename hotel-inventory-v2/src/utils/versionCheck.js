@@ -4,7 +4,7 @@
  * instead of auto-reloading the page
  */
 
-export const APP_VERSION = 'v2.0.05';
+export const APP_VERSION = 'v2.0.06';
 
 /**
  * Initialize version check
