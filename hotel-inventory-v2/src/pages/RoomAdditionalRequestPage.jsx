@@ -325,7 +325,14 @@ function RoomAdditionalRequestPage() {
         const qty = parseFloat(li.quantity);
         if (qty <= 0) continue;
         if (!outRequirements[li.item_id]) {
-          outRequirements[li.item_id] = { itemId: li.item_id, totalQty: 0, itemLabel: li.items ? `${li.items.code} - ${li.items.name}` : li.item_id };
+          let itemLabel;
+          if (li.items) {
+            itemLabel = `${li.items.code} - ${li.items.name}`;
+          } else {
+            const { data: _itm } = await supabase.from('items').select('code, name').eq('id', li.item_id).maybeSingle();
+            itemLabel = _itm ? `${_itm.code} - ${_itm.name}` : li.item_id;
+          }
+          outRequirements[li.item_id] = { itemId: li.item_id, totalQty: 0, itemLabel };
         }
         outRequirements[li.item_id].totalQty += qty;
       }
@@ -333,7 +340,14 @@ function RoomAdditionalRequestPage() {
         const qty = parseFloat(ai.quantity);
         if (qty <= 0) continue;
         if (!outRequirements[ai.item_id]) {
-          outRequirements[ai.item_id] = { itemId: ai.item_id, totalQty: 0, itemLabel: ai.items ? `${ai.items.code} - ${ai.items.name}` : ai.item_id };
+          let itemLabel;
+          if (ai.items) {
+            itemLabel = `${ai.items.code} - ${ai.items.name}`;
+          } else {
+            const { data: _itm } = await supabase.from('items').select('code, name').eq('id', ai.item_id).maybeSingle();
+            itemLabel = _itm ? `${_itm.code} - ${_itm.name}` : ai.item_id;
+          }
+          outRequirements[ai.item_id] = { itemId: ai.item_id, totalQty: 0, itemLabel };
         }
         outRequirements[ai.item_id].totalQty += qty;
       }

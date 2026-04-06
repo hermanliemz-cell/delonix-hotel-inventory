@@ -136,12 +136,12 @@ function TransferPage() {
       if (destWh && destWh.warehouse_type === 'in_use') {
         const itemIds = validItems.map(i => i.item_id);
         const { data: existingStock } = await supabase.from('stock_balance')
-          .select('item_id, quantity, items:item_id(name)')
+          .select('item_id, quantity, items:item_id(code, name)')
           .eq('warehouse_id', toWarehouse)
           .gt('quantity', 0)
           .in('item_id', itemIds);
         if (existingStock && existingStock.length > 0) {
-          const names = existingStock.map(s => s.items?.name || 'Unknown').join(', ');
+          const names = existingStock.map(s => s.items?.code ? `${s.items.code} - ${s.items.name}` : (s.items?.name || 'Unknown')).join(', ');
           showNotification(`Item masih ada di In-Use Warehouse (harus ditandai habis dulu): ${names}`, 'error');
           setSaving(false);
           return;
@@ -196,13 +196,23 @@ function TransferPage() {
           .maybeSingle();
         const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
         if (currentQty < qty) {
-          const itemName = item.items?.code ? `${item.items.code} - ${item.items.name}` : (item.items?.name || item.item_id);
+          let itemName;
+          if (item.items?.code) {
+            itemName = `${item.items.code} - ${item.items.name}`;
+          } else {
+            const { data: _itm } = await supabase.from('items').select('code, name').eq('id', item.item_id).maybeSingle();
+            itemName = _itm ? `${_itm.code} - ${_itm.name}` : item.item_id;
+          }
           insufficientItems.push(`${itemName}: saldo=${currentQty}, diminta=${qty}`);
         }
       }
       if (insufficientItems.length > 0) {
-        const srcWh = warehouses.find(w => w.id === tr.from_warehouse_id);
-        showNotification(`Stok tidak cukup di [${srcWh?.code || ''} - ${srcWh?.name || ''}]:\n${insufficientItems.join('\n')}`, 'error');
+        let srcWh = warehouses.find(w => w.id === tr.from_warehouse_id);
+        if (!srcWh) {
+          const { data: _wh } = await supabase.from('warehouses').select('code, name').eq('id', tr.from_warehouse_id).maybeSingle();
+          srcWh = _wh || { code: '', name: '' };
+        }
+        showNotification(`Stok tidak cukup di [${srcWh.code || ''} - ${srcWh.name || ''}]:\n${insufficientItems.join('\n')}`, 'error');
         setSaving(false);
         return;
       }
@@ -276,7 +286,9 @@ function TransferPage() {
         const { data: destBal } = await supabase.from('stock_balance')
           .select('quantity').eq('organization_id', selectedOrg.id).eq('item_id', item.item_id).eq('warehouse_id', tr.to_warehouse_id).maybeSingle();
         if (!destBal || parseFloat(destBal.quantity) < qty) {
-          const itemName = item.items?.name || 'Unknown';
+          let itemName;
+          if (item.items?.code) { itemName = `${item.items.code} - ${item.items.name}`; }
+          else { const { data: _itm } = await supabase.from('items').select('code, name').eq('id', item.item_id).maybeSingle(); itemName = _itm ? `${_itm.code} - ${_itm.name}` : 'Unknown'; }
           showNotification('Tidak bisa revoke. Stock ' + itemName + ' di warehouse tujuan tidak cukup (qty: ' + (destBal?.quantity || 0) + ', dibutuhkan: ' + qty + ')', 'error');
           setSaving(false); return;
         }

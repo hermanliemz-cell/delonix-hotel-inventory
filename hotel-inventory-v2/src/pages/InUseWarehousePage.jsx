@@ -152,13 +152,18 @@ function InUseWarehousePage() {
 
     const overQuotaItems = [];
     for (const row of validItems) {
-      const itemInfo = allItems.find(i => i.id === row.item_id);
+      let itemInfo = allItems.find(i => i.id === row.item_id);
+      if (!itemInfo) {
+        const { data: _itm } = await supabase.from('items').select('code, name, max_inuse_qty').eq('id', row.item_id).maybeSingle();
+        itemInfo = _itm || null;
+      }
       const maxQty = parseInt(itemInfo?.max_inuse_qty) || 0;
       if (maxQty > 0) {
         const currentInUse = existingMap[row.item_id] || 0;
         const newQty = parseFloat(row.quantity) || 0;
         if (currentInUse + newQty > maxQty) {
-          overQuotaItems.push(`${itemInfo?.name || 'Unknown'} (max: ${maxQty}, saat ini di IU: ${currentInUse}, request: ${newQty})`);
+          const itemLabel = itemInfo?.code ? `${itemInfo.code} - ${itemInfo.name}` : (itemInfo?.name || 'Unknown');
+          overQuotaItems.push(`${itemLabel} (max: ${maxQty}, saat ini di IU: ${currentInUse}, request: ${newQty})`);
         }
       }
     }
@@ -214,7 +219,7 @@ function InUseWarehousePage() {
       .eq('warehouse_id', inUseWarehouse.id).in('item_id', itemIds);
     const existingMap = {};
     (existingStock || []).forEach(s => { existingMap[s.item_id] = parseFloat(s.quantity) || 0; });
-    const { data: itemsData } = await supabase.from('items').select('id, name, max_inuse_qty').in('id', itemIds);
+    const { data: itemsData } = await supabase.from('items').select('id, code, name, max_inuse_qty').in('id', itemIds);
     const itemInfoMap = {};
     (itemsData || []).forEach(i => { itemInfoMap[i.id] = i; });
     const overQuotaItems = [];
@@ -225,7 +230,8 @@ function InUseWarehousePage() {
         const currentInUse = existingMap[row.item_id] || 0;
         const newQty = parseFloat(row.quantity) || 0;
         if (currentInUse + newQty > maxQty) {
-          overQuotaItems.push(`${info?.name || 'Unknown'} (max: ${maxQty}, saat ini: ${currentInUse}, request: ${newQty})`);
+          const itemLabel = info?.code ? `${info.code} - ${info.name}` : (info?.name || 'Unknown');
+          overQuotaItems.push(`${itemLabel} (max: ${maxQty}, saat ini: ${currentInUse}, request: ${newQty})`);
         }
       }
     }
@@ -239,7 +245,9 @@ function InUseWarehousePage() {
       const { data: srcBal } = await supabase.from('stock_balance')
         .select('quantity').eq('item_id', item.item_id).eq('warehouse_id', tr.from_warehouse_id).maybeSingle();
       if (!srcBal || parseFloat(srcBal.quantity) < qty) {
-        const itemName = item.items?.name || 'Unknown';
+        let itemName;
+        if (item.items?.code) { itemName = `${item.items.code} - ${item.items.name}`; }
+        else { const { data: _itm } = await supabase.from('items').select('code, name').eq('id', item.item_id).maybeSingle(); itemName = _itm ? `${_itm.code} - ${_itm.name}` : 'Unknown'; }
         showNotification(`Stock tidak cukup untuk ${itemName}. Tersedia: ${srcBal?.quantity || 0}, Dibutuhkan: ${qty}`, 'error'); return;
       }
     }
@@ -312,7 +320,9 @@ function InUseWarehousePage() {
         const { data: iuBal } = await supabase.from('stock_balance')
           .select('id, quantity').eq('item_id', item.item_id).eq('warehouse_id', inUseWarehouse.id).maybeSingle();
         if (!iuBal || parseFloat(iuBal.quantity) < qty) {
-          const itemName = item.items?.name || 'Unknown';
+          let itemName;
+          if (item.items?.code) { itemName = `${item.items.code} - ${item.items.name}`; }
+          else { const { data: _itm } = await supabase.from('items').select('code, name').eq('id', item.item_id).maybeSingle(); itemName = _itm ? `${_itm.code} - ${_itm.name}` : 'Unknown'; }
           showNotification(`Tidak bisa revoke. Stock ${itemName} di In-Use Warehouse tidak cukup (sudah di-deplete?).`, 'error');
           setSaving(false); return;
         }
@@ -456,7 +466,9 @@ function InUseWarehousePage() {
         const currentQty = iuBal ? parseFloat(iuBal.quantity) || 0 : 0;
         costMap[item.item_id] = iuBal ? parseFloat(iuBal.avg_cost) || 0 : 0;
         if (currentQty < qty) {
-          const itemName = item.items?.name || 'Unknown';
+          let itemName;
+          if (item.items?.code) { itemName = `${item.items.code} - ${item.items.name}`; }
+          else { const { data: _itm } = await supabase.from('items').select('code, name').eq('id', item.item_id).maybeSingle(); itemName = _itm ? `${_itm.code} - ${_itm.name}` : 'Unknown'; }
           insufficientItems.push(`${itemName}: saldo=${currentQty}, diminta=${qty}`);
         }
       }

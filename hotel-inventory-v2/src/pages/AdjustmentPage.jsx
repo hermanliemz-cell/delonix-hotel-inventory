@@ -184,13 +184,23 @@ export default function AdjustmentPage() {
           .maybeSingle();
         const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
         if (currentQty < absQty) {
-          const itemLabel = ai.items ? `${ai.items.code} - ${ai.items.name}` : ai.item_id;
+          let itemLabel;
+          if (ai.items) {
+            itemLabel = `${ai.items.code} - ${ai.items.name}`;
+          } else {
+            const { data: _itm } = await supabase.from('items').select('code, name').eq('id', ai.item_id).maybeSingle();
+            itemLabel = _itm ? `${_itm.code} - ${_itm.name}` : ai.item_id;
+          }
           insufficientItems.push(`${itemLabel}: saldo=${currentQty}, diminta=${absQty}`);
         }
       }
       if (insufficientItems.length > 0) {
-        const wh = warehouses.find(w => w.id === adj.warehouse_id);
-        showNotification(`Stok tidak cukup di [${wh?.code || ''} - ${wh?.name || ''}]:\n${insufficientItems.join('\n')}`, 'error');
+        let wh = warehouses.find(w => w.id === adj.warehouse_id);
+        if (!wh) {
+          const { data: _wh } = await supabase.from('warehouses').select('code, name').eq('id', adj.warehouse_id).maybeSingle();
+          wh = _wh || { code: '', name: '' };
+        }
+        showNotification(`Stok tidak cukup di [${wh.code || ''} - ${wh.name || ''}]:\n${insufficientItems.join('\n')}`, 'error');
         return;
       }
 

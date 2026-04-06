@@ -173,7 +173,13 @@ function ApprovalPage() {
         }
         const { data: sbData } = await sbQuery.order('quantity', { ascending: false }).limit(1);
         if (!sbData || sbData.length === 0 || parseFloat(sbData[0].quantity) < qty) {
-          const itemLabel = wi.items ? `${wi.items.code} - ${wi.items.name}` : wi.item_id;
+          let itemLabel;
+          if (wi.items) {
+            itemLabel = `${wi.items.code} - ${wi.items.name}`;
+          } else {
+            const { data: _itm } = await supabase.from('items').select('code, name').eq('id', wi.item_id).maybeSingle();
+            itemLabel = _itm ? `${_itm.code} - ${_itm.name}` : wi.item_id;
+          }
           const available = sbData && sbData.length > 0 ? parseFloat(sbData[0].quantity) : 0;
           insufficientItems.push(`${itemLabel} (diminta=${qty}, tersedia=${available})`);
         } else {
