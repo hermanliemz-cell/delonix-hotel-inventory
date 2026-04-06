@@ -19,14 +19,17 @@ function WriteOffPage() {
   const { t } = useTranslation();
   const [writeoffs, setWriteoffs] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [allItems, setAllItems] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ department_id: '', write_off_date: getLocalDateString(), notes: '' });
+  const [form, setForm] = useState({ department_id: '', warehouse_id: '', write_off_date: getLocalDateString(), notes: '' });
   const [lineItems, setLineItems] = useState([]);
-  const [stockItems, setStockItems] = useState([]);
+  const [stockItems, setStockItems] = useState({});
+  const [whStockMap, setWhStockMap] = useState({});
   const [itemSearch, setItemSearch] = useState({});
   const [viewWo, setViewWo] = useState(null);
   const [viewWoItems, setViewWoItems] = useState([]);
@@ -36,20 +39,29 @@ function WriteOffPage() {
 
   async function loadAll() {
     setLoading(true);
-    const [woRes, deptRes, itemRes, sbRes] = await Promise.all([
-      supabase.from('write_offs').select('*, departments(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
+    const [woRes, deptRes, whRes, itemRes, sbRes] = await Promise.all([
+      supabase.from('write_offs').select('*, departments(name, code), warehouses(code, name)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('departments').select('*').eq('is_active', true).order('name'),
+      supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
       supabase.from('items').select('id, code, name, is_active').eq('organization_id', selectedOrg?.id).order('code'),
-      supabase.from('stock_balance').select('item_id, quantity').eq('organization_id', selectedOrg.id).gt('quantity', 0),
+      supabase.from('stock_balance').select('item_id, warehouse_id, quantity').eq('organization_id', selectedOrg.id).gt('quantity', 0),
     ]);
     setWriteoffs(woRes.data || []);
     setDepartments(deptRes.data || []);
-    // Filter items that have stock > 0
-    const stockMap = {};
-    (sbRes.data || []).forEach(s => { stockMap[s.item_id] = (stockMap[s.item_id] || 0) + parseFloat(s.quantity); });
-    const itemsWithStock = (itemRes.data || []).filter(i => stockMap[i.id] && stockMap[i.id] > 0);
-    setItems(itemsWithStock);
-    setStockItems(stockMap);
+    setWarehouses(whRes.data || []);
+    setAllItems(itemRes.data || []);
+    // Build stock map per warehouse: { "warehouseId|itemId": qty }
+    const whStock = {};
+    const globalStock = {};
+    (sbRes.data || []).forEach(s => {
+      const key = `${s.warehouse_id}|${s.item_id}`;
+      whStock[key] = (whStock[key] || 0) + parseFloat(s.quantity);
+      globalStock[s.item_id] = (globalStock[s.item_id] || 0) + parseFloat(s.quantity);
+    });
+    setWhStockMap(whStock);
+    setStockItems(globalStock);
+    // Default items list (all items with any stock)
+    setItems((itemRes.data || []).filter(i => globalStock[i.id] && globalStock[i.id] > 0));
     setLoading(false);
   }
 
@@ -65,21 +77,54 @@ function WriteOffPage() {
     setViewWoLoading(false);
   }
 
-  function openCreate() {
-    setEditing(null);
-    setForm({ department_id: currentUser?.department_id || departments[0]?.id || '', write_off_date: getLocalDateString(), notes: '' });
+  // When warehouse changes, filter items to only those with stock in that warehouse
+  function updateWarehouse(warehouseId) {
+    setForm(f => ({ ...f, warehouse_id: warehouseId }));
+    // Reset line items when warehouse changes
     setLineItems([{ item_id: '', quantity: 1, reason: 'DAMAGED', notes: '' }]);
     setItemSearch({});
+    if (!warehouseId) {
+      // No warehouse selected — show all items with any stock
+      setItems(allItems.filter(i => stockItems[i.id] && stockItems[i.id] > 0));
+    } else {
+      // Filter items that have stock in selected warehouse
+      const filtered = allItems.filter(i => {
+        const key = `${warehouseId}|${i.id}`;
+        return whStockMap[key] && whStockMap[key] > 0;
+      });
+      setItems(filtered);
+    }
+  }
+
+  function getWhStock(itemId) {
+    if (!form.warehouse_id) return stockItems[itemId] || 0;
+    const key = `${form.warehouse_id}|${itemId}`;
+    return whStockMap[key] || 0;
+  }
+
+  function openCreate() {
+    setEditing(null);
+    setForm({ department_id: currentUser?.department_id || departments[0]?.id || '', warehouse_id: '', write_off_date: getLocalDateString(), notes: '' });
+    setLineItems([{ item_id: '', quantity: 1, reason: 'DAMAGED', notes: '' }]);
+    setItemSearch({});
+    // Reset items to all with stock
+    setItems(allItems.filter(i => stockItems[i.id] && stockItems[i.id] > 0));
     setShowModal(true);
   }
 
   async function openEdit(wo) {
     setEditing(wo);
-    setForm({ department_id: wo.department_id || '', write_off_date: wo.write_off_date, notes: wo.notes || '' });
+    setForm({ department_id: wo.department_id || '', warehouse_id: wo.warehouse_id || '', write_off_date: wo.write_off_date, notes: wo.notes || '' });
     const { data: woItems } = await supabase.from('write_off_items').select('*').eq('wo_id', wo.id);
     setLineItems((woItems || []).map(i => ({ item_id: i.item_id, quantity: i.quantity, reason: i.reason || wo.reason || 'DAMAGED', notes: i.notes || '' })));
     if (!woItems || woItems.length === 0) setLineItems([{ item_id: '', quantity: 1, reason: 'DAMAGED', notes: '' }]);
     setItemSearch({});
+    // Filter items for the warehouse
+    if (wo.warehouse_id) {
+      setItems(allItems.filter(i => { const key = `${wo.warehouse_id}|${i.id}`; return whStockMap[key] && whStockMap[key] > 0; }));
+    } else {
+      setItems(allItems.filter(i => stockItems[i.id] && stockItems[i.id] > 0));
+    }
     setShowModal(true);
   }
 
@@ -99,7 +144,10 @@ function WriteOffPage() {
   }
 
   async function handleSave() {
-    if (!form.department_id || lineItems.filter(l => l.item_id).length === 0) return;
+    if (!form.department_id || !form.warehouse_id || lineItems.filter(l => l.item_id).length === 0) {
+      if (!form.warehouse_id) showNotification('Pilih gudang terlebih dahulu', 'error');
+      return;
+    }
     setSaving(true);
     try {
       // Validate write-off date
@@ -132,7 +180,7 @@ function WriteOffPage() {
       const validLines = lineItems.filter(l => l.item_id);
       if (editing) {
         const { error } = await supabase.from('write_offs').update({
-          department_id: form.department_id, write_off_date: form.write_off_date,
+          department_id: form.department_id, warehouse_id: form.warehouse_id, write_off_date: form.write_off_date,
           reason: validLines[0]?.reason || 'DAMAGED', notes: form.notes || null,
         }).eq('id', editing.id);
         if (error) throw error;
@@ -146,7 +194,8 @@ function WriteOffPage() {
         const woNumber = await generateWONumber();
         const { data: newWO, error } = await supabase.from('write_offs').insert({
           wo_number: woNumber, organization_id: selectedOrg.id, department_id: form.department_id,
-          write_off_date: form.write_off_date, reason: validLines[0]?.reason || 'DAMAGED', status: 'DRAFT',
+          warehouse_id: form.warehouse_id, write_off_date: form.write_off_date,
+          reason: validLines[0]?.reason || 'DAMAGED', status: 'DRAFT',
           notes: form.notes || null, requested_by: currentUser?.id
         }).select().single();
         if (error) throw error;
@@ -198,6 +247,7 @@ function WriteOffPage() {
             { header: t('writeoff.number'), render: r => <button onClick={() => openViewWo(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.wo_number}</button> },
             { header: t('writeoff.date'), render: r => formatDateSys(r.write_off_date) },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
+            { header: 'Gudang', render: r => r.warehouses ? <Badge color="purple">{r.warehouses.code}</Badge> : '-' },
             { header: t('common.status'), render: r => <StatusBadge status={r.status}/> },
           ]}
           data={writeoffs}
@@ -230,6 +280,13 @@ function WriteOffPage() {
           <FormField label={t('writeoff.date')} required>
             <Input type="date" value={form.write_off_date} onChange={e => setForm({...form, write_off_date: e.target.value})} />
           </FormField>
+          <FormField label="Gudang" required>
+            <select value={form.warehouse_id} onChange={e => updateWarehouse(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none">
+              <option value="">-- Pilih Gudang --</option>
+              {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
+            </select>
+          </FormField>
           <div className="sm:col-span-2">
             <FormField label={t('writeoff.notes')}>
               <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
@@ -245,6 +302,7 @@ function WriteOffPage() {
           <table className="w-full text-sm">
             <thead><tr className="bg-gray-50">
               <th className="p-2 text-left">{t('dashboard.item')}</th>
+              <th className="p-2 text-right w-24">Stok Gudang</th>
               <th className="p-2 text-right w-20">{t('writeoff.qty')}</th>
               <th className="p-2 text-left w-32">{t('writeoff.reason')}</th>
               <th className="p-2 text-left w-32">{t('writeoff.notes')}</th>
@@ -283,6 +341,9 @@ function WriteOffPage() {
                         </div>
                       )}
                     </div>
+                  </td>
+                  <td className="p-2 text-right text-xs text-gray-500 font-medium">
+                    {line.item_id ? getWhStock(line.item_id) : '-'}
                   </td>
                   <td className="p-2"><input {...intQtyInputProps} value={line.quantity} onChange={e => updateLine(idx, 'quantity', toIntQty(e.target.value))}
                     className="w-full px-2 py-1 border rounded text-sm text-right" /></td>
@@ -328,6 +389,10 @@ function WriteOffPage() {
               <div>
                 <p className="text-xs text-gray-500">{t('stock.dept')}</p>
                 <p className="text-sm">{viewWo.departments?.code ? `${viewWo.departments.code} - ${viewWo.departments.name}` : '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Gudang</p>
+                <p className="text-sm">{viewWo.warehouses?.code ? `${viewWo.warehouses.code} - ${viewWo.warehouses.name}` : '-'}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">{t('common.status')}</p>

@@ -154,15 +154,24 @@ function ApprovalPage() {
       const { data: woItems } = await supabase.from('write_off_items').select('*, items(code, name)').eq('wo_id', item.id);
       const validWoItems = (woItems || []).filter(wi => parseFloat(wi.quantity) > 0);
 
-      // 2. PRE-VALIDATE: check stock for ALL items before creating any movements
+      // 2. PRE-VALIDATE: check stock for ALL items in the specified warehouse
+      // Fetch the write-off record to get warehouse_id
+      const { data: woDoc } = await supabase.from('write_offs').select('warehouse_id').eq('id', item.id).single();
+      const woWarehouseId = woDoc?.warehouse_id;
+
       const insufficientItems = [];
       const movementPlan = []; // {wi, sb, avgCost}
       for (const wi of validWoItems) {
         const qty = parseFloat(wi.quantity);
-        const { data: sbData } = await supabase.from('stock_balance')
+        let sbQuery = supabase.from('stock_balance')
           .select('id, quantity, total_value, warehouse_id')
           .eq('item_id', wi.item_id).eq('organization_id', selectedOrg.id)
-          .gt('quantity', 0).order('quantity', { ascending: false }).limit(1);
+          .gt('quantity', 0);
+        // Use specific warehouse if set, otherwise fallback to largest stock
+        if (woWarehouseId) {
+          sbQuery = sbQuery.eq('warehouse_id', woWarehouseId);
+        }
+        const { data: sbData } = await sbQuery.order('quantity', { ascending: false }).limit(1);
         if (!sbData || sbData.length === 0 || parseFloat(sbData[0].quantity) < qty) {
           const itemLabel = wi.items ? `${wi.items.code} - ${wi.items.name}` : wi.item_id;
           const available = sbData && sbData.length > 0 ? parseFloat(sbData[0].quantity) : 0;
