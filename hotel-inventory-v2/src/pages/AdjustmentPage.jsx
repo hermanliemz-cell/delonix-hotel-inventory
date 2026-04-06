@@ -5,7 +5,6 @@ import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { Icons } from '../components/Icons';
 import { formatCurrency, formatNumber, formatDate, formatDateSys, getLocalDateString } from '../utils/format';
-import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 import { Badge } from '../components/Badge';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
@@ -348,7 +347,7 @@ export default function AdjustmentPage() {
                       )}
                     </div>
                   </td>
-                  <td className="p-2"><input {...intQtyInputProps} value={line.quantity} onChange={e => updateLine(idx, 'quantity', toIntQty(e.target.value))}
+                  <td className="p-2"><input type="number" step={1} inputMode="numeric" value={line.quantity} onChange={e => { const v = e.target.value; if (v === '' || v === '-') { updateLine(idx, 'quantity', v); return; } const n = parseInt(v, 10); updateLine(idx, 'quantity', isNaN(n) ? 0 : n); }}
                     className="w-full px-2 py-1 border rounded text-sm text-right" /></td>
                   <td className="p-2"><input type="number" value={line.unit_cost} onChange={e => updateLine(idx, 'unit_cost', parseFloat(e.target.value)||0)}
                     className="w-full px-2 py-1 border rounded text-sm text-right" min="0" step="any" /></td>
