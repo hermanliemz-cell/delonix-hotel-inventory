@@ -40,8 +40,9 @@ export function SearchableItemSelect({ items, value, onChange, placeholder }) {
           ) : filtered.map(i => (
             <div key={i.id}
               onClick={() => { onChange(i.id); setIsOpen(false); setSearch(''); }}
-              className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${i.id === value ? 'bg-blue-50 font-medium' : ''}`}>
+              className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${i.id === value ? 'bg-blue-50 font-medium' : ''} ${i.is_active === false ? 'opacity-60' : ''}`}>
               <span className="font-mono text-xs text-gray-500">{i.code}</span> — {i.name}
+              {i.is_active === false && <span className="ml-1 text-[10px] text-orange-500 font-medium">(inactive)</span>}
             </div>
           ))}
         </div>

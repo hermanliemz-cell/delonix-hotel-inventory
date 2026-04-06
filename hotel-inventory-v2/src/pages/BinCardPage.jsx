@@ -90,7 +90,7 @@ function BinCardPage() {
   // Load master data (items, warehouses, categories) - once
   async function loadMasterData() {
     const [itemRes, whRes, catRes] = await Promise.all([
-      supabase.from('items').select('id, code, name, category_id, default_warehouse_id').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, category_id, default_warehouse_id, is_active').eq('organization_id', selectedOrg?.id).order('code'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
       supabase.from('item_categories').select('id, code, name').eq('is_active', true).order('name'),
     ]);
@@ -449,8 +449,8 @@ function BinCardPage() {
                     return !s || (i.code + ' ' + i.name).toLowerCase().includes(s);
                   }).map(i => (
                     <div key={i.id} onClick={() => { setFilterItem(i.id); setItemSearch(''); setItemDropOpen(false); }}
-                      className={'px-3 py-1.5 text-xs hover:bg-primary-50 cursor-pointer ' + (filterItem === i.id ? 'bg-primary-50 text-primary-700 font-medium' : 'text-gray-700')}>
-                      {i.code} - {i.name}
+                      className={'px-3 py-1.5 text-xs hover:bg-primary-50 cursor-pointer ' + (filterItem === i.id ? 'bg-primary-50 text-primary-700 font-medium' : 'text-gray-700') + (i.is_active === false ? ' opacity-60' : '')}>
+                      {i.code} - {i.name}{i.is_active === false && <span className="ml-1 text-orange-500 font-medium">(inactive)</span>}
                     </div>
                   ))}
                 </div>

@@ -129,7 +129,7 @@ function StockBalancePage() {
         .order('updated_at', { ascending: false }),
       supabase.from('item_categories').select('id, code, name').eq('is_active', true).order('name'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
-      supabase.from('items').select('id, code, name').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('name'),
+      supabase.from('items').select('id, code, name, is_active').eq('organization_id', selectedOrg?.id).order('name'),
     ]);
     setStock(stockRes.data || []);
     setCategories(catRes.data || []);
