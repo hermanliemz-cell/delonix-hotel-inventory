@@ -149,41 +149,76 @@ function ApprovalPage() {
     } else if (item._type === 'WRITEOFF') {
       // Single approval for write-off — approve & deduct stock
       tableName = 'write_offs';
+
+      // 1. Fetch write-off items
+      const { data: woItems } = await supabase.from('write_off_items').select('*, items(code, name)').eq('wo_id', item.id);
+      const validWoItems = (woItems || []).filter(wi => parseFloat(wi.quantity) > 0);
+
+      // 2. PRE-VALIDATE: check stock for ALL items before creating any movements
+      const insufficientItems = [];
+      const movementPlan = []; // {wi, sb, avgCost}
+      for (const wi of validWoItems) {
+        const qty = parseFloat(wi.quantity);
+        const { data: sbData } = await supabase.from('stock_balance')
+          .select('id, quantity, total_value, warehouse_id')
+          .eq('item_id', wi.item_id).eq('organization_id', selectedOrg.id)
+          .gt('quantity', 0).order('quantity', { ascending: false }).limit(1);
+        if (!sbData || sbData.length === 0 || parseFloat(sbData[0].quantity) < qty) {
+          const itemLabel = wi.items ? `${wi.items.code} - ${wi.items.name}` : wi.item_id;
+          const available = sbData && sbData.length > 0 ? parseFloat(sbData[0].quantity) : 0;
+          insufficientItems.push(`${itemLabel} (diminta=${qty}, tersedia=${available})`);
+        } else {
+          const sb = sbData[0];
+          const avgCost = parseFloat(sb.total_value) / parseFloat(sb.quantity) || 0;
+          movementPlan.push({ wi, sb, avgCost });
+        }
+      }
+
+      if (insufficientItems.length > 0) {
+        showNotification(`Stok tidak cukup untuk write-off:\n${insufficientItems.join('\n')}`, 'error');
+        return;
+      }
+
+      // 3. Update status to APPROVED
       upd = { status: 'APPROVED', approved_by: currentUser?.id, approved_at: now };
       const { error: woErr } = await supabase.from(tableName).update(upd).eq('id', item.id);
       if (woErr) { showNotification('Error: ' + woErr.message, 'error'); return; }
-      // Deduct stock
+
+      // 4. Create movements — with rollback on failure
+      const attemptStartedAt = new Date().toISOString();
       try {
-        const { data: woItems } = await supabase.from('write_off_items').select('*').eq('wo_id', item.id);
-        for (const wi of (woItems || [])) {
-          const qty = parseFloat(wi.quantity);
-          if (qty <= 0) continue;
-          // Find stock balance for this item (any warehouse with stock)
-          const { data: sbData } = await supabase.from('stock_balance')
-            .select('id, quantity, total_value, warehouse_id')
-            .eq('item_id', wi.item_id).eq('organization_id', selectedOrg.id)
-            .gt('quantity', 0).order('quantity', { ascending: false }).limit(1);
-          if (sbData && sbData.length > 0) {
-            const sb = sbData[0];
-            const avgCost = parseFloat(sb.total_value) / parseFloat(sb.quantity) || 0;
-            // Create stock movement via RPC (Fase 6)
-            const { error: mvErr } = await recordMovement({
-              organizationId: selectedOrg.id,
-              itemId: wi.item_id,
-              warehouseId: sb.warehouse_id,
-              movementType: 'OUT',
-              quantity: qty,
-              referenceType: 'WRITEOFF',
-              referenceNumber: item._number,
-              referenceId: item.id,
-              unitCost: avgCost,
-              departmentId: item.department_id || null,
-              notes: wi.notes || 'Write-off',
-            });
-            if (mvErr) throw mvErr;
-          }
+        for (const plan of movementPlan) {
+          const { error: mvErr } = await recordMovement({
+            organizationId: selectedOrg.id,
+            itemId: plan.wi.item_id,
+            warehouseId: plan.sb.warehouse_id,
+            movementType: 'OUT',
+            quantity: parseFloat(plan.wi.quantity),
+            referenceType: 'WRITEOFF',
+            referenceNumber: item._number,
+            referenceId: item.id,
+            unitCost: plan.avgCost,
+            departmentId: item.department_id || null,
+            notes: plan.wi.notes || 'Write-off',
+          });
+          if (mvErr) throw mvErr;
         }
-      } catch (e) { }
+      } catch (e) {
+        // Rollback: delete orphaned movements created in this attempt
+        try {
+          const { data: orphaned } = await supabase.from('stock_movements')
+            .select('id').eq('reference_number', item._number).gte('created_at', attemptStartedAt);
+          if (orphaned && orphaned.length > 0) {
+            await supabase.from('stock_movements').delete().in('id', orphaned.map(m => m.id));
+          }
+        } catch (_) { /* best effort */ }
+        // Revert status back to PENDING
+        await supabase.from(tableName).update({ status: 'PENDING', approved_by: null, approved_at: null }).eq('id', item.id);
+        showNotification('Gagal membuat movement: ' + e.message + '. Status dikembalikan ke PENDING.', 'error');
+        loadAll();
+        return;
+      }
+
       await supabase.from('approval_logs').insert({
         organization_id: selectedOrg.id, document_type: item._type, document_id: item.id,
         document_number: item._number, action: 'APPROVED', action_by: currentUser?.id,

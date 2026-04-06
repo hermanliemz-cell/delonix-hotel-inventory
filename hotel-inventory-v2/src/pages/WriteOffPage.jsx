@@ -39,7 +39,7 @@ function WriteOffPage() {
     const [woRes, deptRes, itemRes, sbRes] = await Promise.all([
       supabase.from('write_offs').select('*, departments(name, code)').eq('organization_id', selectedOrg.id).order('created_at', { ascending: false }),
       supabase.from('departments').select('*').eq('is_active', true).order('name'),
-      supabase.from('items').select('id, code, name').eq('organization_id', selectedOrg?.id).eq('is_active', true).order('code'),
+      supabase.from('items').select('id, code, name, is_active').eq('organization_id', selectedOrg?.id).order('code'),
       supabase.from('stock_balance').select('item_id, quantity').eq('organization_id', selectedOrg.id).gt('quantity', 0),
     ]);
     setWriteoffs(woRes.data || []);
