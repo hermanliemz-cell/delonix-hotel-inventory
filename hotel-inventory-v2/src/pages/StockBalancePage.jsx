@@ -7,6 +7,7 @@ import { Badge } from '../components/FormElements';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { SearchableItemSelect } from '../components/SearchableItemSelect';
+import { TreeSelect } from '../components/TreeSelect';
 import { DocDetailModal } from '../components/DocDetailModal';
 import { PageLoader } from '../components/PageLoader';
 
@@ -127,7 +128,7 @@ function StockBalancePage() {
         .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name, warehouse_type)')
         .eq('organization_id', selectedOrg.id)
         .order('updated_at', { ascending: false }),
-      supabase.from('item_categories').select('id, code, name').eq('is_active', true).order('name'),
+      supabase.from('item_categories').select('id, code, name, parent_id').eq('is_active', true).order('name'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
       supabase.from('items').select('id, code, name, is_active').eq('organization_id', selectedOrg?.id).order('name'),
     ]);
@@ -161,10 +162,19 @@ function StockBalancePage() {
     }
   }
 
+  // Build set of matching category IDs (selected + all its children)
+  const matchingCatIds = useMemo(() => {
+    if (!filterCategory) return null;
+    const ids = new Set([filterCategory]);
+    // Add all children of selected category
+    categories.forEach(c => { if (c.parent_id === filterCategory) ids.add(c.id); });
+    return ids;
+  }, [filterCategory, categories]);
+
   const filtered = stock.filter(s => {
     const term = search.toLowerCase();
     const matchSearch = !term || (s.items?.name?.toLowerCase().includes(term) || s.items?.code?.toLowerCase().includes(term) || s.departments?.name?.toLowerCase().includes(term) || s.items?.brand?.toLowerCase().includes(term));
-    const matchCat = !filterCategory || s.items?.item_categories?.id === filterCategory;
+    const matchCat = !matchingCatIds || matchingCatIds.has(s.items?.item_categories?.id);
     const matchWh = !filterWarehouse || s.warehouse_id === filterWarehouse;
     const matchItem = !filterItem || s.item_id === filterItem;
     return matchSearch && matchCat && matchWh && matchItem;
@@ -233,11 +243,9 @@ function StockBalancePage() {
           <div className="w-full sm:w-64">
             <SearchableItemSelect items={allItems} value={filterItem} onChange={setFilterItem} placeholder="Filter by Item..." />
           </div>
-          <select value={filterCategory} onChange={e=>setFilterCategory(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
-            <option value="">{t('stock.allCategories')}</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div className="w-full sm:w-56">
+            <TreeSelect value={filterCategory} onChange={setFilterCategory} categories={categories} placeholder={t('stock.allCategories')} />
+          </div>
           <select value={filterWarehouse} onChange={e=>setFilterWarehouse(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
             <option value="">{t('stock.allWarehouses') || 'Semua Gudang'}</option>

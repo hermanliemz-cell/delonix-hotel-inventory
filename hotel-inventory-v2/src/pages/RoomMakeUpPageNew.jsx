@@ -461,6 +461,16 @@ function RoomMakeUpPageNew() {
       return;
     }
 
+    // Validate all activity checkboxes must be checked before save
+    if (hasActivities) {
+      const unchecked = activityList.filter(a => !activityChecks[a.id]);
+      if (unchecked.length > 0) {
+        const names = unchecked.map(a => a.name).join(', ');
+        showNotification(`Semua activity harus dicentang sebelum save. Belum dicentang: ${names}`, 'error');
+        return;
+      }
+    }
+
     // Replacement qty is now free — no longer required to equal dirty+damage+lost per category
 
     const lockCheck = await checkPeriodLock(selectedOrg.id, makeupDate);
