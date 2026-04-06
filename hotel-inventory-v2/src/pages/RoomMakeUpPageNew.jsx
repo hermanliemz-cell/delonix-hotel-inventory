@@ -742,17 +742,28 @@ function RoomMakeUpPageNew() {
       // Kumpulkan semua OUT yang dibutuhkan, lalu cek saldo per warehouse+item.
       // Jika ada yang kurang, tampilkan SEMUA item yang gagal dan ABORT.
       const outRequirements = {}; // key: `${warehouseId}|${itemId}` → { warehouseId, itemId, totalQty, itemLabel, whLabel }
+      // Lookup cache untuk item/warehouse yang tidak ada di state (mis. non-active)
+      const _itemLabelCache = {};
+      const _whLabelCache = {};
 
-      const addOutReq = (itemId, warehouseId, qty) => {
+      const addOutReq = async (itemId, warehouseId, qty) => {
         if (!warehouseId || qty <= 0) return;
         const key = `${warehouseId}|${itemId}`;
         if (!outRequirements[key]) {
-          const item = allItems.find(i => i.id === itemId);
-          const wh = warehouses.find(w => w.id === warehouseId);
+          let item = allItems.find(i => i.id === itemId);
+          if (!item && !_itemLabelCache[itemId]) {
+            const { data } = await supabase.from('items').select('code, name').eq('id', itemId).maybeSingle();
+            _itemLabelCache[itemId] = data ? `${data.code} - ${data.name}` : itemId;
+          }
+          let wh = warehouses.find(w => w.id === warehouseId);
+          if (!wh && !_whLabelCache[warehouseId]) {
+            const { data } = await supabase.from('warehouses').select('code, name').eq('id', warehouseId).maybeSingle();
+            _whLabelCache[warehouseId] = data ? `${data.code} - ${data.name}` : warehouseId;
+          }
           outRequirements[key] = {
             warehouseId, itemId, totalQty: 0,
-            itemLabel: item ? `${item.code} - ${item.name}` : itemId,
-            whLabel: wh ? `${wh.code} - ${wh.name}` : warehouseId,
+            itemLabel: item ? `${item.code} - ${item.name}` : _itemLabelCache[itemId] || itemId,
+            whLabel: wh ? `${wh.code} - ${wh.name}` : _whLabelCache[warehouseId] || warehouseId,
           };
         }
         outRequirements[key].totalQty += qty;
@@ -765,15 +776,15 @@ function RoomMakeUpPageNew() {
         if (mi.type === 'replace') {
           const linenItem = allItems.find(i => i.id === mi.item_id);
           const linenOutWh = linenItem?.default_warehouse_id || hkStore?.id;
-          addOutReq(mi.item_id, linenOutWh, numQty);
+          await addOutReq(mi.item_id, linenOutWh, numQty);
         } else if (mi.type === 'move_to_dirty') {
-          addOutReq(mi.item_id, room?.warehouse_id, numQty);
+          await addOutReq(mi.item_id, room?.warehouse_id, numQty);
         } else if (mi.type === 'damage') {
-          addOutReq(mi.item_id, room?.warehouse_id, numQty);
+          await addOutReq(mi.item_id, room?.warehouse_id, numQty);
         } else if (mi.type === 'lost') {
-          addOutReq(mi.item_id, room?.warehouse_id, numQty);
+          await addOutReq(mi.item_id, room?.warehouse_id, numQty);
         } else if (mi.type === 'to_hk_store') {
-          addOutReq(mi.item_id, room?.warehouse_id, numQty);
+          await addOutReq(mi.item_id, room?.warehouse_id, numQty);
         }
       }
 
@@ -785,7 +796,7 @@ function RoomMakeUpPageNew() {
         for (const ci of (con.room_consumption_items || [])) {
           const item = allItems.find(i => i.id === ci.item_id);
           const itemWarehouseId = item?.default_warehouse_id || hkStore?.id;
-          addOutReq(ci.item_id, itemWarehouseId, parseFloat(ci.quantity));
+          await addOutReq(ci.item_id, itemWarehouseId, parseFloat(ci.quantity));
         }
       }
 
@@ -949,9 +960,11 @@ function RoomMakeUpPageNew() {
     });
     if (error) {
       // Enrich error message with item code & name and warehouse name instead of UUIDs
-      const item = allItems.find(i => i.id === itemId);
+      let item = allItems.find(i => i.id === itemId);
+      if (!item) { const { data } = await supabase.from('items').select('code, name').eq('id', itemId).maybeSingle(); item = data; }
       const itemLabel = item ? `${item.code} - ${item.name}` : itemId;
-      const wh = warehouses.find(w => w.id === warehouseId);
+      let wh = warehouses.find(w => w.id === warehouseId);
+      if (!wh) { const { data } = await supabase.from('warehouses').select('code, name').eq('id', warehouseId).maybeSingle(); wh = data; }
       const whLabel = wh ? `${wh.code} - ${wh.name}` : warehouseId;
       const enriched = new Error(`Stok tidak cukup untuk ${movementType}: item [${itemLabel}], warehouse [${whLabel}], qty diminta=${qty}`);
       throw enriched;
