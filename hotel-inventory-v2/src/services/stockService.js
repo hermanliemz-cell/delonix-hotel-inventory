@@ -84,6 +84,44 @@ export async function recordTransfer({
 }
 
 /**
+ * Record an atomic BATCH transfer: all items in a single DB transaction.
+ * If any item fails (e.g. insufficient stock), ALL items rollback.
+ *
+ * @param {Object} params
+ * @param {string} params.organizationId
+ * @param {string} params.sourceWarehouseId
+ * @param {string} params.destWarehouseId
+ * @param {string} params.referenceType
+ * @param {string} params.referenceNumber
+ * @param {string|null} params.departmentId
+ * @param {string|null} params.vendorId
+ * @param {Array<{item_id: string, quantity: number, notes?: string}>} params.items
+ * @returns {Promise<{ data: Array<{item_id, out_id, in_id}>|null, error: any }>}
+ */
+export async function recordBatchTransfer({
+  organizationId,
+  sourceWarehouseId,
+  destWarehouseId,
+  referenceType,
+  referenceNumber,
+  departmentId = null,
+  vendorId = null,
+  items = [],
+}) {
+  const { data, error } = await supabase.rpc('record_batch_transfer', {
+    p_organization_id: organizationId,
+    p_source_warehouse_id: sourceWarehouseId,
+    p_dest_warehouse_id: destWarehouseId,
+    p_reference_type: referenceType,
+    p_reference_number: referenceNumber,
+    p_department_id: departmentId,
+    p_vendor_id: vendorId,
+    p_items: items,
+  });
+  return { data, error };
+}
+
+/**
  * Delete all movements linked to a reference (for approval rejection / reversal).
  * Trigger BEFORE DELETE akan auto-revert stock_balance.
  */

@@ -4,7 +4,7 @@ import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatNumber, formatDate, formatDateSys } from '../utils/format';
 import { checkPeriodLock } from '../utils/stock.js';
-import { recordTransfer } from '../services/stockService.js';
+import { recordBatchTransfer } from '../services/stockService.js';
 import { toIntQty, intQtyInputProps } from '../utils/qtyInput';
 import { Button } from '../components/FormElements';
 import { PageHeader } from '../components/PageHeader';
@@ -182,7 +182,37 @@ function LaundryPage() {
       return;
     }
 
-    if (!(await showConfirm('Confirm sending ' + itemsToSend.length + ' item(s) to laundry?', { variant: 'warning' }))) return;
+    // === VALIDASI QTY: cek apakah qty melebihi stok yang tersedia ===
+    const overStockItems = [];
+    for (const item of itemsToSend) {
+      const stockItem = dirtyItems.find(di => di.item_id === item.item_id);
+      if (!stockItem) {
+        overStockItems.push({ code: item.item_id, requested: item.qty, available: 0 });
+        continue;
+      }
+      if (item.qty > stockItem.quantity) {
+        overStockItems.push({
+          code: stockItem.items?.code || item.item_id,
+          requested: item.qty,
+          available: stockItem.quantity,
+        });
+      }
+    }
+    if (overStockItems.length > 0) {
+      const detail = overStockItems.map(o => `${o.code}: minta ${o.requested}, tersedia ${o.available}`).join('\n');
+      showNotification('Qty melebihi stok tersedia:\n' + detail, 'error');
+      return;
+    }
+
+    // === KONFIRMASI DETAIL sebelum proses ===
+    const summaryLines = itemsToSend.map(item => {
+      const si = dirtyItems.find(di => di.item_id === item.item_id);
+      return `${si?.items?.code || '?'} — ${si?.items?.name || '?'}: ${item.qty}`;
+    });
+    if (!(await showConfirm(
+      'Kirim ' + itemsToSend.length + ' item ke laundry?\n\n' + summaryLines.join('\n'),
+      { variant: 'warning' }
+    ))) return;
 
     savingRef.current = true;
     setSaving(true);
@@ -196,48 +226,35 @@ function LaundryPage() {
         return;
       }
 
-      // Use currentUser's department
       const deptId = currentUser?.department_id || null;
-
       const refNumber = await generateSendNumber();
 
-      for (const item of itemsToSend) {
-        const stockItem = dirtyItems.find(di => di.item_id === item.item_id);
-        if (!stockItem) continue;
-
-        const qty = item.qty;
-
-        // Atomic transfer: OUT from dirty + IN to laundry via RPC (Fase 6).
-        // unitCost=null → record_transfer RPC akan fetch avg_cost LIVE dari
-        // source warehouse (dirty) di dalam transaksi. Ini lebih aman daripada
-        // mengirim `stockItem.avg_cost` yang bisa stale kalau ada operasi
-        // concurrent atau `dirtyItems` di-load beberapa menit lalu.
-        const { error: transferErr } = await recordTransfer({
-          organizationId: selectedOrg.id,
-          itemId: item.item_id,
-          sourceWarehouseId: dirtyWarehouse.id,
-          destWarehouseId: laundryWarehouse.id,
-          quantity: qty,
-          referenceType: 'LAUNDRY_SEND',
-          referenceNumber: refNumber,
-          referenceId: item.item_id,
-          unitCost: null,
-          departmentId: deptId,
+      // === BATCH TRANSFER: semua items dalam 1 transaksi ===
+      // Jika 1 item gagal (misal stok tidak cukup), SEMUA rollback — tidak ada partial commit.
+      const { error: batchErr } = await recordBatchTransfer({
+        organizationId: selectedOrg.id,
+        sourceWarehouseId: dirtyWarehouse.id,
+        destWarehouseId: laundryWarehouse.id,
+        referenceType: 'LAUNDRY_SEND',
+        referenceNumber: refNumber,
+        departmentId: deptId,
+        vendorId: selectedVendor,
+        items: itemsToSend.map(item => ({
+          item_id: item.item_id,
+          quantity: item.qty,
           notes: item.notes,
-          vendorId: selectedVendor,
-        });
-        if (transferErr) throw transferErr;
-      }
+        })),
+      });
+      if (batchErr) throw batchErr;
 
       showNotification('Items sent to laundry successfully (Ref: ' + refNumber + ')', 'success');
+
+      // === ANTI-DUPLIKAT: clear selection DAN disable saving sampai loadAll selesai ===
       setSelectedItems({});
-      loadAll();
+      await loadAll();
     } catch (e) {
-      // Note: recordTransfer per item adalah atomic (OUT+IN satu transaction).
-      // Jika loop fail di tengah, item sebelumnya sudah berhasil ditransfer dan
-      // balance konsisten. Tidak perlu cleanup — user bisa re-send item yang gagal.
-      showNotification('Error sending to laundry: ' + e.message + '. Cek riwayat dan kirim ulang item yang gagal.', 'error');
-      loadAll();
+      // Batch transfer atomic: jika gagal, tidak ada yang tersimpan.
+      showNotification('Gagal kirim ke laundry: ' + e.message, 'error');
     }
     savingRef.current = false;
     setSaving(false);
@@ -251,6 +268,9 @@ function LaundryPage() {
       return;
     }
 
+    // Gunakan vendorLaundryItems untuk receive (sudah difilter per vendor)
+    const sourceItems = vendorLaundryItems.length > 0 ? vendorLaundryItems : laundryItems;
+
     const itemsToReceive = Object.entries(selectedItems)
       .filter(([_, val]) => val && parseFloat(val.qty) > 0)
       .map(([itemId, val]) => ({ item_id: itemId, qty: parseFloat(val.qty), notes: val.notes || '' }));
@@ -260,7 +280,37 @@ function LaundryPage() {
       return;
     }
 
-    if (!(await showConfirm('Confirm receiving ' + itemsToReceive.length + ' item(s) from laundry?', { variant: 'warning' }))) return;
+    // === VALIDASI QTY: cek apakah qty melebihi stok yang tersedia di laundry ===
+    const overStockItems = [];
+    for (const item of itemsToReceive) {
+      const stockItem = sourceItems.find(li => li.item_id === item.item_id);
+      if (!stockItem) {
+        overStockItems.push({ code: item.item_id, requested: item.qty, available: 0 });
+        continue;
+      }
+      if (item.qty > stockItem.quantity) {
+        overStockItems.push({
+          code: stockItem.items?.code || item.item_id,
+          requested: item.qty,
+          available: stockItem.quantity,
+        });
+      }
+    }
+    if (overStockItems.length > 0) {
+      const detail = overStockItems.map(o => `${o.code}: minta ${o.requested}, tersedia ${o.available}`).join('\n');
+      showNotification('Qty melebihi stok tersedia di laundry:\n' + detail, 'error');
+      return;
+    }
+
+    // === KONFIRMASI DETAIL sebelum proses ===
+    const summaryLines = itemsToReceive.map(item => {
+      const si = sourceItems.find(li => li.item_id === item.item_id);
+      return `${si?.items?.code || '?'} — ${si?.items?.name || '?'}: ${item.qty}`;
+    });
+    if (!(await showConfirm(
+      'Terima ' + itemsToReceive.length + ' item dari laundry?\n\n' + summaryLines.join('\n'),
+      { variant: 'warning' }
+    ))) return;
 
     savingRef.current = true;
     setSaving(true);
@@ -274,46 +324,35 @@ function LaundryPage() {
         return;
       }
 
-      // Get department
-      // Use currentUser's department
       const deptId = currentUser?.department_id || null;
-
       const refNumber = await generateReceiveNumber();
 
-      for (const item of itemsToReceive) {
-        const stockItem = laundryItems.find(li => li.item_id === item.item_id);
-        if (!stockItem) continue;
-
-        const qty = item.qty;
-
-        // Atomic transfer: OUT from laundry + IN to store via RPC (Fase 6).
-        // unitCost=null → record_transfer RPC akan fetch avg_cost LIVE dari
-        // source warehouse (laundry) di dalam transaksi. Hindari mengirim
-        // `stockItem.avg_cost` yang bisa stale atau corrupt.
-        const { error: transferErr } = await recordTransfer({
-          organizationId: selectedOrg.id,
-          itemId: item.item_id,
-          sourceWarehouseId: laundryWarehouse.id,
-          destWarehouseId: storeWarehouse.id,
-          quantity: qty,
-          referenceType: 'LAUNDRY_RECEIVE',
-          referenceNumber: refNumber,
-          referenceId: item.item_id,
-          unitCost: null,
-          departmentId: deptId,
+      // === BATCH TRANSFER: semua items dalam 1 transaksi ===
+      // Jika 1 item gagal, SEMUA rollback — tidak ada partial commit.
+      const { error: batchErr } = await recordBatchTransfer({
+        organizationId: selectedOrg.id,
+        sourceWarehouseId: laundryWarehouse.id,
+        destWarehouseId: storeWarehouse.id,
+        referenceType: 'LAUNDRY_RECEIVE',
+        referenceNumber: refNumber,
+        departmentId: deptId,
+        vendorId: selectedVendor,
+        items: itemsToReceive.map(item => ({
+          item_id: item.item_id,
+          quantity: item.qty,
           notes: item.notes,
-          vendorId: selectedVendor,
-        });
-        if (transferErr) throw transferErr;
-      }
+        })),
+      });
+      if (batchErr) throw batchErr;
 
       showNotification('Items received from laundry successfully (Ref: ' + refNumber + ')', 'success');
+
+      // === ANTI-DUPLIKAT: clear selection DAN disable saving sampai loadAll selesai ===
       setSelectedItems({});
-      loadAll();
+      await loadAll();
     } catch (e) {
-      // recordTransfer per item adalah atomic. Partial batch tidak perlu cleanup.
-      showNotification('Error receiving from laundry: ' + e.message + '. Cek riwayat dan receive ulang item yang gagal.', 'error');
-      loadAll();
+      // Batch transfer atomic: jika gagal, tidak ada yang tersimpan.
+      showNotification('Gagal terima dari laundry: ' + e.message, 'error');
     }
     savingRef.current = false;
     setSaving(false);
