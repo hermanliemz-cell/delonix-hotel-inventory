@@ -219,12 +219,24 @@ function PurchaseReceivedPage() {
         }
       }
 
+      // Load PI items to get tax_percent & discount_percent for cost calculation
+      let piItemsMap = {};
+      if (gr.pi_id) {
+        const { data: piItems } = await supabase.from('purchase_invoice_items').select('item_id, unit_price, tax_percent, discount_percent').eq('pi_id', gr.pi_id);
+        (piItems || []).forEach(pi => { piItemsMap[pi.item_id] = pi; });
+      }
+
       // Create stock movements and update stock balance for each item
       for (const item of grItems) {
         const qty = parseFloat(item.received_qty);
         if (qty <= 0) continue;
         const unitPrice = parseFloat(item.unit_price) || 0;
-        const totalCost = qty * unitPrice;
+
+        // Calculate cost INCLUDING tax (and after discount)
+        const piItem = piItemsMap[item.item_id];
+        const discPct = piItem ? (parseFloat(piItem.discount_percent) || 0) : 0;
+        const taxPct = piItem ? (parseFloat(piItem.tax_percent) || 0) : 0;
+        const unitCostInclTax = Math.round(unitPrice * (1 - discPct / 100) * (1 + taxPct / 100) * 100) / 100;
 
         const { error: smErr } = await recordMovement({
           organizationId: selectedOrg.id,
@@ -233,7 +245,7 @@ function PurchaseReceivedPage() {
           departmentId: grDepartmentId,
           movementType: 'IN',
           quantity: qty,
-          unitCost: unitPrice,
+          unitCost: unitCostInclTax,
           referenceType: 'GR',
           referenceNumber: gr.gr_number,
           referenceId: gr.id,
