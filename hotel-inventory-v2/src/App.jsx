@@ -50,6 +50,7 @@ const CronJobsPage = lazy(() => import('./pages/CronJobsPage.jsx'));
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage.jsx'));
 const WorksheetPage = lazy(() => import('./pages/WorksheetPage.jsx'));
 const ItemCostHistoryPage = lazy(() => import('./pages/ItemCostHistoryPage.jsx'));
+const AmenitiesCostReportPage = lazy(() => import('./pages/AmenitiesCostReportPage.jsx'));
 
 // Route-to-pageId mapping for access control
 const ROUTE_PAGE_MAP = {
@@ -93,6 +94,7 @@ const ROUTE_PAGE_MAP = {
   '/change-password': 'change-password',
   '/worksheet': 'worksheet',
   '/item-cost-history': 'item-cost-history',
+  '/amenities-cost': 'amenities-cost',
 };
 
 // ============================================================
@@ -372,7 +374,10 @@ function MainLayout() {
         { id: 'single-usage', label: t('menu.singleUsage'), icon: Icons.Package },
         { id: 'writeoff', label: t('menu.writeoff'), icon: Icons.Trash },
       ]},
-      { type: 'item', id: 'reports', label: t('menu.reports'), icon: Icons.BarChart },
+      { type: 'group', label: t('menu.reports'), icon: Icons.BarChart, children: [
+        { id: 'reports', label: t('menu.reports'), icon: Icons.BarChart },
+        { id: 'amenities-cost', label: 'Amenities Cost', icon: Icons.ClipboardList },
+      ]},
       { type: 'group', label: t('menu.group.settings'), icon: Icons.Settings, children: [
         { id: 'user-mgmt', label: t('menu.userMgmt'), icon: Icons.Users },
         { id: 'role-mgmt', label: t('menu.roleMgmt'), icon: Icons.Shield },
@@ -625,6 +630,7 @@ function MainLayout() {
                   <Route path="/stock" element={<ProtectedRoute pageId="stock"><StockBalancePage /></ProtectedRoute>} />
                   <Route path="/movements" element={<ProtectedRoute pageId="movements"><BinCardPage /></ProtectedRoute>} />
                   <Route path="/item-cost-history" element={<ProtectedRoute pageId="item-cost-history"><ItemCostHistoryPage /></ProtectedRoute>} />
+                  <Route path="/amenities-cost" element={<ProtectedRoute pageId="amenities-cost"><AmenitiesCostReportPage /></ProtectedRoute>} />
                   <Route path="/pr" element={<ProtectedRoute pageId="pr"><PurchaseRequestPage /></ProtectedRoute>} />
                   <Route path="/po" element={<ProtectedRoute pageId="po"><PurchaseOrderPage /></ProtectedRoute>} />
                   <Route path="/pi" element={<ProtectedRoute pageId="pi"><PurchaseInvoicePage /></ProtectedRoute>} />
