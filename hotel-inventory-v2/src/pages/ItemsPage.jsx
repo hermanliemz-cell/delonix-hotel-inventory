@@ -149,9 +149,9 @@ function ItemsPage() {
     setImportChecked({});
     if (!orgId) { setImportCategories([]); return; }
     setImportLoading(true);
-    // Load categories AND items from selected source org
+    // Load categories from source org AND all items from source org
     const [{ data: cats }, { data: srcItems }] = await Promise.all([
-      supabase.from('item_categories').select('*').order('name'),
+      supabase.from('item_categories').select('*').eq('organization_id', orgId).order('name'),
       supabase.from('items').select('*, item_categories(name), units:units!items_unit_id_fkey(abbreviation)').eq('organization_id', orgId).eq('is_active', true).order('code'),
     ]);
     setImportCategories(cats || []);
@@ -225,8 +225,8 @@ function ItemsPage() {
       const parentCats = importCategories.filter(c => parentIdsNeeded.includes(c.id));
       const allCatsToImport = [...parentCats, ...sourceCats];
 
-      // Check which categories already exist in current hotel by code
-      const { data: existingCats } = await supabase.from('item_categories').select('id, code');
+      // Check which categories already exist in current hotel by code (filter by org)
+      const { data: existingCats } = await supabase.from('item_categories').select('id, code').eq('organization_id', selectedOrg?.id);
       const existingCatCodes = new Map((existingCats || []).map(c => [c.code, c.id]));
 
       // Create missing categories and build mapping (source_id -> new_id)
@@ -238,7 +238,7 @@ function ItemsPage() {
         } else {
           const { data: newCat } = await supabase.from('item_categories').insert({
             code: cat.code, name: cat.name, description: cat.description,
-            parent_id: null, is_active: true
+            parent_id: null, is_active: true, organization_id: selectedOrg?.id
           }).select('id').single();
           if (newCat) { catIdMap[cat.id] = newCat.id; existingCatCodes.set(cat.code, newCat.id); }
         }
@@ -251,7 +251,7 @@ function ItemsPage() {
           const newParentId = cat.parent_id ? (catIdMap[cat.parent_id] || null) : null;
           const { data: newCat } = await supabase.from('item_categories').insert({
             code: cat.code, name: cat.name, description: cat.description,
-            parent_id: newParentId, is_active: true
+            parent_id: newParentId, is_active: true, organization_id: selectedOrg?.id
           }).select('id').single();
           if (newCat) { catIdMap[cat.id] = newCat.id; existingCatCodes.set(cat.code, newCat.id); }
         }
