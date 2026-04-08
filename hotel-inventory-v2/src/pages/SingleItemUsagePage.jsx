@@ -164,7 +164,9 @@ function SingleItemUsagePage() {
       if (!stockData || stockData.quantity < qty) {
         showNotification('Stok tidak mencukupi!', 'error'); setSaving(false); return;
       }
-      const avgCost = parseFloat(stockData.avg_cost) || 0;
+      // Opsi C: fetch avg_cost from items table (item-level, not warehouse-level)
+      const { data: itemData } = await supabase.from('items').select('avg_cost').eq('id', record.item_id).single();
+      const avgCost = parseFloat(itemData?.avg_cost) || parseFloat(stockData.avg_cost) || 0;
 
       // Stock movement OUT DULU, baru update status (agar status tidak CONFIRMED tanpa movement)
       const deptName = record.departments?.name || '';

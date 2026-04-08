@@ -126,7 +126,7 @@ function StockBalancePage() {
     setLoading(true);
     const [stockRes, catRes, whRes, itemRes] = await Promise.all([
       supabase.from('stock_balance')
-        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, is_active, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name, warehouse_type)')
+        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, is_active, avg_cost, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name, warehouse_type)')
         .eq('organization_id', selectedOrg.id)
         .order('updated_at', { ascending: false }),
       supabase.from('item_categories').select('id, code, name, parent_id').eq('is_active', true).order('name'),
@@ -182,35 +182,30 @@ function StockBalancePage() {
     return matchSearch && matchCat && matchWh && matchItem && matchStatus;
   });
 
-  // Group by item_id: aggregate qty and total_value, weighted avg cost, keep warehouse breakdown
+  // Group by item_id: aggregate qty, use items.avg_cost (Opsi C: item-level AVG cost)
   const groupedMap = {};
   filtered.forEach(s => {
     const key = s.item_id;
     if (!groupedMap[key]) {
-      groupedMap[key] = { ...s, quantity: 0, total_value: 0, _totalCostQty: 0, _whBreakdown: [] };
+      groupedMap[key] = { ...s, quantity: 0, total_value: 0, _whBreakdown: [] };
     }
     groupedMap[key].quantity += (s.quantity || 0);
-    groupedMap[key].total_value += (s.total_value || 0);
-    groupedMap[key]._totalCostQty += (s.avg_cost || 0) * (s.quantity || 0);
     if (s.quantity > 0 || s.total_value > 0) {
       groupedMap[key]._whBreakdown.push({
         warehouse_code: s.warehouses?.code || '-',
         warehouse_name: s.warehouses?.name || '-',
         warehouse_type: s.warehouses?.warehouse_type || 'general',
         quantity: s.quantity || 0,
-        avg_cost: s.avg_cost || 0,
-        total_value: s.total_value || 0,
+        avg_cost: s.items?.avg_cost || 0,
+        total_value: (s.quantity || 0) * (s.items?.avg_cost || 0),
         unit: s.items?.units?.abbreviation || '',
       });
     }
   });
   const grouped = Object.values(groupedMap).map(g => {
-    const itemAvgCost = g.quantity > 0 ? g._totalCostQty / g.quantity : 0;
-    // Apply the item-level weighted avg cost to each warehouse breakdown row
-    g._whBreakdown.forEach(wh => {
-      wh.avg_cost = itemAvgCost;
-      wh.total_value = wh.quantity * itemAvgCost;
-    });
+    // Use items.avg_cost directly (authoritative source since Opsi C migration)
+    const itemAvgCost = g.items?.avg_cost || 0;
+    g.total_value = g.quantity * itemAvgCost;
     return { ...g, avg_cost: itemAvgCost };
   });
 

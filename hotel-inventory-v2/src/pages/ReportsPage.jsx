@@ -53,7 +53,7 @@ function ReportsPage() {
     setData(reportType === 'purchase' ? { pos: [], pis: [] } : []);
     try {
       if (reportType === 'valuation') {
-        let q = supabase.from('stock_balance').select('*, items(code, name, brand, size, category_id, item_categories(name, code)), departments(name, code)').eq('organization_id', selectedOrg.id);
+        let q = supabase.from('stock_balance').select('*, items(code, name, brand, size, category_id, avg_cost, item_categories(name, code)), departments(name, code)').eq('organization_id', selectedOrg.id);
         if (filterDept) q = q.eq('department_id', filterDept);
         const { data: res } = await q.order('total_value', { ascending: false });
         let filtered = res || [];
@@ -130,7 +130,7 @@ function ReportsPage() {
 
   function getExportRows() {
     const arr = Array.isArray(data) ? data : [];
-    if (reportType === 'valuation') return arr.map(r => [r.items?.code, r.items?.name, r.items?.brand||'', r.items?.item_categories?.name||'', r.departments?.code||'', r.quantity, r.avg_cost, r.total_value]);
+    if (reportType === 'valuation') return arr.map(r => [r.items?.code, r.items?.name, r.items?.brand||'', r.items?.item_categories?.name||'', r.departments?.code||'', r.quantity, r.items?.avg_cost || r.avg_cost, (r.quantity || 0) * (r.items?.avg_cost || r.avg_cost || 0)]);
     if (reportType === 'movement') return arr.map(r => [formatDateSys(r.created_at), r.items?.code+' - '+r.items?.name, r.movement_type, r.quantity, r.unit_cost, r.total_cost, r.departments?.code||'', r.reference_number||'', r.notes||'']);
     if (reportType === 'lowstock') return arr.map(r => [r.items?.code, r.items?.name, r.items?.item_categories?.name||'', r.departments?.code||'', r.items?.min_stock, r.quantity, r.items?.min_stock - r.quantity]);
     if (reportType === 'opname') return arr.map(r => [r.opname_number, formatDateSys(r.opname_date), r.departments?.code||'', r.opname_type, r.status, r.total_variance_value]);
@@ -407,8 +407,8 @@ function ReportsPage() {
             { header: t('items.category'), render: r => <Badge color="purple">{r.items?.item_categories?.code}</Badge> },
             { header: t('stock.dept'), render: r => <Badge color="blue">{r.departments?.code}</Badge> },
             { header: t('dashboard.qty'), render: r => formatNumber(r.quantity) },
-            { header: t('stock.avgCost'), align: 'right', render: r => formatCurrency(r.avg_cost) },
-            { header: t('stock.totalValue'), align: 'right', render: r => <span className="font-semibold">{formatCurrency(r.total_value)}</span> },
+            { header: t('stock.avgCost'), align: 'right', render: r => formatCurrency(r.items?.avg_cost || r.avg_cost) },
+            { header: t('stock.totalValue'), align: 'right', render: r => <span className="font-semibold">{formatCurrency((r.quantity || 0) * (r.items?.avg_cost || r.avg_cost || 0))}</span> },
           ]} data={arrData} />
         )}
 

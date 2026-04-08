@@ -49,6 +49,7 @@ const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage.jsx'));
 const CronJobsPage = lazy(() => import('./pages/CronJobsPage.jsx'));
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage.jsx'));
 const WorksheetPage = lazy(() => import('./pages/WorksheetPage.jsx'));
+const ItemCostHistoryPage = lazy(() => import('./pages/ItemCostHistoryPage.jsx'));
 
 // Route-to-pageId mapping for access control
 const ROUTE_PAGE_MAP = {
@@ -91,6 +92,7 @@ const ROUTE_PAGE_MAP = {
   '/cron-jobs': 'cron-jobs',
   '/change-password': 'change-password',
   '/worksheet': 'worksheet',
+  '/item-cost-history': 'item-cost-history',
 };
 
 // ============================================================
@@ -360,6 +362,7 @@ function MainLayout() {
         { id: 'opening-balance', label: t('ob.menu'), icon: Icons.Scale },
         { id: 'stock', label: t('menu.stock'), icon: Icons.Database },
         { id: 'movements', label: t('menu.movements'), icon: Icons.ClipboardList },
+        { id: 'item-cost-history', label: 'Cost History', icon: Icons.ClipboardList },
         { id: 'transfer', label: t('menu.transfer'), icon: Icons.Truck },
         { id: 'opname', label: t('menu.opname'), icon: Icons.ClipboardList },
         { id: 'in-use-warehouse', label: t('menu.inUseWarehouse'), icon: Icons.Warehouse },
@@ -621,6 +624,7 @@ function MainLayout() {
                   <Route path="/opening-balance" element={<ProtectedRoute pageId="opening-balance"><OpeningBalancePage /></ProtectedRoute>} />
                   <Route path="/stock" element={<ProtectedRoute pageId="stock"><StockBalancePage /></ProtectedRoute>} />
                   <Route path="/movements" element={<ProtectedRoute pageId="movements"><BinCardPage /></ProtectedRoute>} />
+                  <Route path="/item-cost-history" element={<ProtectedRoute pageId="item-cost-history"><ItemCostHistoryPage /></ProtectedRoute>} />
                   <Route path="/pr" element={<ProtectedRoute pageId="pr"><PurchaseRequestPage /></ProtectedRoute>} />
                   <Route path="/po" element={<ProtectedRoute pageId="po"><PurchaseOrderPage /></ProtectedRoute>} />
                   <Route path="/pi" element={<ProtectedRoute pageId="pi"><PurchaseInvoicePage /></ProtectedRoute>} />

@@ -509,17 +509,15 @@ function BinCardPage() {
                 <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">IN/OUT Qty</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Cost</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Balance</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Avg Cost</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 uppercase whitespace-nowrap">Total Value</th>
               </tr>
             </thead>
             <tbody>
               {!filterItem ? (
-                <tr><td colSpan="15" className="px-2 py-8 text-center text-gray-400">Pilih item terlebih dahulu untuk melihat Bin Card</td></tr>
+                <tr><td colSpan="13" className="px-2 py-8 text-center text-gray-400">Pilih item terlebih dahulu untuk melihat Bin Card</td></tr>
               ) : loading ? (
-                <tr><td colSpan="15"><PageLoader /></td></tr>
+                <tr><td colSpan="13"><PageLoader /></td></tr>
               ) : filteredWithBalance.length === 0 ? (
-                <tr><td colSpan="15" className="px-2 py-8 text-center text-gray-400">{t('bincard.empty')}</td></tr>
+                <tr><td colSpan="13" className="px-2 py-8 text-center text-gray-400">{t('bincard.empty')}</td></tr>
               ) : filteredWithBalance.map((r, idx) => {
                 const docType = (r.reference_type || '').replace(/_/g, ' ');
                 return (
@@ -543,8 +541,6 @@ function BinCardPage() {
                   <td className={'px-2 py-1 text-right font-semibold ' + (r._is_transfer ? 'text-gray-400' : r.movement_type==='IN' ? 'text-green-600' : 'text-red-600')}>{r._is_transfer ? '0' : (r.movement_type==='IN'?'+':'-') + formatNumber(r.quantity)}</td>
                   <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._is_transfer && !r.unit_cost ? r._running_avg_cost : r.unit_cost)}</td>
                   <td className="px-2 py-1 text-right font-semibold text-gray-800">{formatNumber(r._running_balance)}</td>
-                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_avg_cost)}</td>
-                  <td className="px-2 py-1 text-right text-gray-600">{formatCurrency(r._running_total_value)}</td>
                 </tr>
                 );
               })}
