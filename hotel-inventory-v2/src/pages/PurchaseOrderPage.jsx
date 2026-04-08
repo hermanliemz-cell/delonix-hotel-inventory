@@ -54,7 +54,7 @@ function PurchaseOrderPage() {
     setApprovedPRs(prRes.data || []);
 
     // Load invoice status data for POs
-    const allPOs = poList;
+    const allPOs = poRes.data || [];
     const approvedPoIds = allPOs.filter(p => ['APPROVED','SENT','RECEIVED','PARTIAL_INVOICED','FULLY_INVOICED'].includes(p.status)).map(p => p.id);
     if (approvedPoIds.length > 0) {
       const [poItemsRes, piRes] = await Promise.all([
