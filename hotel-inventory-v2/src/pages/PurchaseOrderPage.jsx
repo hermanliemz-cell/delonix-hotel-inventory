@@ -30,7 +30,6 @@ function PurchaseOrderPage() {
   const [viewDoc, setViewDoc] = useState(null);
   const [viewItems, setViewItems] = useState([]);
   const [approvedPRs, setApprovedPRs] = useState([]);
-  const [showPRSelect, setShowPRSelect] = useState(false);
   const [selectedPR, setSelectedPR] = useState('');
   const [invoiceStatusMap, setInvoiceStatusMap] = useState({});
 
@@ -50,20 +49,9 @@ function PurchaseOrderPage() {
     setItems(itemRes.data || []);
     setUsers(userRes.data || []);
 
-    // Filter out PRs that already have a PO linked (check notes or pr_reference_id)
-    const allApprovedPRs = prRes.data || [];
-    // Get all PO notes to check if PR number is referenced
-    const poList = poRes.data || [];
-    const linkedPRNumbers = new Set();
-    poList.forEach(po => {
-      if (po.pr_reference_id) linkedPRNumbers.add(po.pr_reference_id);
-      if (po.notes && po.notes.startsWith('Imported from PR:')) {
-        const prNum = po.notes.replace('Imported from PR: ', '').trim();
-        const matchPR = allApprovedPRs.find(p => p.pr_number === prNum);
-        if (matchPR) linkedPRNumbers.add(matchPR.id);
-      }
-    });
-    setApprovedPRs(allApprovedPRs.filter(pr => !linkedPRNumbers.has(pr.id)));
+    // PR dengan status APPROVED / PARTIAL_ORDERED bisa dipilih untuk PO baru
+    // 1 PR bisa punya beberapa PO (partial ordering), jadi tidak perlu filter
+    setApprovedPRs(prRes.data || []);
 
     // Load invoice status data for POs
     const allPOs = poList;
@@ -133,11 +121,10 @@ function PurchaseOrderPage() {
     setLineItems(newLines);
     setForm(prev => ({
       ...prev,
-      notes: 'Imported from PR: ' + pr.pr_number,
+      notes: prev.notes || '',
       pr_reference_id: pr.id
     }));
-    setShowPRSelect(false);
-    setSelectedPR('');
+    setSelectedPR(prId);
     showNotification('Item dari ' + pr.pr_number + ' berhasil di-import (' + newLines.length + ' items)');
   }
 
@@ -155,6 +142,7 @@ function PurchaseOrderPage() {
 
   function openCreate() {
     setEditing(null);
+    setSelectedPR('');
     setForm({ vendor_id: '', order_date: getLocalDateString(), expected_delivery: '', payment_terms: '', notes: '' });
     setLineItems([{ item_id: '', quantity: 1, unit_price: 0, discount_percent: 0, tax_percent: 11 }]);
     setShowModal(true);
@@ -384,11 +372,24 @@ function PurchaseOrderPage() {
             <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
           </FormField>
           {!editing && (
-          <FormField label="Import dari PR">
-            <Select value={selectedPR} onChange={e => { setSelectedPR(e.target.value); if(e.target.value) importFromPR(e.target.value); }}>
-              <option value="">-- Pilih PR --</option>
-              {approvedPRs.map(pr => <option key={pr.id} value={pr.id}>{pr.pr_number} — {pr.departments?.name || ''}</option>)}
-            </Select>
+          <FormField label="Referensi PR">
+            {selectedPR ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm font-semibold text-blue-800">
+                  {approvedPRs.find(p => p.id === selectedPR)?.pr_number || selectedPR}
+                  <span className="text-blue-500 font-normal ml-1">({approvedPRs.find(p => p.id === selectedPR)?.departments?.name || ''})</span>
+                </div>
+                <button type="button" onClick={() => { setSelectedPR(''); setForm(prev => ({ ...prev, pr_reference_id: undefined })); setLineItems([{ item_id: '', quantity: 1, unit_price: 0, discount_percent: 0, tax_percent: 11 }]); }}
+                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Hapus referensi PR">
+                  <Icons.Trash />
+                </button>
+              </div>
+            ) : (
+              <Select value="" onChange={e => { if(e.target.value) importFromPR(e.target.value); }}>
+                <option value="">-- Import dari PR --</option>
+                {approvedPRs.map(pr => <option key={pr.id} value={pr.id}>{pr.pr_number} — {pr.departments?.name || ''}</option>)}
+              </Select>
+            )}
           </FormField>
           )}
         </div>
@@ -481,6 +482,12 @@ function PurchaseOrderPage() {
                 <div>
                   <p className="text-xs text-gray-500">{t('po.paymentTerms')}</p>
                   <p className="font-semibold">{viewDoc.payment_terms}</p>
+                </div>
+              )}
+              {viewDoc.pr_reference_id && (
+                <div>
+                  <p className="text-xs text-gray-500">Referensi PR</p>
+                  <p className="font-semibold text-blue-700">{approvedPRs.find(p => p.id === viewDoc.pr_reference_id)?.pr_number || viewDoc.pr_reference_id}</p>
                 </div>
               )}
               {viewDoc.notes && (
