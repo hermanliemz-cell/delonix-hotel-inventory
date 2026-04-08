@@ -149,31 +149,46 @@ function ItemsPage() {
     setImportChecked({});
     if (!orgId) { setImportCategories([]); return; }
     setImportLoading(true);
-    const { data: cats } = await supabase.from('item_categories').select('*').order('name');
+    // Load categories AND items from selected source org
+    const [{ data: cats }, { data: srcItems }] = await Promise.all([
+      supabase.from('item_categories').select('*').order('name'),
+      supabase.from('items').select('*, item_categories(name), units:units!items_unit_id_fkey(abbreviation)').eq('organization_id', orgId).eq('is_active', true).order('code'),
+    ]);
     setImportCategories(cats || []);
+    // Filter out items already existing in current hotel (by code)
+    const existingCodes = new Set(items.map(i => i.code));
+    const available = (srcItems || []).filter(i => !existingCodes.has(i.code));
+    setImportItems(available);
     setImportLoading(false);
   }
 
   async function handleImportCatFilter(catId) {
     setImportFilterCat(catId);
     setImportFilterSubCat('');
-    setImportItems([]);
     setImportChecked({});
+    // Reload items with category filter
+    await loadImportItems(importSelectedOrg, catId, '');
   }
 
   async function handleImportSubCatFilter(subCatId) {
     setImportFilterSubCat(subCatId);
     setImportChecked({});
-    if (!subCatId && !importFilterCat) { setImportItems([]); return; }
+    // Reload items with sub-category filter
+    await loadImportItems(importSelectedOrg, importFilterCat, subCatId);
+  }
+
+  async function loadImportItems(orgId, catId, subCatId) {
+    if (!orgId) { setImportItems([]); return; }
     setImportLoading(true);
-    let query = supabase.from('items').select('*, item_categories(name), units:units!items_unit_id_fkey(abbreviation)').eq('organization_id', importSelectedOrg).eq('is_active', true);
+    let query = supabase.from('items').select('*, item_categories(name), units:units!items_unit_id_fkey(abbreviation)').eq('organization_id', orgId).eq('is_active', true);
     if (subCatId) {
       query = query.eq('category_id', subCatId);
-    } else if (importFilterCat) {
+    } else if (catId) {
       // Get all sub-category IDs under this parent + the parent itself
-      const subCatIds = importCategories.filter(c => c.parent_id === importFilterCat).map(c => c.id);
-      query = query.in('category_id', [importFilterCat, ...subCatIds]);
+      const subCatIds = importCategories.filter(c => c.parent_id === catId).map(c => c.id);
+      query = query.in('category_id', [catId, ...subCatIds]);
     }
+    // No category filter = load ALL items from source org
     const { data } = await query.order('code');
     // Filter out items already existing in current hotel (by code)
     const existingCodes = new Set(items.map(i => i.code));
@@ -181,13 +196,6 @@ function ItemsPage() {
     setImportItems(available);
     setImportLoading(false);
   }
-
-  // When parent cat changes, auto-load items
-  useEffect(() => {
-    if (importFilterCat && !importFilterSubCat) {
-      handleImportSubCatFilter('');
-    }
-  }, [importFilterCat]);
 
   function toggleImportCheck(itemId) {
     setImportChecked(prev => ({ ...prev, [itemId]: !prev[itemId] }));
@@ -735,9 +743,9 @@ function ItemsPage() {
             </div>
           )}
 
-          {importSelectedOrg && importFilterCat && importItems.length === 0 && !importLoading && (
+          {importSelectedOrg && importItems.length === 0 && !importLoading && (
             <div className="text-center py-6 text-gray-500 text-sm">
-              No new items available to import (all items from this category already exist in your hotel)
+              No new items available to import (all items already exist in your hotel)
             </div>
           )}
 
