@@ -17,6 +17,11 @@ const ALL_MENU_GROUPS = [
   { group: 'Dashboard', items: [
     { id: 'dashboard', label: 'Dashboard' },
   ]},
+  { group: 'Hotel Master', items: [
+    { id: 'items', label: 'Items' },
+    { id: 'warehouses', label: 'Warehouses' },
+    { id: 'rooms', label: 'Rooms' },
+  ]},
   { group: 'Purchasing', items: [
     { id: 'purchase-request', label: 'Purchase Request' },
     { id: 'purchase-order', label: 'Purchase Order' },
