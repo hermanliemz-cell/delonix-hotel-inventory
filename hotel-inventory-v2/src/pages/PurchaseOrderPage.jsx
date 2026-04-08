@@ -182,11 +182,14 @@ function PurchaseOrderPage() {
   }
 
   async function generatePONumber() {
-    const prefix = `PO-${selectedOrg.code}-`;
-    const { data } = await supabase.from('purchase_orders').select('po_number').eq('organization_id', selectedOrg.id).like('po_number', prefix + '%').order('created_at', { ascending: false }).limit(1);
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `PO-${selectedOrg.code}-${yy}${mm}`;
+    const { data } = await supabase.from('purchase_orders').select('po_number').eq('organization_id', selectedOrg.id).like('po_number', prefix + '%').order('po_number', { ascending: false }).limit(1);
     let nextNum = 1;
     if (data && data.length > 0) {
-      const lastNum = parseInt(data[0].po_number.replace(prefix, ''), 10);
+      const lastNum = parseInt(data[0].po_number.slice(prefix.length), 10);
       if (!isNaN(lastNum)) nextNum = lastNum + 1;
     }
     return prefix + String(nextNum).padStart(4, '0');

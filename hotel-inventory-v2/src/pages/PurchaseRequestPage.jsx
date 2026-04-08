@@ -153,11 +153,14 @@ export default function PurchaseRequestPage() {
   function updateLine(idx, field, val) { const nl = [...lineItems]; nl[idx] = { ...nl[idx], [field]: val }; setLineItems(nl); }
 
   async function generatePRNumber() {
-    const prefix = `PR-${selectedOrg.code}-`;
-    const { data } = await supabase.from('purchase_requests').select('pr_number').eq('organization_id', selectedOrg.id).like('pr_number', prefix + '%').order('created_at', { ascending: false }).limit(1);
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `PR-${selectedOrg.code}-${yy}${mm}`;
+    const { data } = await supabase.from('purchase_requests').select('pr_number').eq('organization_id', selectedOrg.id).like('pr_number', prefix + '%').order('pr_number', { ascending: false }).limit(1);
     let nextNum = 1;
     if (data && data.length > 0) {
-      const lastNum = parseInt(data[0].pr_number.replace(prefix, ''), 10);
+      const lastNum = parseInt(data[0].pr_number.slice(prefix.length), 10);
       if (!isNaN(lastNum)) nextNum = lastNum + 1;
     }
     return prefix + String(nextNum).padStart(4, '0');

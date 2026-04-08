@@ -100,11 +100,14 @@ function PurchaseInvoicePage() {
   }
 
   async function generatePINumber() {
-    const prefix = `PI-${selectedOrg.code}-`;
-    const { data } = await supabase.from('purchase_invoices').select('invoice_number').eq('organization_id', selectedOrg.id).like('invoice_number', prefix + '%').order('created_at', { ascending: false }).limit(1);
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `PI-${selectedOrg.code}-${yy}${mm}`;
+    const { data } = await supabase.from('purchase_invoices').select('pi_number').eq('organization_id', selectedOrg.id).like('pi_number', prefix + '%').order('pi_number', { ascending: false }).limit(1);
     let nextNum = 1;
     if (data && data.length > 0) {
-      const lastNum = parseInt(data[0].invoice_number.replace(prefix, ''), 10);
+      const lastNum = parseInt(data[0].pi_number.slice(prefix.length), 10);
       if (!isNaN(lastNum)) nextNum = lastNum + 1;
     }
     return prefix + String(nextNum).padStart(4, '0');
