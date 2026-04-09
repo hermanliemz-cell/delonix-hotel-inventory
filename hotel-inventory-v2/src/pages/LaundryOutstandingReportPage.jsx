@@ -257,7 +257,8 @@ function LaundryOutstandingReportPage() {
         const key = `${tr.item_id}|${BONVIVO_VENDOR_ID}`;
         if (!priorMap[key]) priorMap[key] = 0;
         const qty = parseFloat(tr.quantity) || 0;
-        priorMap[key] += tr.movement_type === 'IN' ? qty : -qty;
+        if (tr.movement_type === 'IN') priorMap[key] += qty;
+        else priorMap[key] -= qty;
       }
     });
 
@@ -270,7 +271,7 @@ function LaundryOutstandingReportPage() {
         : '';
       const vId = m.vendor_id || 'none';
       const key = `${m.item_id}|${vId}|${dateStr}`;
-      if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, adj: 0 };
+      if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, trIn: 0, trOut: 0 };
       if (m.reference_type === 'LAUNDRY_SEND') dailyMap[key].send += parseFloat(m.quantity) || 0;
       else if (m.reference_type === 'LAUNDRY_RECEIVE') dailyMap[key].receive += parseFloat(m.quantity) || 0;
       if (m.items) itemMeta[m.item_id] = { code: m.items.code, name: m.items.name };
@@ -283,7 +284,7 @@ function LaundryOutstandingReportPage() {
         : '';
       if (obDate >= range.from && obDate <= range.to) {
         const key = `${ob.item_id}|${BONVIVO_VENDOR_ID}|${obDate}`;
-        if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, adj: 0 };
+        if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, trIn: 0, trOut: 0 };
         dailyMap[key].ob += parseFloat(ob.quantity) || 0;
       }
       if (ob.items) itemMeta[ob.item_id] = { code: ob.items.code, name: ob.items.name };
@@ -296,9 +297,10 @@ function LaundryOutstandingReportPage() {
         : '';
       if (trDate >= range.from && trDate <= range.to) {
         const key = `${tr.item_id}|${BONVIVO_VENDOR_ID}|${trDate}`;
-        if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, adj: 0 };
+        if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, trIn: 0, trOut: 0 };
         const qty = parseFloat(tr.quantity) || 0;
-        dailyMap[key].adj += tr.movement_type === 'IN' ? qty : -qty;
+        if (tr.movement_type === 'IN') dailyMap[key].trIn += qty;
+        else dailyMap[key].trOut += qty;
       }
       if (tr.items) itemMeta[tr.item_id] = { code: tr.items.code, name: tr.items.name };
     });
@@ -322,15 +324,15 @@ function LaundryOutstandingReportPage() {
 
       for (const date of dates) {
         const dk = `${itemId}|${vendorId}|${date}`;
-        const day = dailyMap[dk] || { send: 0, receive: 0, ob: 0, adj: 0 };
-        const beginning = Math.max(0, running) + day.ob; // cap negative, then add OB
-        const ending = beginning + day.send - day.receive + day.adj; // adj = transfer corrections
-        dailyCols.push({ date, beginning, send: day.send, receive: day.receive, ending });
+        const day = dailyMap[dk] || { send: 0, receive: 0, ob: 0, trIn: 0, trOut: 0 };
+        const beginning = Math.max(0, running) + day.ob;
+        const ending = beginning + day.send - day.receive + day.trIn - day.trOut;
+        dailyCols.push({ date, beginning, send: day.send, receive: day.receive, trIn: day.trIn, trOut: day.trOut, ending });
         running = ending;
       }
 
       // Only include if there's any activity or outstanding
-      const hasActivity = dailyCols.some(d => d.send > 0 || d.receive > 0 || d.beginning > 0 || d.ending > 0);
+      const hasActivity = dailyCols.some(d => d.send > 0 || d.receive > 0 || d.trIn > 0 || d.trOut > 0 || d.beginning > 0 || d.ending > 0);
       if (!hasActivity) return;
 
       // find vendor name from movements
@@ -355,14 +357,16 @@ function LaundryOutstandingReportPage() {
 
     // --- Summary totals ---
     const totals = dates.map((date, di) => {
-      let beginning = 0, send = 0, receive = 0, ending = 0;
+      let beginning = 0, send = 0, receive = 0, trIn = 0, trOut = 0, ending = 0;
       rows.forEach(r => {
         beginning += r.daily[di].beginning;
         send += r.daily[di].send;
         receive += r.daily[di].receive;
+        trIn += r.daily[di].trIn;
+        trOut += r.daily[di].trOut;
         ending += r.daily[di].ending;
       });
-      return { date, beginning, send, receive, ending };
+      return { date, beginning, send, receive, trIn, trOut, ending };
     });
 
     return { dates, rows, totals };
@@ -453,6 +457,8 @@ function LaundryOutstandingReportPage() {
               const lastDay = reportData.totals[reportData.totals.length - 1];
               const totalSend = reportData.totals.reduce((s, t) => s + t.send, 0);
               const totalReceive = reportData.totals.reduce((s, t) => s + t.receive, 0);
+              const totalTrIn = reportData.totals.reduce((s, t) => s + t.trIn, 0);
+              const totalTrOut = reportData.totals.reduce((s, t) => s + t.trOut, 0);
               return (
                 <>
                   <div className="bg-white rounded-lg border p-4">
@@ -506,7 +512,7 @@ function LaundryOutstandingReportPage() {
                     </th>
                   )}
                   {reportData.dates.map(date => (
-                    <th key={date} colSpan={4} className="px-1 py-2 text-center font-semibold text-gray-700 border-b border-r bg-gray-100">
+                    <th key={date} colSpan={6} className="px-1 py-2 text-center font-semibold text-gray-700 border-b border-r bg-gray-100">
                       {fmtDateShort(date)}
                     </th>
                   ))}
@@ -517,6 +523,8 @@ function LaundryOutstandingReportPage() {
                       <th className="px-2 py-1 text-center text-gray-500 border-b font-medium whitespace-nowrap bg-orange-50">Beg. O/S</th>
                       <th className="px-2 py-1 text-center text-gray-500 border-b font-medium whitespace-nowrap bg-green-50">Received</th>
                       <th className="px-2 py-1 text-center text-gray-500 border-b font-medium whitespace-nowrap bg-blue-50">Send</th>
+                      <th className="px-2 py-1 text-center text-gray-500 border-b font-medium whitespace-nowrap bg-purple-50">TR In</th>
+                      <th className="px-2 py-1 text-center text-gray-500 border-b font-medium whitespace-nowrap bg-red-50">TR Out</th>
                       <th className="px-2 py-1 text-center text-gray-500 border-b border-r font-medium whitespace-nowrap bg-orange-50">End O/S</th>
                     </React.Fragment>
                   ))}
@@ -539,6 +547,8 @@ function LaundryOutstandingReportPage() {
                         <td className="px-2 py-1.5 text-center text-orange-700 bg-orange-50/30">{fmtNum(d.beginning)}</td>
                         <td className="px-2 py-1.5 text-center text-green-700 bg-green-50/30">{fmtNum(d.receive)}</td>
                         <td className="px-2 py-1.5 text-center text-blue-700 bg-blue-50/30">{fmtNum(d.send)}</td>
+                        <td className="px-2 py-1.5 text-center text-purple-700 bg-purple-50/30">{fmtNum(d.trIn)}</td>
+                        <td className="px-2 py-1.5 text-center text-red-700 bg-red-50/30">{fmtNum(d.trOut)}</td>
                         <td className="px-2 py-1.5 text-center font-semibold text-orange-800 bg-orange-50/30 border-r">{fmtNum(d.ending)}</td>
                       </React.Fragment>
                     ))}
@@ -554,6 +564,8 @@ function LaundryOutstandingReportPage() {
                       <td className="px-2 py-2 text-center text-orange-800 bg-orange-100/50">{fmtNum(t.beginning)}</td>
                       <td className="px-2 py-2 text-center text-green-800 bg-green-100/50">{fmtNum(t.receive)}</td>
                       <td className="px-2 py-2 text-center text-blue-800 bg-blue-100/50">{fmtNum(t.send)}</td>
+                      <td className="px-2 py-2 text-center text-purple-800 bg-purple-100/50">{fmtNum(t.trIn)}</td>
+                      <td className="px-2 py-2 text-center text-red-800 bg-red-100/50">{fmtNum(t.trOut)}</td>
                       <td className="px-2 py-2 text-center text-orange-900 bg-orange-100/50 border-r">{fmtNum(t.ending)}</td>
                     </React.Fragment>
                   ))}
