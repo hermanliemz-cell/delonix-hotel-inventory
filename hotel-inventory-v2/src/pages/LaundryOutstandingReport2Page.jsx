@@ -266,16 +266,18 @@ function LaundryOutstandingReport2Page() {
         running = rawDaily[date].ending;
       }
 
-      // Now build display columns: for each date in range, Send = H-1's send
+      // Now build display columns with V2's own running balance:
+      // End OS = Beg OS + Send(H-1) - Received(today), then next day's Beg OS = prev End OS
+      let v2Running = rawDaily[dates[0]]?.beginning || 0;
       const dailyCols = dates.map(date => {
         const hMinus1 = prevDay(date);
         const cur = rawDaily[date] || { beginning: 0, send: 0, receive: 0, ending: 0 };
         const prev = rawDaily[hMinus1] || { send: 0 };
         const sendH1 = prev.send;
-        // End OS = Beg OS + Send(H-1) - Received(today)
-        const begOS = cur.beginning;
+        const begOS = v2Running;
         const received = cur.receive;
         const endOS = begOS + sendH1 - received;
+        v2Running = endOS;
         return { date, beginning: begOS, sendH1, sendDate: hMinus1, receive: received, ending: endOS };
       });
 
