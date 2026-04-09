@@ -61,6 +61,8 @@ const ALL_MENU_GROUPS = [
   ]},
   { group: null, items: [
     { id: 'reports', label: 'Reports' },
+    { id: 'amenities-cost', label: 'Amenities Cost Report' },
+    { id: 'laundry-outstanding', label: 'Laundry Outstanding Report' },
   ]},
   { group: 'Settings', items: [
     { id: 'user-mgmt', label: 'User Management' },
