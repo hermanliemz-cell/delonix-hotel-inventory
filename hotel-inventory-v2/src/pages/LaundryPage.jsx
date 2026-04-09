@@ -97,7 +97,7 @@ function LaundryPage() {
         .in('reference_type', ['LAUNDRY_SEND', 'LAUNDRY_RECEIVE'])
         .eq('movement_type', 'OUT')
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(2000);
       // Group history by reference_number: 1 row per document
       const grouped = {};
       (histData || []).forEach(rec => {

@@ -52,6 +52,7 @@ const WorksheetPage = lazy(() => import('./pages/WorksheetPage.jsx'));
 const ItemCostHistoryPage = lazy(() => import('./pages/ItemCostHistoryPage.jsx'));
 const AmenitiesCostReportPage = lazy(() => import('./pages/AmenitiesCostReportPage.jsx'));
 const LaundryOutstandingReportPage = lazy(() => import('./pages/LaundryOutstandingReportPage.jsx'));
+const LaundryOutstandingReport2Page = lazy(() => import('./pages/LaundryOutstandingReport2Page.jsx'));
 
 // Route-to-pageId mapping for access control
 const ROUTE_PAGE_MAP = {
@@ -97,6 +98,7 @@ const ROUTE_PAGE_MAP = {
   '/item-cost-history': 'item-cost-history',
   '/amenities-cost': 'amenities-cost',
   '/laundry-outstanding': 'laundry-outstanding',
+  '/laundry-outstanding-2': 'laundry-outstanding-2',
 };
 
 // ============================================================
@@ -380,6 +382,7 @@ function MainLayout() {
         { id: 'reports', label: t('menu.reports'), icon: Icons.BarChart },
         { id: 'amenities-cost', label: 'Amenities Cost', icon: Icons.ClipboardList },
         { id: 'laundry-outstanding', label: 'Laundry Outstanding', icon: Icons.Truck },
+        { id: 'laundry-outstanding-2', label: 'Laundry Outstanding V2', icon: Icons.Truck },
       ]},
       { type: 'group', label: t('menu.group.settings'), icon: Icons.Settings, children: [
         { id: 'user-mgmt', label: t('menu.userMgmt'), icon: Icons.Users },
@@ -635,6 +638,7 @@ function MainLayout() {
                   <Route path="/item-cost-history" element={<ProtectedRoute pageId="item-cost-history"><ItemCostHistoryPage /></ProtectedRoute>} />
                   <Route path="/amenities-cost" element={<ProtectedRoute pageId="amenities-cost"><AmenitiesCostReportPage /></ProtectedRoute>} />
                   <Route path="/laundry-outstanding" element={<ProtectedRoute pageId="laundry-outstanding"><LaundryOutstandingReportPage /></ProtectedRoute>} />
+                  <Route path="/laundry-outstanding-2" element={<ProtectedRoute pageId="laundry-outstanding-2"><LaundryOutstandingReport2Page /></ProtectedRoute>} />
                   <Route path="/pr" element={<ProtectedRoute pageId="pr"><PurchaseRequestPage /></ProtectedRoute>} />
                   <Route path="/po" element={<ProtectedRoute pageId="po"><PurchaseOrderPage /></ProtectedRoute>} />
                   <Route path="/pi" element={<ProtectedRoute pageId="pi"><PurchaseInvoicePage /></ProtectedRoute>} />
