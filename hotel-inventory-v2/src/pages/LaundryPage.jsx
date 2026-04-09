@@ -454,6 +454,8 @@ function LaundryPage() {
           qty += untracked;
         }
 
+        // Cap at stock_balance: can't have more outstanding than physical stock
+        qty = Math.min(qty, parseFloat(item.quantity) || 0);
         return { ...item, quantity: qty };
       }).filter(item => item.quantity > 0);
 

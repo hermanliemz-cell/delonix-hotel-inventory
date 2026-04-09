@@ -32,6 +32,7 @@ function LaundryOutstandingReport2Page() {
   const [movements, setMovements] = useState([]);
   const [priorMovements, setPriorMovements] = useState([]);
   const [openingBalances, setOpeningBalances] = useState([]);
+  const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // ============================================================
@@ -170,9 +171,21 @@ function LaundryOutstandingReport2Page() {
         obData = ob || [];
       }
 
+      // 4) TRANSFER movements in laundry warehouse (corrections, vendor_id null → attribute to BonVivo)
+      let transferData = [];
+      if (laundryWh && laundryWh.length > 0) {
+        const { data: tr } = await supabase.from('stock_movements')
+          .select('item_id, quantity, movement_type, created_at, items:item_id(code, name)')
+          .eq('organization_id', selectedOrg.id)
+          .eq('warehouse_id', laundryWh[0].id)
+          .eq('reference_type', 'TRANSFER');
+        transferData = tr || [];
+      }
+
       setMovements(inRange || []);
       setPriorMovements(prior || []);
       setOpeningBalances(obData);
+      setTransfers(transferData);
     } catch (e) {
       console.error('LaundryOutstandingReport2 load error:', e);
     }
@@ -214,6 +227,19 @@ function LaundryOutstandingReport2Page() {
       else if (m.reference_type === 'LAUNDRY_RECEIVE') priorMap[key] -= parseFloat(m.quantity) || 0;
     });
 
+    // Include TRANSFER movements in laundry warehouse before extendedFrom (attribute to BonVivo)
+    (transfers || []).forEach(tr => {
+      const trDate = tr.created_at
+        ? new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(tr.created_at))
+        : '2020-01-01';
+      if (trDate < extendedFrom) {
+        const key = `${tr.item_id}|${BONVIVO_VENDOR_ID}`;
+        if (!priorMap[key]) priorMap[key] = 0;
+        const qty = parseFloat(tr.quantity) || 0;
+        priorMap[key] += tr.movement_type === 'IN' ? qty : -qty;
+      }
+    });
+
     // --- Build daily send/receive for ALL dates (including extended) ---
     const dailyMap = {};
     const itemMeta = {};
@@ -223,7 +249,7 @@ function LaundryOutstandingReport2Page() {
         : '';
       const vId = m.vendor_id || 'none';
       const key = `${m.item_id}|${vId}|${dateStr}`;
-      if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0 };
+      if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, adj: 0 };
       if (m.reference_type === 'LAUNDRY_SEND') dailyMap[key].send += parseFloat(m.quantity) || 0;
       else if (m.reference_type === 'LAUNDRY_RECEIVE') dailyMap[key].receive += parseFloat(m.quantity) || 0;
       if (m.items) itemMeta[m.item_id] = { code: m.items.code, name: m.items.name };
@@ -236,10 +262,24 @@ function LaundryOutstandingReport2Page() {
         : '';
       if (obDate >= extendedFrom && obDate <= range.to) {
         const key = `${ob.item_id}|${BONVIVO_VENDOR_ID}|${obDate}`;
-        if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0 };
+        if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, adj: 0 };
         dailyMap[key].ob += parseFloat(ob.quantity) || 0;
       }
       if (ob.items) itemMeta[ob.item_id] = { code: ob.items.code, name: ob.items.name };
+    });
+
+    // Include TRANSFER movements within range in dailyMap (attribute to BonVivo)
+    (transfers || []).forEach(tr => {
+      const trDate = tr.created_at
+        ? new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(tr.created_at))
+        : '';
+      if (trDate >= extendedFrom && trDate <= range.to) {
+        const key = `${tr.item_id}|${BONVIVO_VENDOR_ID}|${trDate}`;
+        if (!dailyMap[key]) dailyMap[key] = { send: 0, receive: 0, ob: 0, adj: 0 };
+        const qty = parseFloat(tr.quantity) || 0;
+        dailyMap[key].adj += tr.movement_type === 'IN' ? qty : -qty;
+      }
+      if (tr.items) itemMeta[tr.item_id] = { code: tr.items.code, name: tr.items.name };
     });
 
     // --- Collect combos ---
@@ -247,6 +287,7 @@ function LaundryOutstandingReport2Page() {
     Object.keys(priorMap).forEach(k => comboSet.add(k));
     (movements || []).forEach(m => comboSet.add(`${m.item_id}|${m.vendor_id || 'none'}`));
     (openingBalances || []).forEach(ob => comboSet.add(`${ob.item_id}|${BONVIVO_VENDOR_ID}`));
+    (transfers || []).forEach(tr => comboSet.add(`${tr.item_id}|${BONVIVO_VENDOR_ID}`));
 
     // --- Build rows ---
     const rows = [];
@@ -260,9 +301,9 @@ function LaundryOutstandingReport2Page() {
       let running = priorMap[comboKey] || 0;
       for (const date of allDates) {
         const dk = `${itemId}|${vendorId}|${date}`;
-        const day = dailyMap[dk] || { send: 0, receive: 0, ob: 0 };
-        const beginning = running + day.ob;
-        rawDaily[date] = { beginning, send: day.send, receive: day.receive, ending: beginning + day.send - day.receive };
+        const day = dailyMap[dk] || { send: 0, receive: 0, ob: 0, adj: 0 };
+        const beginning = Math.max(0, running) + day.ob; // cap negative, then add OB
+        rawDaily[date] = { beginning, send: day.send, receive: day.receive, adj: day.adj, ending: beginning + day.send - day.receive + day.adj };
         running = rawDaily[date].ending;
       }
 
@@ -271,12 +312,13 @@ function LaundryOutstandingReport2Page() {
       let v2Running = rawDaily[dates[0]]?.beginning || 0;
       const dailyCols = dates.map(date => {
         const hMinus1 = prevDay(date);
-        const cur = rawDaily[date] || { beginning: 0, send: 0, receive: 0, ending: 0 };
+        const cur = rawDaily[date] || { beginning: 0, send: 0, receive: 0, adj: 0, ending: 0 };
         const prev = rawDaily[hMinus1] || { send: 0 };
         const sendH1 = prev.send;
         const begOS = v2Running;
         const received = cur.receive;
-        const endOS = begOS + sendH1 - received;
+        const adj = cur.adj;
+        const endOS = begOS + sendH1 - received + adj;
         v2Running = endOS;
         return { date, beginning: begOS, sendH1, sendDate: hMinus1, receive: received, ending: endOS };
       });
@@ -307,7 +349,7 @@ function LaundryOutstandingReport2Page() {
     });
 
     return { dates, rows, totals };
-  }, [movements, priorMovements, openingBalances, periodPreset, dateFrom, dateTo]);
+  }, [movements, priorMovements, openingBalances, transfers, periodPreset, dateFrom, dateTo]);
 
   // ============================================================
   // FORMAT HELPERS
