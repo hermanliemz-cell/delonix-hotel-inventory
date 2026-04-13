@@ -89,24 +89,29 @@ function ReportsPage() {
         const { data: res } = await q.order('opname_date', { ascending: false });
         setData(res || []);
       } else if (reportType === 'linen') {
-        // Get all stock balances with warehouse info for linen items
-        // Paginate to avoid Supabase 1000-row default limit
-        let allBalances = [];
+        // Step 1: Get all linen item IDs (filter at DB level, not client-side)
+        const { data: linenItems } = await supabase.from('items')
+          .select('id, item_categories!inner(code)')
+          .eq('organization_id', selectedOrg.id)
+          .like('item_categories.code', 'LIN%');
+        const linenItemIds = (linenItems || []).map(i => i.id);
+        if (linenItemIds.length === 0) { setData([]); setLoading(false); return; }
+        // Step 2: Fetch stock_balance only for linen items, paginated
+        let linenBalances = [];
         let from = 0;
         const pageSize = 1000;
         while (true) {
           const { data: batch } = await supabase.from('stock_balance')
             .select('*, items(id, code, name, brand, category_id, item_categories(code, name)), warehouses(id, code, name, warehouse_type)')
             .eq('organization_id', selectedOrg.id)
+            .in('item_id', linenItemIds)
             .gt('quantity', 0)
             .range(from, from + pageSize - 1);
           if (!batch || batch.length === 0) break;
-          allBalances = allBalances.concat(batch);
+          linenBalances = linenBalances.concat(batch);
           if (batch.length < pageSize) break;
           from += pageSize;
         }
-        // Filter only linen items
-        const linenBalances = allBalances.filter(b => b.items?.item_categories?.code?.startsWith('LIN'));
         // Group by item: { item_id: { item, store, room, dirty, laundry, damage, total } }
         const itemMap = {};
         for (const b of linenBalances) {
