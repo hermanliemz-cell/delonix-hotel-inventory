@@ -29,6 +29,7 @@ function ReportsPage() {
   const [filterDept, setFilterDept] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [filterLinenStatus, setFilterLinenStatus] = useState('active');
 
   useEffect(() => {
     if (selectedOrg) {
@@ -90,10 +91,13 @@ function ReportsPage() {
         setData(res || []);
       } else if (reportType === 'linen') {
         // Step 1: Get all linen item IDs (filter at DB level, not client-side)
-        const { data: linenItems } = await supabase.from('items')
-          .select('id, item_categories!inner(code)')
+        let linenQuery = supabase.from('items')
+          .select('id, is_active, item_categories!inner(code)')
           .eq('organization_id', selectedOrg.id)
           .like('item_categories.code', 'LIN%');
+        if (filterLinenStatus === 'active') linenQuery = linenQuery.eq('is_active', true);
+        else if (filterLinenStatus === 'inactive') linenQuery = linenQuery.eq('is_active', false);
+        const { data: linenItems } = await linenQuery;
         const linenItemIds = (linenItems || []).map(i => i.id);
         if (linenItemIds.length === 0) { setData([]); setLoading(false); return; }
         // Step 2: Fetch stock_balance only for linen items, paginated
@@ -215,6 +219,7 @@ function ReportsPage() {
   const showCatFilter = ['valuation', 'lowstock'].includes(reportType);
   const showDeptFilter = ['valuation', 'movement', 'opname'].includes(reportType);
   const showDateFilter = ['movement', 'purchase', 'opname'].includes(reportType);
+  const showLinenStatusFilter = reportType === 'linen';
 
   const arrData = Array.isArray(data) ? data : [];
 
@@ -363,6 +368,16 @@ function ReportsPage() {
               <select value={filterDept} onChange={e => setFilterDept(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
                 <option value="">{t('reports.allDepts')}</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
+              </select>
+            </div>
+          )}
+          {showLinenStatusFilter && (
+            <div className="min-w-[120px]">
+              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('common.status')}</label>
+              <select value={filterLinenStatus} onChange={e => setFilterLinenStatus(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+                <option value="active">{t('common.active')}</option>
+                <option value="inactive">{t('common.inactive')}</option>
+                <option value="">{t('reports.allCategories')}</option>
               </select>
             </div>
           )}
