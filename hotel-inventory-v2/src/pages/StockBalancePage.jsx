@@ -124,16 +124,28 @@ function StockBalancePage() {
 
   async function loadStock() {
     setLoading(true);
-    const [stockRes, catRes, whRes, itemRes] = await Promise.all([
-      supabase.from('stock_balance')
-        .select('*, items(code, name, brand, size, min_stock, reorder_point, category_id, is_active, avg_cost, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name, warehouse_type)')
-        .eq('organization_id', selectedOrg.id)
-        .order('updated_at', { ascending: false }),
+    // Fetch stock_balance with pagination to avoid Supabase 1000-row limit
+    const selectFields = '*, items(code, name, brand, size, min_stock, reorder_point, category_id, is_active, avg_cost, units:unit_id(abbreviation), item_categories(id, code, name)), departments!left(name, code), warehouses!left(id, code, name, warehouse_type)';
+    let allStock = [];
+    let from = 0;
+    const pageSize = 1000;
+    const [catRes, whRes, itemRes] = await Promise.all([
       supabase.from('item_categories').select('id, code, name, parent_id').eq('is_active', true).order('name'),
       supabase.from('warehouses').select('id, code, name').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
       supabase.from('items').select('id, code, name, is_active').eq('organization_id', selectedOrg?.id).order('name'),
     ]);
-    setStock(stockRes.data || []);
+    while (true) {
+      const { data: batch } = await supabase.from('stock_balance')
+        .select(selectFields)
+        .eq('organization_id', selectedOrg.id)
+        .order('updated_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (!batch || batch.length === 0) break;
+      allStock = allStock.concat(batch);
+      if (batch.length < pageSize) break;
+      from += pageSize;
+    }
+    setStock(allStock);
     setCategories(catRes.data || []);
     setWarehouses(whRes.data || []);
     setAllItems(itemRes.data || []);
