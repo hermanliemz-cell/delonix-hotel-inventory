@@ -11,6 +11,7 @@ import { Button, Badge } from '../components/FormElements';
 import { StatCard } from '../components/StatCard';
 import { ReportStockInRooms } from '../components/ReportStockInRooms';
 import { PageLoader } from '../components/PageLoader';
+import { Modal } from '../components/Modal';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
