@@ -324,6 +324,22 @@ function TransferPage() {
     setSaving(false);
   }
 
+  async function deleteDraft(tr) {
+    if (tr.status !== 'DRAFT') return;
+    if (!(await showConfirm(`Delete draft ${tr.transfer_number}? Data akan dihapus permanen.`, { variant: 'danger' }))) return;
+    setSaving(true);
+    try {
+      const { error: itemErr } = await supabase.from('transfer_items').delete().eq('transfer_id', tr.id);
+      if (itemErr) throw itemErr;
+      const { error: trErr } = await supabase.from('transfers').delete().eq('id', tr.id);
+      if (trErr) throw trErr;
+      showNotification(`${tr.transfer_number} berhasil dihapus.`, 'success');
+      setShowModal(false);
+      loadAll();
+    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+    setSaving(false);
+  }
+
   const filtered = transfers.filter(tr => {
     if (filterStatus && tr.status !== filterStatus) return false;
     if (search) {
@@ -366,6 +382,7 @@ function TransferPage() {
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => openView(r)}>View</Button>
               {r.status === 'DRAFT' && <Button size="sm" variant="primary" onClick={() => confirmTransfer(r)} disabled={saving}>{t('transfer.confirm')}</Button>}
+              {r.status === 'DRAFT' && <button onClick={() => deleteDraft(r)} disabled={saving} className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 disabled:opacity-50"><Icons.Trash /> Delete</button>}
               {r.status === 'CONFIRMED' && <button onClick={() => revokeTransfer(r)} disabled={saving} className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100 disabled:opacity-50"><Icons.RotateCcw /> Revoke</button>}
             </div>
           )},
@@ -484,6 +501,7 @@ function TransferPage() {
           <Button variant="secondary" onClick={() => setShowModal(false)}>{isView ? t('common.close') : t('common.cancel')}</Button>
           {!isView && <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : t('transfer.saveDraft')}</Button>}
           {isDraft && <Button variant="primary" onClick={() => confirmTransfer(viewing)} disabled={saving}>{t('transfer.confirm')}</Button>}
+          {isDraft && <button onClick={() => deleteDraft(viewing)} disabled={saving} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50"><Icons.Trash /> Delete</button>}
           {viewing && viewing.status === 'CONFIRMED' && <button onClick={() => revokeTransfer(viewing)} disabled={saving} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 disabled:opacity-50"><Icons.RotateCcw /> Revoke</button>}
         </div>
       </Modal>
