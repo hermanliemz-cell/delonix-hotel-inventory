@@ -84,6 +84,11 @@ function UserManagementPage() {
   }
 
   async function handleSave() {
+    // Validate password required for new user
+    if (!editing && (!form.password || form.password.length < 6)) {
+      showNotification(t('users.passwordRequired') || 'Password is required (min 6 characters) for new user', 'error');
+      return;
+    }
     // Set organization_id to first selected hotel (for backward compatibility) or null
     const primaryOrg = form.hotel_ids.length > 0 ? form.hotel_ids[0] : null;
     const payload = { full_name: form.full_name, username: form.username || null, email: form.email, phone: form.phone || null, role_id: form.role_id || null, organization_id: primaryOrg, department_id: form.department_id || null, is_active: form.is_active };
@@ -92,20 +97,24 @@ function UserManagementPage() {
     }
     let userId;
     if (editing) {
-      await supabase.from('users').update(payload).eq('id', editing.id);
+      const { error } = await supabase.from('users').update(payload).eq('id', editing.id);
+      if (error) { showNotification(error.message, 'error'); return; }
       userId = editing.id;
     } else {
-      const { data: newUser } = await supabase.from('users').insert(payload).select('id').single();
+      const { data: newUser, error } = await supabase.from('users').insert(payload).select('id').single();
+      if (error) { showNotification(error.message, 'error'); return; }
       userId = newUser?.id;
     }
     // Upsert user_hotel_access
     if (userId) {
       // Delete existing access entries
-      await supabase.from('user_hotel_access').delete().eq('user_id', userId);
+      const { error: delErr } = await supabase.from('user_hotel_access').delete().eq('user_id', userId);
+      if (delErr) { showNotification(delErr.message, 'error'); return; }
       // Insert new access entries
       if (form.hotel_ids.length > 0) {
         const accessRows = form.hotel_ids.map(orgId => ({ user_id: userId, organization_id: orgId }));
-        await supabase.from('user_hotel_access').insert(accessRows);
+        const { error: insErr } = await supabase.from('user_hotel_access').insert(accessRows);
+        if (insErr) { showNotification(insErr.message, 'error'); return; }
       }
     }
     showNotification(t('users.successSave'), 'success');
