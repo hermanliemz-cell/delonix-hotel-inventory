@@ -32,6 +32,8 @@ function ReportsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [filterLinenStatus, setFilterLinenStatus] = useState('active');
+  const [linenSubCat, setLinenSubCat] = useState('ALL');
+  const [linenCategories, setLinenCategories] = useState([]);
 
   useEffect(() => {
     if (selectedOrg) {
@@ -41,6 +43,7 @@ function ReportsPage() {
       ]).then(([catRes, deptRes]) => {
         setCategories(catRes.data || []);
         setDepartments(deptRes.data || []);
+        setLinenCategories((catRes.data || []).filter(c => c.code.startsWith('LIN') && c.code !== 'LIN'));
       });
     }
   }, [selectedOrg]);
@@ -253,18 +256,24 @@ function ReportsPage() {
     };
   }, [reportType, data]);
 
+  // Filter linen data by subcategory tab
+  const linenFiltered = useMemo(() => {
+    if (reportType !== 'linen' || linenSubCat === 'ALL') return arrData;
+    return arrData.filter(r => r.item?.item_categories?.code === linenSubCat);
+  }, [reportType, arrData, linenSubCat]);
+
   // Linen summary totals (computed unconditionally to follow hooks rules)
   const linenTotals = useMemo(() => {
     if (reportType !== 'linen') {
       return { totalStore: 0, totalRoom: 0, totalDirty: 0, totalLaundry: 0, totalDamage: 0, totalGrand: 0 };
     }
     return {
-      totalStore: arrData.reduce((s, r) => s + (r.store || 0), 0),
-      totalRoom: arrData.reduce((s, r) => s + (r.room || 0), 0),
-      totalDirty: arrData.reduce((s, r) => s + (r.dirty || 0), 0),
-      totalLaundry: arrData.reduce((s, r) => s + (r.laundry || 0), 0),
-      totalDamage: arrData.reduce((s, r) => s + (r.damage || 0), 0),
-      totalGrand: arrData.reduce((s, r) => s + (r.total || 0), 0),
+      totalStore: linenFiltered.reduce((s, r) => s + (r.store || 0), 0),
+      totalRoom: linenFiltered.reduce((s, r) => s + (r.room || 0), 0),
+      totalDirty: linenFiltered.reduce((s, r) => s + (r.dirty || 0), 0),
+      totalLaundry: linenFiltered.reduce((s, r) => s + (r.laundry || 0), 0),
+      totalDamage: linenFiltered.reduce((s, r) => s + (r.damage || 0), 0),
+      totalGrand: linenFiltered.reduce((s, r) => s + (r.total || 0), 0),
     };
   }, [reportType, arrData]);
 
@@ -503,6 +512,13 @@ function ReportsPage() {
 
         {reportType === 'linen' && (
           <div>
+            {/* Linen Subcategory Tabs */}
+            <div className="flex flex-wrap gap-1 p-3 border-b border-gray-100 bg-gray-50/50">
+              <button onClick={() => setLinenSubCat('ALL')} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${linenSubCat === 'ALL' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>All</button>
+              {linenCategories.map(c => (
+                <button key={c.code} onClick={() => setLinenSubCat(c.code)} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${linenSubCat === c.code ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>{c.name}</button>
+              ))}
+            </div>
             {/* Linen Summary */}
             <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 p-4 border-b border-gray-100">
               <div className="bg-green-50 rounded-lg p-3 text-center">
@@ -533,7 +549,7 @@ function ReportsPage() {
             {/* Linen Table */}
             {loading ? (
               <PageLoader />
-            ) : arrData.length === 0 ? (
+            ) : linenFiltered.length === 0 ? (
               <div className="p-8 text-center text-gray-500">Tidak ada data linen.</div>
             ) : (
               <div className="overflow-x-auto">
@@ -553,7 +569,7 @@ function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {arrData.map((r, idx) => (
+                    {linenFiltered.map((r, idx) => (
                       <tr key={idx} className="hover:bg-gray-50">
                         <td className="px-4 py-2"><span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{r.item?.code}</span></td>
                         <td className="px-4 py-2"><span className="font-medium text-sm">{r.item?.name}</span>{r.item?.brand ? <span className="text-xs text-gray-400 ml-1">({r.item.brand})</span> : ''}</td>
@@ -578,7 +594,7 @@ function ReportsPage() {
                       <td className="px-3 py-3 text-center text-sm text-red-700 bg-red-50">{linenTotals.totalDamage}</td>
                       <td className="px-3 py-3 text-center text-sm text-blue-700 bg-blue-50">{linenTotals.totalGrand}</td>
                       <td className="px-3 py-3 text-center text-sm text-gray-500">-</td>
-                      <td className="px-3 py-3 text-center text-sm text-red-600 bg-amber-50 font-bold">{arrData.reduce((s,r) => s + (r.insufficient || 0), 0) || '-'}</td>
+                      <td className="px-3 py-3 text-center text-sm text-red-600 bg-amber-50 font-bold">{linenFiltered.reduce((s,r) => s + (r.insufficient || 0), 0) || '-'}</td>
                     </tr>
                   </tfoot>
                 </table>
