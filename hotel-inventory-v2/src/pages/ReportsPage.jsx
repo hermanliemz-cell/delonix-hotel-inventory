@@ -90,12 +90,23 @@ function ReportsPage() {
         setData(res || []);
       } else if (reportType === 'linen') {
         // Get all stock balances with warehouse info for linen items
-        const { data: balances } = await supabase.from('stock_balance')
-          .select('*, items(id, code, name, brand, category_id, item_categories(code, name)), warehouses(id, code, name, warehouse_type)')
-          .eq('organization_id', selectedOrg.id)
-          .gt('quantity', 0);
+        // Paginate to avoid Supabase 1000-row default limit
+        let allBalances = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: batch } = await supabase.from('stock_balance')
+            .select('*, items(id, code, name, brand, category_id, item_categories(code, name)), warehouses(id, code, name, warehouse_type)')
+            .eq('organization_id', selectedOrg.id)
+            .gt('quantity', 0)
+            .range(from, from + pageSize - 1);
+          if (!batch || batch.length === 0) break;
+          allBalances = allBalances.concat(batch);
+          if (batch.length < pageSize) break;
+          from += pageSize;
+        }
         // Filter only linen items
-        const linenBalances = (balances || []).filter(b => b.items?.item_categories?.code?.startsWith('LIN'));
+        const linenBalances = allBalances.filter(b => b.items?.item_categories?.code?.startsWith('LIN'));
         // Group by item: { item_id: { item, store, room, dirty, laundry, damage, total } }
         const itemMap = {};
         for (const b of linenBalances) {
