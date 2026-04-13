@@ -18,6 +18,7 @@ function ReportsPage() {
   const { selectedOrg } = useApp();
   const { t } = useTranslation();
   const [activeReport, setActiveReport] = useState(null);
+  const [roomPopup, setRoomPopup] = useState(null); // { item, roomDetails }
 
   // Legacy states (kept for existing report types)
   const [reportType, setReportType] = useState('valuation');
@@ -556,7 +557,7 @@ function ReportsPage() {
                         <td className="px-4 py-2"><span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{r.item?.code}</span></td>
                         <td className="px-4 py-2"><span className="font-medium text-sm">{r.item?.name}</span>{r.item?.brand ? <span className="text-xs text-gray-400 ml-1">({r.item.brand})</span> : ''}</td>
                         <td className="px-3 py-2 text-center bg-green-50/30"><span className={`text-sm font-semibold ${r.store > 0 ? 'text-green-700' : 'text-gray-300'}`}>{r.store || '-'}</span></td>
-                        <td className="px-3 py-2 text-center bg-purple-50/30"><span className={`text-sm font-semibold ${r.room > 0 ? 'text-purple-700' : 'text-gray-300'}`}>{r.room || '-'}</span></td>
+                        <td className="px-3 py-2 text-center bg-purple-50/30">{r.room > 0 ? <button onClick={() => setRoomPopup({ item: r.item, roomDetails: r.roomDetails })} className="text-sm font-semibold text-purple-700 underline decoration-dotted hover:text-purple-900 cursor-pointer">{r.room}</button> : <span className="text-sm font-semibold text-gray-300">-</span>}</td>
                         <td className="px-3 py-2 text-center bg-orange-50/30"><span className={`text-sm font-semibold ${r.dirty > 0 ? 'text-orange-700' : 'text-gray-300'}`}>{r.dirty || '-'}</span></td>
                         <td className="px-3 py-2 text-center bg-cyan-50/30"><span className={`text-sm font-semibold ${r.laundry > 0 ? 'text-cyan-700' : 'text-gray-300'}`}>{r.laundry || '-'}</span></td>
                         <td className="px-3 py-2 text-center bg-red-50/30"><span className={`text-sm font-semibold ${r.damage > 0 ? 'text-red-700' : 'text-gray-300'}`}>{r.damage || '-'}</span></td>
@@ -589,6 +590,28 @@ function ReportsPage() {
           <div className="p-8 text-center text-gray-500">{t('reports.noData')}</div>
         )}
       </div>
+
+      {/* Room Detail Popup for Linen Position */}
+      <Modal open={!!roomPopup} onClose={() => setRoomPopup(null)} title={`In Room — ${roomPopup?.item?.code} ${roomPopup?.item?.name}`}>
+        {roomPopup && (
+          <div>
+            <div className="text-xs text-gray-500 mb-3">Total In Room: <span className="font-bold text-purple-700">{roomPopup.roomDetails.reduce((s, d) => s + d.qty, 0)}</span> | Rooms: {roomPopup.roomDetails.filter(d => d.qty > 0).length}</div>
+            <div className="max-h-80 overflow-y-auto">
+              <table className="w-full">
+                <thead><tr className="bg-gray-50 border-b"><th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Room</th><th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Qty</th></tr></thead>
+                <tbody className="divide-y divide-gray-50">
+                  {roomPopup.roomDetails.filter(d => d.qty > 0).sort((a, b) => (a.warehouse?.code || '').localeCompare(b.warehouse?.code || '')).map((d, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-3 py-1.5 text-sm">{d.warehouse?.name || d.warehouse?.code || '-'}</td>
+                      <td className="px-3 py-1.5 text-sm text-right font-semibold">{d.qty}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
