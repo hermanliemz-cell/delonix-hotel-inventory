@@ -106,7 +106,7 @@ function ReportsPage() {
         const pageSize = 1000;
         while (true) {
           const { data: batch } = await supabase.from('stock_balance')
-            .select('*, items(id, code, name, brand, category_id, item_categories(code, name)), warehouses(id, code, name, warehouse_type)')
+            .select('*, items(id, code, name, brand, min_stock, category_id, item_categories(code, name)), warehouses(id, code, name, warehouse_type)')
             .eq('organization_id', selectedOrg.id)
             .in('item_id', linenItemIds)
             .gt('quantity', 0)
@@ -120,20 +120,20 @@ function ReportsPage() {
         const itemMap = {};
         for (const b of linenBalances) {
           if (!itemMap[b.item_id]) {
-            itemMap[b.item_id] = { item: b.items, store: 0, room: 0, dirty: 0, laundry: 0, damage: 0, total: 0, totalValue: 0, roomDetails: [] };
+            itemMap[b.item_id] = { item: b.items, store: 0, room: 0, dirty: 0, laundry: 0, damage: 0, total: 0, minStock: b.items?.min_stock || 0, roomDetails: [] };
           }
           const whType = b.warehouses?.warehouse_type || 'general';
           const qty = parseFloat(b.quantity) || 0;
-          const val = parseFloat(b.total_value) || 0;
           if (whType === 'store') itemMap[b.item_id].store += qty;
           else if (whType === 'room') { itemMap[b.item_id].room += qty; itemMap[b.item_id].roomDetails.push({ warehouse: b.warehouses, qty }); }
           else if (whType === 'dirty') itemMap[b.item_id].dirty += qty;
           else if (whType === 'laundry') itemMap[b.item_id].laundry += qty;
           else if (whType === 'damage') itemMap[b.item_id].damage += qty;
           itemMap[b.item_id].total += qty;
-          itemMap[b.item_id].totalValue += val;
         }
-        setData(Object.values(itemMap));
+        // Calculate insufficient qty
+        const result = Object.values(itemMap).map(r => ({ ...r, insufficient: r.minStock > 0 ? Math.max(0, r.minStock - r.total) : 0 }));
+        setData(result);
       }
     } catch (err) { }
     setLoading(false);
@@ -144,7 +144,7 @@ function ReportsPage() {
     if (reportType === 'movement') return ['Date', 'Item', 'Type', 'Qty', 'Unit Cost', 'Total Cost', 'Department', 'Reference', 'Notes'];
     if (reportType === 'lowstock') return ['Item Code', 'Item Name', 'Category', 'Department', 'Min Stock', 'Current Stock', 'Shortage'];
     if (reportType === 'opname') return ['Opname No.', 'Date', 'Department', 'Type', 'Status', 'Variance Value'];
-    if (reportType === 'linen') return ['Item Code', 'Item Name', 'Brand', 'HK Store', 'In Room', 'Dirty', 'In Laundry', 'Damaged', 'Total', 'Total Value'];
+    if (reportType === 'linen') return ['Item Code', 'Item Name', 'Brand', 'HK Store', 'In Room', 'Dirty', 'In Laundry', 'Damaged', 'Total', 'Min Stock', 'Insufficient Qty'];
     return [];
   }
 
@@ -154,7 +154,7 @@ function ReportsPage() {
     if (reportType === 'movement') return arr.map(r => [formatDateSys(r.created_at), r.items?.code+' - '+r.items?.name, r.movement_type, r.quantity, r.unit_cost, r.total_cost, r.departments?.code||'', r.reference_number||'', r.notes||'']);
     if (reportType === 'lowstock') return arr.map(r => [r.items?.code, r.items?.name, r.items?.item_categories?.name||'', r.departments?.code||'', r.items?.min_stock, r.quantity, r.items?.min_stock - r.quantity]);
     if (reportType === 'opname') return arr.map(r => [r.opname_number, formatDateSys(r.opname_date), r.departments?.code||'', r.opname_type, r.status, r.total_variance_value]);
-    if (reportType === 'linen') return arr.map(r => [r.item?.code, r.item?.name, r.item?.brand||'', r.store, r.room, r.dirty, r.laundry, r.damage, r.total, r.totalValue]);
+    if (reportType === 'linen') return arr.map(r => [r.item?.code, r.item?.name, r.item?.brand||'', r.store, r.room, r.dirty, r.laundry, r.damage, r.total, r.minStock || '', r.insufficient || '']);
     return [];
   }
 
@@ -546,7 +546,8 @@ function ReportsPage() {
                       <th className="px-3 py-3 text-center text-xs font-medium text-cyan-600 uppercase bg-cyan-50">In Laundry</th>
                       <th className="px-3 py-3 text-center text-xs font-medium text-red-600 uppercase bg-red-50">Damaged</th>
                       <th className="px-3 py-3 text-center text-xs font-medium text-blue-600 uppercase bg-blue-50 font-bold">Total</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Nilai</th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Min Stock</th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-amber-600 uppercase bg-amber-50">Insufficient</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -560,7 +561,8 @@ function ReportsPage() {
                         <td className="px-3 py-2 text-center bg-cyan-50/30"><span className={`text-sm font-semibold ${r.laundry > 0 ? 'text-cyan-700' : 'text-gray-300'}`}>{r.laundry || '-'}</span></td>
                         <td className="px-3 py-2 text-center bg-red-50/30"><span className={`text-sm font-semibold ${r.damage > 0 ? 'text-red-700' : 'text-gray-300'}`}>{r.damage || '-'}</span></td>
                         <td className="px-3 py-2 text-center bg-blue-50/30"><span className="text-sm font-bold text-blue-700">{r.total}</span></td>
-                        <td className="px-4 py-2 text-right"><span className="text-sm font-medium text-gray-700">{formatCurrency(Math.round(r.totalValue))}</span></td>
+                        <td className="px-3 py-2 text-center"><span className={`text-sm ${r.minStock > 0 ? 'font-medium text-gray-700' : 'text-gray-300'}`}>{r.minStock || '-'}</span></td>
+                        <td className="px-3 py-2 text-center bg-amber-50/30"><span className={`text-sm font-semibold ${r.insufficient > 0 ? 'text-red-600' : 'text-gray-300'}`}>{r.insufficient > 0 ? r.insufficient : '-'}</span></td>
                       </tr>
                     ))}
                   </tbody>
@@ -573,7 +575,8 @@ function ReportsPage() {
                       <td className="px-3 py-3 text-center text-sm text-cyan-700 bg-cyan-50">{linenTotals.totalLaundry}</td>
                       <td className="px-3 py-3 text-center text-sm text-red-700 bg-red-50">{linenTotals.totalDamage}</td>
                       <td className="px-3 py-3 text-center text-sm text-blue-700 bg-blue-50">{linenTotals.totalGrand}</td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-700">{formatCurrency(Math.round(arrData.reduce((s,r) => s + (r.totalValue || 0), 0)))}</td>
+                      <td className="px-3 py-3 text-center text-sm text-gray-500">-</td>
+                      <td className="px-3 py-3 text-center text-sm text-red-600 bg-amber-50 font-bold">{arrData.reduce((s,r) => s + (r.insufficient || 0), 0) || '-'}</td>
                     </tr>
                   </tfoot>
                 </table>
