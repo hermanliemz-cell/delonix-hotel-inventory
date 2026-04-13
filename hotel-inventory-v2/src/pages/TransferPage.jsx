@@ -39,7 +39,7 @@ function TransferPage() {
     setLoading(true);
     const [trRes, whRes, itemRes] = await Promise.all([
       supabase.from('transfers')
-        .select('*, transfer_items(*, items(code, name, brand, units:unit_id(abbreviation)))')
+        .select('*, transfer_items(*, items(code, name, brand, units:unit_id(abbreviation))), created_by_user:created_by_user_id(full_name), departments(code, name)')
         .eq('organization_id', selectedOrg.id)
         .order('created_at', { ascending: false }),
       supabase.from('warehouses').select('id, code, name, warehouse_type').eq('organization_id', selectedOrg.id).eq('is_active', true).order('code'),
@@ -157,6 +157,8 @@ function TransferPage() {
         to_warehouse_id: toWarehouse,
         status: 'DRAFT',
         notes,
+        created_by_user_id: currentUser?.id || null,
+        department_id: currentUser?.department_id || null,
       }).select().single();
       if (trErr) throw trErr;
 
@@ -242,6 +244,7 @@ function TransferPage() {
       await supabase.from('transfers').update({
         status: 'CONFIRMED',
         updated_at: new Date().toISOString(),
+        confirmed_at: new Date().toISOString(),
       }).eq('id', tr.id);
 
       showNotification(t('transfer.successConfirm'));
@@ -352,9 +355,11 @@ function TransferPage() {
         </div>
         <DataTable loading={loading} columns={[
           { header: t('transfer.number'), render: r => <button onClick={() => openView(r)} className="font-mono text-xs font-semibold text-primary-700 hover:underline cursor-pointer">{r.transfer_number}</button> },
-          { header: t('common.date'), render: r => formatDateSys(r.transfer_date) },
+          { header: t('common.date'), render: r => <div><div>{formatDateSys(r.transfer_date)}</div>{r.confirmed_at && <div className="text-xs text-gray-400">{formatDateSys(r.confirmed_at, { includeTime: true })}</div>}</div> },
           { header: t('transfer.from'), render: r => <Badge color="red">{warehouses.find(w => w.id === r.from_warehouse_id)?.code || '-'}</Badge> },
           { header: t('transfer.to'), render: r => <Badge color="green">{warehouses.find(w => w.id === r.to_warehouse_id)?.code || '-'}</Badge> },
+          { header: 'User', render: r => <span className="text-xs">{r.created_by_user?.full_name || r.created_by || '-'}</span> },
+          { header: 'Dept', render: r => r.departments ? <Badge color="blue">{r.departments.code}</Badge> : <span className="text-gray-300">-</span> },
           { header: t('common.status'), render: r => <StatusBadge status={r.status} /> },
           { header: t('makeup.itemCount'), render: r => r.transfer_items?.length || 0 },
           { header: t('common.actions'), render: r => (
