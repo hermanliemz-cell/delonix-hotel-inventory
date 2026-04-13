@@ -91,7 +91,7 @@ function UserManagementPage() {
     }
     // Set organization_id to first selected hotel (for backward compatibility) or null
     const primaryOrg = form.hotel_ids.length > 0 ? form.hotel_ids[0] : null;
-    const payload = { full_name: form.full_name, username: form.username || null, email: form.email, phone: form.phone || null, role_id: form.role_id || null, organization_id: primaryOrg, department_id: form.department_id || null, is_active: form.is_active };
+    const payload = { full_name: form.full_name, username: form.username || null, email: form.email || null, phone: form.phone || null, role_id: form.role_id || null, organization_id: primaryOrg, department_id: form.department_id || null, is_active: form.is_active };
     if (form.password && form.password.length >= 6) {
       payload.password_hash = await hashPassword(form.password);
     }
