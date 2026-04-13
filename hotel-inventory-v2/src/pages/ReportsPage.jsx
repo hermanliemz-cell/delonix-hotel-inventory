@@ -95,7 +95,7 @@ function ReportsPage() {
           .eq('organization_id', selectedOrg.id)
           .gt('quantity', 0);
         // Filter only linen items
-        const linenBalances = (balances || []).filter(b => b.items?.item_categories?.code === 'LIN');
+        const linenBalances = (balances || []).filter(b => b.items?.item_categories?.code?.startsWith('LIN'));
         // Group by item: { item_id: { item, store, room, dirty, laundry, damage, total } }
         const itemMap = {};
         for (const b of linenBalances) {
