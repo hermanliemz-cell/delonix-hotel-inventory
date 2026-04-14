@@ -4,7 +4,6 @@ import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatDate, formatDateSys, formatNumber, getLocalDateString } from '../utils/format';
 import { checkPeriodLock } from '../utils/stock.js';
-import { recordMovement, recordBatchTransfer } from '../services/stockService.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Input, Select, Badge } from '../components/FormElements';
@@ -79,37 +78,6 @@ function RoomAdditionalRequestPage() {
       showNotification('Error loading data: ' + err.message, 'error');
     }
     setLoading(false);
-  }
-
-  // ==================== STOCK MOVEMENT HELPER ====================
-  async function doStockMovement(itemId, movementType, qty, warehouseId, refType, refNumber, notesText, dept, refId, overrideUnitCost) {
-    // Unit cost resolution (samakan dengan RoomMakeUpPageNew):
-    //   - IN with override → srcCost
-    //   - IN/OUT without override → fetch current avg_cost warehouse target
-    // Jangan kirim 0 — itu akan mendilusi avg_cost destination via trigger WAC.
-    let unitCost = null;
-    if (overrideUnitCost !== undefined && overrideUnitCost !== null) {
-      unitCost = overrideUnitCost;
-    } else {
-      const { data: sb } = await supabase.from('stock_balance')
-        .select('avg_cost')
-        .eq('organization_id', selectedOrg.id).eq('item_id', itemId).eq('warehouse_id', warehouseId).maybeSingle();
-      unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
-    }
-    const { error: mvErr } = await recordMovement({
-      organizationId: selectedOrg.id,
-      itemId,
-      warehouseId,
-      movementType,
-      quantity: qty,
-      referenceType: refType,
-      referenceNumber: refNumber,
-      referenceId: refId || null,
-      unitCost,
-      departmentId: dept || null,
-      notes: notesText,
-    });
-    if (mvErr) throw new Error('Stock movement failed: ' + mvErr.message);
   }
 
   // ==================== GENERATE REQUEST NUMBER ====================
@@ -252,285 +220,32 @@ function RoomAdditionalRequestPage() {
     }
   }
 
-  // ==================== CONFIRM REQUEST ====================
-  // Generates sequential document numbers for Transfer and Consumption docs
-  async function generateDocNumber(table, field, prefix) {
-    const code = selectedOrg.code || 'ORG';
-    const pattern = `${prefix}-${code}-%`;
-    const { data } = await supabase.from(table).select(field)
-      .eq('organization_id', selectedOrg.id).like(field, pattern)
-      .order('created_at', { ascending: false }).limit(1);
-    let next = 1;
-    if (data && data.length > 0) {
-      const last = parseInt(data[0][field].split('-').pop()) || 0;
-      next = last + 1;
-    }
-    return `${prefix}-${code}-${String(next).padStart(4, '0')}`;
-  }
-
+  // ==================== CONFIRM REQUEST (via atomic RPC) ====================
   async function handleConfirm(record) {
     if (saving) return; // Prevent double-click
     if (!(await showConfirm(`Confirm request ${record.request_number}? Transfer and/or consumption documents will be created.`, { variant: 'warning' }))) return;
 
     setSaving(true);
-    // Track docs yang dibuat selama attempt — dipakai catch block untuk rollback
-    // partial-fail. Tanpa ini, kalau error terjadi setelah transfer dibuat tapi
-    // sebelum stock movements selesai, user retry akan menggandakan dokumen.
-    let createdTransferId = null;
-    let createdTransferNumber = null;
-    let createdConsumptionId = null;
-    let createdConsumptionNumber = null;
     try {
-      // Strict optimistic lock: atomically flip draft -> processing and verify that
-      // exactly 1 row was affected. Prior implementation only did a SELECT status
-      // check which is race-vulnerable: two parallel confirm clicks both read
-      // "draft" and both ran the stock movements, creating duplicate transfers &
-      // consumption docs. `.select()` forces PostgREST to return the updated rows;
-      // if length === 0 a concurrent session already grabbed the lock so we abort.
-      const { data: lockRows, error: lockErr } = await supabase
-        .from('room_additional_requests')
-        .update({ status: 'processing' })
-        .eq('id', record.id)
-        .eq('status', 'draft')
-        .select('id');
-      if (lockErr) throw lockErr;
-      if (!lockRows || lockRows.length === 0) {
-        showNotification('Request sudah dikonfirmasi atau sedang diproses sesi lain.', 'warning');
-        setSaving(false);
-        return;
-      }
-
-      // Load items with category info
-      const { data: items } = await supabase.from('room_additional_request_items')
-        .select('*, items(id, code, name, category_id)')
-        .eq('request_id', record.id);
-
-      const room = rooms.find(r => r.id === record.room_id);
-      if (!room) throw new Error('Room not found');
-
-      // Find HK store warehouse
-      const hkStore = warehouses.find(w =>
-        (w.warehouse_type === 'store' && (w.code.includes('HK') || w.name.includes('housekeeping'))) ||
-        (w.code === 'HK' || w.code.includes('HK'))
-      );
-      if (!hkStore) throw new Error('HK Store warehouse not found');
-
-      const linenList = (items || []).filter(i => i.item_type === 'linen');
-      const amenityList = (items || []).filter(i => i.item_type === 'amenity');
-
-      // ====== PRE-VALIDATION: cek semua stok SEBELUM create movement apapun ======
-      // Kumpulkan semua OUT yang dibutuhkan dari HK Store, lalu cek saldo.
-      // Jika ada yang kurang, tampilkan SEMUA item yang gagal dan ABORT.
-      const outRequirements = {}; // key: itemId → { itemId, totalQty, itemLabel }
-      for (const li of linenList) {
-        const qty = parseFloat(li.quantity);
-        if (qty <= 0) continue;
-        if (!outRequirements[li.item_id]) {
-          let itemLabel;
-          if (li.items) {
-            itemLabel = `${li.items.code} - ${li.items.name}`;
-          } else {
-            const { data: _itm } = await supabase.from('items').select('code, name').eq('id', li.item_id).maybeSingle();
-            itemLabel = _itm ? `${_itm.code} - ${_itm.name}` : li.item_id;
-          }
-          outRequirements[li.item_id] = { itemId: li.item_id, totalQty: 0, itemLabel };
-        }
-        outRequirements[li.item_id].totalQty += qty;
-      }
-      for (const ai of amenityList) {
-        const qty = parseFloat(ai.quantity);
-        if (qty <= 0) continue;
-        if (!outRequirements[ai.item_id]) {
-          let itemLabel;
-          if (ai.items) {
-            itemLabel = `${ai.items.code} - ${ai.items.name}`;
-          } else {
-            const { data: _itm } = await supabase.from('items').select('code, name').eq('id', ai.item_id).maybeSingle();
-            itemLabel = _itm ? `${_itm.code} - ${_itm.name}` : ai.item_id;
-          }
-          outRequirements[ai.item_id] = { itemId: ai.item_id, totalQty: 0, itemLabel };
-        }
-        outRequirements[ai.item_id].totalQty += qty;
-      }
-
-      const insufficientItems = [];
-      for (const req of Object.values(outRequirements)) {
-        const { data: sb } = await supabase.from('stock_balance')
-          .select('quantity')
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', req.itemId)
-          .eq('warehouse_id', hkStore.id)
-          .maybeSingle();
-        const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
-        if (currentQty < req.totalQty) {
-          insufficientItems.push(`${req.itemLabel} di [${hkStore.code}]: saldo=${currentQty}, diminta=${req.totalQty}`);
-        }
-      }
-
-      if (insufficientItems.length > 0) {
-        // ABORT — jangan buat movement apapun, kembalikan lock
-        try { await supabase.from('room_additional_requests').update({ status: 'draft' }).eq('id', record.id).eq('status', 'processing'); } catch (_) {}
-        showNotification('Stok tidak cukup:\n' + insufficientItems.join('\n'), 'error');
-        setSaving(false);
-        return;
-      }
-
-      // ====== SEMUA STOK CUKUP — Proses documents & movements ======
-
-      // ==================== LINEN → Transfer Document ====================
-      if (linenList.length > 0) {
-        const trNumber = await generateDocNumber('transfers', 'transfer_number', 'TR');
-        createdTransferNumber = trNumber;
-
-        // Create transfer doc (auto-confirmed)
-        const { data: tr, error: trErr } = await supabase.from('transfers').insert({
-          organization_id: selectedOrg.id,
-          transfer_number: trNumber,
-          transfer_date: getLocalDateString(),
-          from_warehouse_id: hkStore.id,
-          to_warehouse_id: room.warehouse_id,
-          status: 'CONFIRMED',
-          notes: `Auto-generated from ${record.request_number}`,
-        }).select().single();
-        if (trErr) throw new Error('Failed to create transfer: ' + trErr.message);
-        createdTransferId = tr.id;
-
-        // Insert transfer_items (with error check)
-        const transferItemsPayload = linenList.map(li => ({
-          transfer_id: tr.id,
-          item_id: li.item_id,
-          quantity: parseFloat(li.quantity),
-          notes: `From ${record.request_number}`,
-        }));
-        const { error: tiErr } = await supabase.from('transfer_items').insert(transferItemsPayload);
-        if (tiErr) throw new Error('Failed to insert transfer_items: ' + tiErr.message);
-
-        // ATOMIC batch transfer: all linen items OUT from HK + IN to Room in ONE DB transaction.
-        // Jika ada item yang gagal (stok tidak cukup, constraint violation, dll),
-        // SEMUA item akan rollback otomatis. Tidak ada partial-fail state.
-        const batchItems = linenList.map(li => ({
-          item_id: li.item_id,
-          quantity: parseFloat(li.quantity),
-          notes: `Transfer ${hkStore.code || 'HK'} → ${room.room_number || 'Room'}`,
-        }));
-        const { error: batchErr } = await recordBatchTransfer({
-          organizationId: selectedOrg.id,
-          sourceWarehouseId: hkStore.id,
-          destWarehouseId: room.warehouse_id,
-          referenceType: 'TRANSFER',
-          referenceNumber: trNumber,
-          departmentId: userDept?.id || null,
-          items: batchItems,
-        });
-        if (batchErr) throw new Error('Batch transfer failed: ' + batchErr.message);
-      }
-
-      // ==================== AMENITY → Room Consumption Document ====================
-      if (amenityList.length > 0) {
-        const rcNumber = await generateDocNumber('room_consumption', 'consumption_number', 'RC');
-        createdConsumptionNumber = rcNumber;
-
-        // Create room_consumption doc (makeup_id = null since from AR, not from Room Makeup)
-        const { data: con, error: conErr } = await supabase.from('room_consumption').insert({
-          organization_id: selectedOrg.id,
-          room_id: record.room_id,
-          consumption_number: rcNumber,
-          consumption_date: getLocalDateString(),
-          warehouse_id: hkStore.id,
-          notes: `Auto-generated from ${record.request_number}`,
-          created_by: currentUser?.id,
-        }).select().single();
-        if (conErr) throw new Error('Failed to create consumption: ' + conErr.message);
-        createdConsumptionId = con.id;
-
-        // Insert room_consumption_items + stock movements (with error checks)
-        for (const ai of amenityList) {
-          const qty = parseFloat(ai.quantity);
-          // Get unit cost from stock_balance
-          const { data: sb } = await supabase.from('stock_balance')
-            .select('avg_cost')
-            .eq('organization_id', selectedOrg.id)
-            .eq('item_id', ai.item_id)
-            .eq('warehouse_id', hkStore.id)
-            .maybeSingle();
-          const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
-
-          const { error: ciErr } = await supabase.from('room_consumption_items').insert({
-            consumption_id: con.id,
-            item_id: ai.item_id,
-            category_id: ai.items?.category_id || null,
-            quantity: qty,
-            unit_cost: unitCost,
-            total_cost: unitCost * qty,
-            notes: `From ${record.request_number}`,
-          });
-          if (ciErr) throw new Error('Failed to insert consumption_item ' + (ai.items?.code || ai.item_id) + ': ' + ciErr.message);
-
-          // OUT from HK Store (consume) - via RPC recordMovement
-          const { error: mvErr } = await recordMovement({
-            organizationId: selectedOrg.id,
-            itemId: ai.item_id,
-            warehouseId: hkStore.id,
-            movementType: 'OUT',
-            quantity: qty,
-            referenceType: 'CONSUMPTION',
-            referenceNumber: rcNumber,
-            referenceId: con.id,
-            unitCost,
-            departmentId: userDept?.id || null,
-            notes: 'Guest amenity consumed',
-          });
-          if (mvErr) throw new Error('Failed consumption movement for ' + (ai.items?.code || ai.item_id) + ': ' + mvErr.message);
-        }
-      }
-
-      // Update AR status (with error check to avoid stuck processing)
-      const { error: statusErr } = await supabase.from('room_additional_requests')
-        .update({
-          status: 'confirmed',
-          confirmed_by: currentUser?.id,
-          confirmed_at: new Date().toISOString(),
-        })
-        .eq('id', record.id);
-      if (statusErr) throw new Error('Failed to update AR status: ' + statusErr.message);
-
-      showNotification('Request confirmed successfully', 'success');
+      // Single atomic server-side RPC: lock → validate stock → create transfer + items +
+      // movements → create consumption + items + movements → confirm status.
+      // PostgreSQL transaction ensures all-or-nothing: if anything fails (including
+      // network drop mid-operation), the whole transaction rolls back cleanly — no
+      // orphaned docs, no partial movements, no stuck 'processing' state.
+      const { data, error } = await supabase.rpc('fn_confirm_room_additional_request', {
+        p_request_id: record.id,
+        p_user_id: currentUser?.id || null,
+        p_department_id: currentUser?.department_id || null,
+        p_transfer_date: getLocalDateString(),
+      });
+      if (error) throw error;
+      const parts = [];
+      if (data?.transfer_number) parts.push(`Transfer: ${data.transfer_number}`);
+      if (data?.consumption_number) parts.push(`Consumption: ${data.consumption_number}`);
+      showNotification(`Request confirmed. ${parts.join(' | ')}`, 'success');
       await loadAll();
     } catch (err) {
-      // Rollback partial-fail: delete stock_movements + docs yang sudah dibuat
-      // di attempt ini. Tanpa rollback ini, retry user akan menggandakan doc
-      // transfer/consumption dan stock movements. Order penting: delete
-      // stock_movements DULU (supaya trg_revert_stock_movement jalan), baru
-      // delete parent docs.
-      try {
-        const refNumbers = [createdTransferNumber, createdConsumptionNumber].filter(Boolean);
-        if (refNumbers.length > 0) {
-          const { data: orphaned } = await supabase.from('stock_movements')
-            .select('id')
-            .in('reference_number', refNumbers);
-          if (orphaned && orphaned.length > 0) {
-            await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
-          }
-        }
-        if (createdTransferId) {
-          await supabase.from('transfer_items').delete().eq('transfer_id', createdTransferId);
-          await supabase.from('transfers').delete().eq('id', createdTransferId);
-        }
-        if (createdConsumptionId) {
-          await supabase.from('room_consumption_items').delete().eq('consumption_id', createdConsumptionId);
-          await supabase.from('room_consumption').delete().eq('id', createdConsumptionId);
-        }
-      } catch (cleanupErr) {
-        console.error('[AR confirm rollback] cleanup failed:', cleanupErr);
-      }
-      // Rollback lock: processing -> draft so the user can retry (only if still processing).
-      try {
-        await supabase.from('room_additional_requests')
-          .update({ status: 'draft' })
-          .eq('id', record.id)
-          .eq('status', 'processing');
-      } catch (_) { /* best-effort */ }
-      showNotification('Error confirming request: ' + err.message + '. Status dikembalikan ke draft (dokumen & movements di attempt ini sudah di-rollback).', 'error');
+      showNotification('Error confirming request: ' + (err.message || err), 'error');
     } finally {
       setSaving(false);
     }
