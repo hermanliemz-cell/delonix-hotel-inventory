@@ -272,17 +272,7 @@ function StockBalancePage() {
               {t('common.clearFilters')}
             </button>
           )}
-          <div className="ml-auto">
-            <button onClick={handleReconcile} disabled={reconciling}
-              className="px-3 py-2 text-sm font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 disabled:opacity-50 flex items-center gap-1.5"
-              title="Hitung ulang saldo stok dari data mutasi untuk memastikan akurasi">
-              {reconciling ? (
-                <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Reconciling...</>
-              ) : (
-                <><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Reconcile</>
-              )}
-            </button>
-          </div>
+          <div className="ml-auto"></div>
         </div>
         {loading ? (
           <PageLoader />
