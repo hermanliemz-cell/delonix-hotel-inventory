@@ -4,7 +4,7 @@ import { useApp } from '../hooks/useApp';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency, formatDate, formatDateSys, formatNumber, getLocalDateString } from '../utils/format';
 import { checkPeriodLock } from '../utils/stock.js';
-import { recordMovement } from '../services/stockService.js';
+import { recordMovement, recordBatchTransfer } from '../services/stockService.js';
 import { Icons } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Input, Select, Badge } from '../components/FormElements';
@@ -395,35 +395,34 @@ function RoomAdditionalRequestPage() {
         if (trErr) throw new Error('Failed to create transfer: ' + trErr.message);
         createdTransferId = tr.id;
 
-        // Insert transfer_items
-        for (const li of linenList) {
-          await supabase.from('transfer_items').insert({
-            transfer_id: tr.id,
-            item_id: li.item_id,
-            quantity: parseFloat(li.quantity),
-            notes: `From ${record.request_number}`,
-          });
-        }
+        // Insert transfer_items (with error check)
+        const transferItemsPayload = linenList.map(li => ({
+          transfer_id: tr.id,
+          item_id: li.item_id,
+          quantity: parseFloat(li.quantity),
+          notes: `From ${record.request_number}`,
+        }));
+        const { error: tiErr } = await supabase.from('transfer_items').insert(transferItemsPayload);
+        if (tiErr) throw new Error('Failed to insert transfer_items: ' + tiErr.message);
 
-        // Stock movements per linen item (OUT from HK + IN to Room).
-        // IMPORTANT: tangkap srcCost (HK store avg_cost) SEBELUM OUT supaya IN
-        // ke room memakai cost source, bukan cost destination. Tanpa ini IN
-        // akan pakai avg_cost room (hasil fetch dari doStockMovement helper
-        // setelah OUT), yang bisa berbeda dan menggeser weighted average room.
-        for (const li of linenList) {
-          const qty = parseFloat(li.quantity);
-          const { data: srcSb } = await supabase.from('stock_balance')
-            .select('avg_cost')
-            .eq('organization_id', selectedOrg.id)
-            .eq('item_id', li.item_id)
-            .eq('warehouse_id', hkStore.id)
-            .maybeSingle();
-          const srcCost = srcSb ? parseFloat(srcSb.avg_cost) || 0 : 0;
-          await doStockMovement(li.item_id, 'OUT', qty, hkStore.id, 'TRANSFER', trNumber,
-            `Transfer to ${room.room_number || 'Room'}`, userDept?.id, null);
-          await doStockMovement(li.item_id, 'IN', qty, room.warehouse_id, 'TRANSFER', trNumber,
-            `Transfer from ${hkStore.code || 'HK'}`, userDept?.id, null, srcCost);
-        }
+        // ATOMIC batch transfer: all linen items OUT from HK + IN to Room in ONE DB transaction.
+        // Jika ada item yang gagal (stok tidak cukup, constraint violation, dll),
+        // SEMUA item akan rollback otomatis. Tidak ada partial-fail state.
+        const batchItems = linenList.map(li => ({
+          item_id: li.item_id,
+          quantity: parseFloat(li.quantity),
+          notes: `Transfer ${hkStore.code || 'HK'} → ${room.room_number || 'Room'}`,
+        }));
+        const { error: batchErr } = await recordBatchTransfer({
+          organizationId: selectedOrg.id,
+          sourceWarehouseId: hkStore.id,
+          destWarehouseId: room.warehouse_id,
+          referenceType: 'TRANSFER',
+          referenceNumber: trNumber,
+          departmentId: userDept?.id || null,
+          items: batchItems,
+        });
+        if (batchErr) throw new Error('Batch transfer failed: ' + batchErr.message);
       }
 
       // ==================== AMENITY → Room Consumption Document ====================
@@ -444,7 +443,7 @@ function RoomAdditionalRequestPage() {
         if (conErr) throw new Error('Failed to create consumption: ' + conErr.message);
         createdConsumptionId = con.id;
 
-        // Insert room_consumption_items + stock movements
+        // Insert room_consumption_items + stock movements (with error checks)
         for (const ai of amenityList) {
           const qty = parseFloat(ai.quantity);
           // Get unit cost from stock_balance
@@ -456,7 +455,7 @@ function RoomAdditionalRequestPage() {
             .maybeSingle();
           const unitCost = sb ? parseFloat(sb.avg_cost) || 0 : 0;
 
-          await supabase.from('room_consumption_items').insert({
+          const { error: ciErr } = await supabase.from('room_consumption_items').insert({
             consumption_id: con.id,
             item_id: ai.item_id,
             category_id: ai.items?.category_id || null,
@@ -465,21 +464,35 @@ function RoomAdditionalRequestPage() {
             total_cost: unitCost * qty,
             notes: `From ${record.request_number}`,
           });
+          if (ciErr) throw new Error('Failed to insert consumption_item ' + (ai.items?.code || ai.item_id) + ': ' + ciErr.message);
 
-          // OUT from HK Store (consume)
-          await doStockMovement(ai.item_id, 'OUT', qty, hkStore.id, 'CONSUMPTION', rcNumber,
-            'Guest amenity consumed', userDept?.id, con.id);
+          // OUT from HK Store (consume) - via RPC recordMovement
+          const { error: mvErr } = await recordMovement({
+            organizationId: selectedOrg.id,
+            itemId: ai.item_id,
+            warehouseId: hkStore.id,
+            movementType: 'OUT',
+            quantity: qty,
+            referenceType: 'CONSUMPTION',
+            referenceNumber: rcNumber,
+            referenceId: con.id,
+            unitCost,
+            departmentId: userDept?.id || null,
+            notes: 'Guest amenity consumed',
+          });
+          if (mvErr) throw new Error('Failed consumption movement for ' + (ai.items?.code || ai.item_id) + ': ' + mvErr.message);
         }
       }
 
-      // Update AR status
-      await supabase.from('room_additional_requests')
+      // Update AR status (with error check to avoid stuck processing)
+      const { error: statusErr } = await supabase.from('room_additional_requests')
         .update({
           status: 'confirmed',
           confirmed_by: currentUser?.id,
           confirmed_at: new Date().toISOString(),
         })
         .eq('id', record.id);
+      if (statusErr) throw new Error('Failed to update AR status: ' + statusErr.message);
 
       showNotification('Request confirmed successfully', 'success');
       await loadAll();
