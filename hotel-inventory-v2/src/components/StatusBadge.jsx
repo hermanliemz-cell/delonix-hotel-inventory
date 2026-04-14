@@ -21,6 +21,9 @@ export function StatusBadge({ status }) {
     PROCESSING: { color: 'orange', label: 'Processing...' },
     COUNTING: { color: 'orange', label: t('opname.statusCounting') || 'Counting' },
   };
-  const s = map[status] || { color: 'gray', label: status };
+  // Normalize to uppercase so lowercase inputs (e.g. 'draft', 'processing', 'confirmed')
+  // from some tables also match the map above.
+  const key = typeof status === 'string' ? status.toUpperCase() : status;
+  const s = map[key] || { color: 'gray', label: status };
   return <Badge color={s.color}>{s.label}</Badge>;
 }
