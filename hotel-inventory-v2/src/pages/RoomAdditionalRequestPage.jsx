@@ -53,7 +53,7 @@ function RoomAdditionalRequestPage() {
     try {
       const [recRes, roomRes, itemRes, whRes] = await Promise.all([
         supabase.from('room_additional_requests')
-          .select('*, rooms(room_number, floor)')
+          .select('*, rooms(room_number, floor), created_by_user:created_by(full_name, username), departments(code, name)')
           .eq('organization_id', selectedOrg.id)
           .order('created_at', { ascending: false }),
         supabase.from('rooms').select('id, room_number, floor, warehouse_id, room_types(name)')
@@ -216,6 +216,7 @@ function RoomAdditionalRequestPage() {
             request_number: requestNumber,
             request_date: getLocalDateString(),
             created_by: currentUser?.id,
+            department_id: currentUser?.department_id || null,
             status: 'draft',
           })
           .select()
@@ -537,10 +538,17 @@ function RoomAdditionalRequestPage() {
 
   // ==================== DELETE REQUEST ====================
   async function handleDelete(record) {
+    if (record.status !== 'draft') {
+      showNotification('Hanya dokumen DRAFT yang bisa dihapus', 'error');
+      return;
+    }
     if (!(await showConfirm(`Delete request ${record.request_number}? This cannot be undone.`, { variant: 'danger' }))) return;
 
     try {
-      await supabase.from('room_additional_requests').delete().eq('id', record.id);
+      const { error: itemErr } = await supabase.from('room_additional_request_items').delete().eq('request_id', record.id);
+      if (itemErr) throw itemErr;
+      const { error: reqErr } = await supabase.from('room_additional_requests').delete().eq('id', record.id);
+      if (reqErr) throw reqErr;
       showNotification('Request deleted successfully', 'success');
       await loadAll();
     } catch (err) {
@@ -606,8 +614,10 @@ function RoomAdditionalRequestPage() {
         <div className="hidden sm:block">
           <DataTable loading={loading} columns={[
             { header: 'Number', render: r => <button onClick={() => viewRecordDetail(r)} className="font-mono text-xs font-semibold text-blue-700 hover:underline cursor-pointer">{r.request_number}</button> },
-            { header: 'Date', render: r => formatDateSys(r.request_date) },
+            { header: 'Date', render: r => <div><div>{formatDateSys(r.request_date)}</div>{r.confirmed_at && <div className="text-xs text-gray-400">{formatDateSys(r.confirmed_at, { includeTime: true })}</div>}</div> },
             { header: 'Room', render: r => r.rooms?.room_number || '-' },
+            { header: 'User', render: r => <span className="text-xs">{r.created_by_user?.full_name || r.created_by_user?.username || '-'}</span> },
+            { header: 'Dept', render: r => r.departments ? <Badge color="blue">{r.departments.code}</Badge> : <span className="text-gray-300">-</span> },
             { header: 'Status', render: r => <StatusBadge status={r.status} /> },
             { header: 'Actions', render: r => (
               <div className="flex gap-2">
@@ -615,6 +625,7 @@ function RoomAdditionalRequestPage() {
                   <>
                     <button onClick={() => openEdit(r)} className="text-blue-600 hover:text-blue-700 text-xs font-medium">Edit</button>
                     <button onClick={() => handleConfirm(r)} disabled={saving} className="text-green-600 hover:text-green-700 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed">Confirm</button>
+                    <button onClick={() => handleDelete(r)} disabled={saving} className="text-red-600 hover:text-red-700 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed">Delete</button>
                   </>
                 )}
               </div>
