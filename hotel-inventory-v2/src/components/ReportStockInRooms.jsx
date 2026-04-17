@@ -91,15 +91,25 @@ export function ReportStockInRooms({ onBack }) {
       const { data: allItems } = await itemQ;
 
       // 3. Get stock balances for room warehouses (only qty > 0)
+      //    Paginate to bypass Supabase 1000-row default limit (critical for DCI
+      //    which can have 1000+ room stock rows across many rooms & linen items).
       const whIds = (roomList || []).map(r => r.warehouse_id).filter(Boolean);
       let balances = [];
       if (whIds.length > 0) {
-        const { data: bal } = await supabase.from('stock_balance')
-          .select('item_id, warehouse_id, quantity')
-          .eq('organization_id', selectedOrg.id)
-          .in('warehouse_id', whIds)
-          .gt('quantity', 0);
-        balances = bal || [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: batch } = await supabase.from('stock_balance')
+            .select('item_id, warehouse_id, quantity')
+            .eq('organization_id', selectedOrg.id)
+            .in('warehouse_id', whIds)
+            .gt('quantity', 0)
+            .range(from, from + pageSize - 1);
+          if (!batch || batch.length === 0) break;
+          balances = balances.concat(batch);
+          if (batch.length < pageSize) break;
+          from += pageSize;
+        }
       }
 
       // 4. Build balance lookup
