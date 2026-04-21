@@ -150,6 +150,17 @@ function RoomMakeUpPageNew() {
   }
 
   // ==================== NUMBER GENERATORS ====================
+  // Makeup number uses server-side RPC with advisory lock to prevent race
+  // condition duplicates. New format: MU-{orgcode}-YYMM{XXXX}.
+  async function generateMakeupNumber(makeupDate) {
+    const { data, error } = await supabase.rpc('fn_generate_makeup_number', {
+      p_organization_id: selectedOrg.id,
+      p_makeup_date: makeupDate || new Date().toISOString().slice(0, 10),
+    });
+    if (error) throw new Error('Generate makeup number failed: ' + error.message);
+    return data;
+  }
+  // Legacy generator for RC (consumption), AH (activity history) — format MU-{code}-XXXX
   async function generateNumber(table, field, prefix) {
     const code = selectedOrg.code || 'ORG';
     const pattern = `${prefix}-${code}-%`;
@@ -504,7 +515,7 @@ function RoomMakeUpPageNew() {
           await supabase.from('rmu_activity_history').delete().eq('makeup_id', muId);
         }
       } else {
-        makeupNumber = await generateNumber('room_makeups', 'makeup_number', 'MU');
+        makeupNumber = await generateMakeupNumber(makeupDate);
         const { data: mu, error: muErr } = await supabase.from('room_makeups').insert({
           organization_id: selectedOrg.id, room_id: selectedRoom, makeup_number: makeupNumber,
           makeup_date: makeupDate, status: 'DRAFT', notes,
@@ -670,255 +681,25 @@ function RoomMakeUpPageNew() {
 
     setSaving(true);
     try {
-      const { data: freshMu } = await supabase.from('room_makeups').select('status').eq('id', mu.id).single();
-      if (freshMu?.status === 'CONFIRMED') { showNotification('Sudah dikonfirmasi.', 'error'); setSaving(false); loadAll(); return; }
-      if (freshMu?.status === 'PROCESSING') { showNotification('Sedang diproses oleh sesi lain.', 'error'); setSaving(false); loadAll(); return; }
-
-      // Strict optimistic lock: transition DRAFT -> PROCESSING ATOMICALLY.
-      // `.select()` forces PostgREST to return the affected rows; if length === 0
-      // it means a concurrent request already grabbed the lock (or status changed),
-      // so we MUST abort and NOT run stock movements. Prior implementation had only
-      // `.eq('status','DRAFT')` tanpa `.select()` → tidak bisa membedakan "0 rows affected"
-      // dari "success", menyebabkan double-confirm & duplicate stock movements
-      // (root cause insiden MU-DAS-0400 duplicates di 2026-04-06).
-      const { data: lockRows, error: procErr } = await supabase
-        .from('room_makeups')
-        .update({ status: 'PROCESSING' })
-        .eq('id', mu.id)
-        .eq('status', 'DRAFT')
-        .select('id');
-      if (procErr) throw procErr;
-      if (!lockRows || lockRows.length === 0) {
-        showNotification('Gagal mengunci dokumen — sedang diproses oleh sesi lain atau status sudah berubah. Refresh halaman.', 'error');
-        setSaving(false);
-        loadAll();
-        return;
-      }
-
-      // Idempotency watermark: record attempt start so the catch block can
-      // delete only the stock_movements inserted by THIS attempt. Penting —
-      // tanpa ini, partial-fail (mis. stock dirty tidak cukup di tengah loop)
-      // akan meninggalkan movements yg sudah ter-insert, dan retry berikutnya
-      // akan menambah duplikat (root cause 221 extra rows insiden 2026-04-04).
-      const attemptStartedAt = new Date().toISOString();
-
-      const room = rooms.find(r => r.id === mu.room_id);
-      const hkStore = warehouses.find(w => w.warehouse_type === 'store' && w.code === 'HK') || warehouses.find(w => w.warehouse_type === 'store' && w.name?.toLowerCase().includes('housekeeping'));
-      const dirtyWh = warehouses.find(w => w.warehouse_type === 'dirty');
-      const damageWh = warehouses.find(w => w.warehouse_type === 'damage');
-      const dept = currentUser?.department_id || null;
-      const makeupNumber = mu.makeup_number;
-
-      let roomStock = [];
-      if (room?.warehouse_id) {
-        const { data: rs } = await supabase.from('stock_balance')
-          .select('id, item_id, quantity, avg_cost, items(id, code, name, brand, category_id)')
-          .eq('organization_id', selectedOrg.id).eq('warehouse_id', room.warehouse_id);
-        roomStock = rs || [];
-      }
-
-      // Helper: get avg_cost from a specific warehouse for an item
-      const getWhAvgCost = (itemId, whId) => {
-        if (!whId) return 0;
-        const sb = roomStock.find(s => s.item_id === itemId);
-        return sb ? parseFloat(sb.avg_cost) || 0 : 0;
-      };
-
-      // Pre-fetch HK store stock for replace items cost lookup
-      let hkStoreStock = [];
-      if (hkStore?.id) {
-        const { data: hkSb } = await supabase.from('stock_balance')
-          .select('item_id, avg_cost').eq('organization_id', selectedOrg.id).eq('warehouse_id', hkStore.id);
-        hkStoreStock = hkSb || [];
-      }
-      const getHkAvgCost = (itemId) => {
-        const sb = hkStoreStock.find(s => s.item_id === itemId);
-        return sb ? parseFloat(sb.avg_cost) || 0 : 0;
-      };
-
-      const { data: muItems } = await supabase.from('room_makeup_items').select('*').eq('makeup_id', mu.id);
-
-      // ====== PRE-VALIDATION: cek semua stok SEBELUM create movement apapun ======
-      // Kumpulkan semua OUT yang dibutuhkan, lalu cek saldo per warehouse+item.
-      // Jika ada yang kurang, tampilkan SEMUA item yang gagal dan ABORT.
-      const outRequirements = {}; // key: `${warehouseId}|${itemId}` → { warehouseId, itemId, totalQty, itemLabel, whLabel }
-      // Lookup cache untuk item/warehouse yang tidak ada di state (mis. non-active)
-      const _itemLabelCache = {};
-      const _whLabelCache = {};
-
-      const addOutReq = async (itemId, warehouseId, qty) => {
-        if (!warehouseId || qty <= 0) return;
-        const key = `${warehouseId}|${itemId}`;
-        if (!outRequirements[key]) {
-          let item = allItems.find(i => i.id === itemId);
-          if (!item && !_itemLabelCache[itemId]) {
-            const { data } = await supabase.from('items').select('code, name').eq('id', itemId).maybeSingle();
-            _itemLabelCache[itemId] = data ? `${data.code} - ${data.name}` : itemId;
-          }
-          let wh = warehouses.find(w => w.id === warehouseId);
-          if (!wh && !_whLabelCache[warehouseId]) {
-            const { data } = await supabase.from('warehouses').select('code, name').eq('id', warehouseId).maybeSingle();
-            _whLabelCache[warehouseId] = data ? `${data.code} - ${data.name}` : warehouseId;
-          }
-          outRequirements[key] = {
-            warehouseId, itemId, totalQty: 0,
-            itemLabel: item ? `${item.code} - ${item.name}` : _itemLabelCache[itemId] || itemId,
-            whLabel: wh ? `${wh.code} - ${wh.name}` : _whLabelCache[warehouseId] || warehouseId,
-          };
-        }
-        outRequirements[key].totalQty += qty;
-      };
-
-      // Collect OUT requirements from linen items
-      for (const mi of (muItems || [])) {
-        const numQty = parseFloat(mi.actual_qty);
-        if (numQty <= 0) continue;
-        if (mi.type === 'replace') {
-          const linenItem = allItems.find(i => i.id === mi.item_id);
-          const linenOutWh = linenItem?.default_warehouse_id || hkStore?.id;
-          await addOutReq(mi.item_id, linenOutWh, numQty);
-        } else if (mi.type === 'move_to_dirty') {
-          await addOutReq(mi.item_id, room?.warehouse_id, numQty);
-        } else if (mi.type === 'damage') {
-          await addOutReq(mi.item_id, room?.warehouse_id, numQty);
-        } else if (mi.type === 'lost') {
-          await addOutReq(mi.item_id, room?.warehouse_id, numQty);
-        } else if (mi.type === 'to_hk_store') {
-          await addOutReq(mi.item_id, room?.warehouse_id, numQty);
-        }
-      }
-
-      // Collect OUT requirements from consumption items
-      const { data: consumption } = await supabase.from('room_consumption')
-        .select('*, room_consumption_items(*)').eq('makeup_id', mu.id);
-      if (consumption && consumption.length > 0) {
-        const con = consumption[0];
-        for (const ci of (con.room_consumption_items || [])) {
-          const item = allItems.find(i => i.id === ci.item_id);
-          const itemWarehouseId = item?.default_warehouse_id || hkStore?.id;
-          await addOutReq(ci.item_id, itemWarehouseId, parseFloat(ci.quantity));
-        }
-      }
-
-      // Fetch actual stock balances for all required warehouse+item combos
-      const insufficientItems = [];
-      for (const req of Object.values(outRequirements)) {
-        const { data: sb } = await supabase.from('stock_balance')
-          .select('quantity')
-          .eq('organization_id', selectedOrg.id)
-          .eq('item_id', req.itemId)
-          .eq('warehouse_id', req.warehouseId)
-          .maybeSingle();
-        const currentQty = sb ? parseFloat(sb.quantity) || 0 : 0;
-        if (currentQty < req.totalQty) {
-          insufficientItems.push(`${req.itemLabel} di [${req.whLabel}]: saldo=${currentQty}, diminta=${req.totalQty}`);
-        }
-      }
-
-      if (insufficientItems.length > 0) {
-        // ABORT — jangan buat movement apapun
-        try { await supabase.from('room_makeups').update({ status: 'DRAFT' }).eq('id', mu.id).eq('status', 'PROCESSING'); } catch (e) {}
-        showNotification('Stok tidak cukup:\n' + insufficientItems.join('\n'), 'error');
-        setSaving(false);
-        loadAll();
-        return;
-      }
-
-      // ====== SEMUA STOK CUKUP — Proses movements ======
-      for (const mi of (muItems || [])) {
-        const numQty = parseFloat(mi.actual_qty);
-        if (numQty <= 0) continue;
-        if (mi.type === 'replace') {
-          const linenItem = allItems.find(i => i.id === mi.item_id);
-          const linenOutWh = linenItem?.default_warehouse_id || hkStore?.id;
-          const srcCost = linenOutWh === hkStore?.id ? getHkAvgCost(mi.item_id) : 0;
-          if (linenOutWh) await doStockMovement(mi.item_id, 'OUT', numQty, linenOutWh, 'MAKEUP-LINEN REPLACE', makeupNumber, 'OUT from Store', dept, mu.id);
-          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'IN', numQty, room.warehouse_id, 'MAKEUP-LINEN REPLACE', makeupNumber, 'IN to Room ' + (room.room_number || ''), dept, mu.id, srcCost);
-        } else if (mi.type === 'move_to_dirty') {
-          const srcCost = getWhAvgCost(mi.item_id, room?.warehouse_id);
-          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'MAKEUP-DIRTY', makeupNumber, 'OUT from Room', dept, mu.id);
-          if (dirtyWh) await doStockMovement(mi.item_id, 'IN', numQty, dirtyWh.id, 'MAKEUP-DIRTY', makeupNumber, 'IN to Dirty', dept, mu.id, srcCost);
-        } else if (mi.type === 'damage') {
-          const srcCost = getWhAvgCost(mi.item_id, room?.warehouse_id);
-          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'DAMAGE', makeupNumber, 'Damage OUT', dept, mu.id);
-          if (damageWh) await doStockMovement(mi.item_id, 'IN', numQty, damageWh.id, 'DAMAGE', makeupNumber, 'Damage IN', dept, mu.id, srcCost);
-        } else if (mi.type === 'lost') {
-          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'ITEM_LOST', makeupNumber, 'Lost OUT', dept, mu.id);
-          const stockItem = roomStock.find(s => s.item_id === mi.item_id);
-          const unitCost = stockItem ? parseFloat(stockItem.avg_cost) || 0 : 0;
-          const lostNumber = await generateNumber('item_lost_in_room', 'lost_number', 'IL');
-          const { data: lostDoc, error: lostErr } = await supabase.from('item_lost_in_room').insert({
-            organization_id: selectedOrg.id, room_id: mu.room_id, makeup_id: mu.id,
-            lost_number: lostNumber, lost_date: mu.makeup_date, notes: 'Item lost during room makeup',
-            created_by: currentUser?.id, created_at: new Date().toISOString(),
-          }).select().single();
-          if (lostErr) throw lostErr;
-          await supabase.from('item_lost_in_room_details').insert({
-            lost_id: lostDoc.id, item_id: mi.item_id, quantity: numQty,
-            unit_cost: unitCost, total_cost: unitCost * numQty, notes: '',
-          });
-          showNotification('Laporkan ke Front Office: ' + (stockItem?.items?.name || 'Item') + ' hilang ' + numQty + ' pcs!', 'error');
-        } else if (mi.type === 'to_hk_store') {
-          const srcCost = getWhAvgCost(mi.item_id, room?.warehouse_id);
-          if (room?.warehouse_id) await doStockMovement(mi.item_id, 'OUT', numQty, room.warehouse_id, 'MAKEUP-TO-HK', makeupNumber, 'OUT from Room to HK Store', dept, mu.id);
-          if (hkStore) await doStockMovement(mi.item_id, 'IN', numQty, hkStore.id, 'MAKEUP-TO-HK', makeupNumber, 'IN to HK Store from Room', dept, mu.id, srcCost);
-        }
-      }
-
-      // Process consumption movements (already pre-validated above)
-      if (consumption && consumption.length > 0) {
-        const con = consumption[0];
-        for (const ci of (con.room_consumption_items || [])) {
-          const item = allItems.find(i => i.id === ci.item_id);
-          const itemWarehouseId = item?.default_warehouse_id || hkStore?.id;
-          if (itemWarehouseId) await doStockMovement(ci.item_id, 'OUT', parseFloat(ci.quantity), itemWarehouseId, 'CONSUMPTION', con.consumption_number, 'Guest amenity consumed', dept, con.id);
-        }
-      }
-
-      const { error: statusErr } = await supabase.from('room_makeups').update({ status: 'CONFIRMED' }).eq('id', mu.id);
-      if (statusErr) throw statusErr;
-      showNotification('Room makeup confirmed! Stock movements processed.');
+      // Single atomic server-side RPC: lock → validate stock → create all movements
+      // (linen replace/dirty/damage/lost/to-hk) + consumption + status update.
+      // PostgreSQL transaction ensures all-or-nothing: if ANY step fails (network
+      // drop, insufficient stock, constraint violation), the entire transaction
+      // rolls back. No orphaned CONFIRMED docs, no partial movements possible.
+      const { data, error } = await supabase.rpc('fn_confirm_room_makeup', {
+        p_makeup_id: mu.id,
+        p_user_id: currentUser?.id || null,
+        p_department_id: userDept?.id || null,
+      });
+      if (error) throw error;
+      showNotification(`Room makeup ${data?.makeup_number || mu.makeup_number} confirmed! ${data?.movement_count || 0} movements created.`);
       loadAll();
     } catch (err) {
-      // Rollback stock_movements yang sudah ter-insert di attempt ini.
-      // DELETE akan men-trigger trg_revert_stock_movement → stock_balance
-      // ter-revert otomatis di dalam transaksi DB yang sama per-row.
-      // Cakupan: semua movements dengan reference_number = makeupNumber dan
-      // created_at >= attemptStartedAt (watermark awal attempt).
-      // CATATAN: referenceType cover MAKEUP-LINEN REPLACE, MAKEUP-DIRTY,
-      // DAMAGE, ITEM_LOST, MAKEUP-TO-HK, dan CONSUMPTION (untuk amenities).
-      try {
-        // Rollback linen/damage/lost/toHk movements (reference_number = makeup_number)
-        const { data: orphaned1 } = await supabase.from('stock_movements')
-          .select('id')
-          .eq('reference_number', mu.makeup_number)
-          .gte('created_at', attemptStartedAt);
-        // Rollback consumption movements (reference_number = consumption_number)
-        const { data: conDocs } = await supabase.from('room_consumption')
-          .select('consumption_number').eq('makeup_id', mu.id);
-        let orphaned2 = [];
-        if (conDocs && conDocs.length > 0) {
-          for (const cd of conDocs) {
-            const { data: o2 } = await supabase.from('stock_movements')
-              .select('id')
-              .eq('reference_number', cd.consumption_number)
-              .gte('created_at', attemptStartedAt);
-            if (o2) orphaned2 = orphaned2.concat(o2);
-          }
-        }
-        const allOrphaned = [...(orphaned1 || []), ...orphaned2];
-        if (allOrphaned.length > 0) {
-          const ids = allOrphaned.map(o => o.id);
-          await supabase.from('stock_movements').delete().in('id', ids);
-        }
-      } catch (cleanupErr) {
-        console.error('[confirm rollback] cleanup movements failed:', cleanupErr);
-      }
-      try { await supabase.from('room_makeups').update({ status: 'DRAFT' }).eq('id', mu.id).eq('status', 'PROCESSING'); } catch (e) {}
-      showNotification('Error: ' + err.message + '. Status dikembalikan ke DRAFT (stock movements attempt ini sudah di-rollback).', 'error');
+      showNotification('Error: ' + (err.message || err), 'error');
       loadAll();
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   // ==================== STOCK MOVEMENT HELPER ====================
