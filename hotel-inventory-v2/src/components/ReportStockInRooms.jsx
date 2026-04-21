@@ -91,32 +91,70 @@ export function ReportStockInRooms({ onBack }) {
       const { data: allItems } = await itemQ;
 
       // 3. Get stock balances for room warehouses (only qty > 0)
-      //    Paginate to bypass Supabase 1000-row default limit (critical for DCI
-      //    which can have 1000+ room stock rows across many rooms & linen items).
+      //    - If asOfDate = today or future: use live stock_balance cache (fast path)
+      //    - If asOfDate < today: compute historical balance from stock_movements
+      //      by summing IN/OUT up to end of asOfDate
+      //    Both paths paginate to bypass Supabase 1000-row limit.
       const whIds = (roomList || []).map(r => r.warehouse_id).filter(Boolean);
-      let balances = [];
-      if (whIds.length > 0) {
-        let from = 0;
-        const pageSize = 1000;
-        while (true) {
-          const { data: batch } = await supabase.from('stock_balance')
-            .select('item_id, warehouse_id, quantity')
-            .eq('organization_id', selectedOrg.id)
-            .in('warehouse_id', whIds)
-            .gt('quantity', 0)
-            .range(from, from + pageSize - 1);
-          if (!batch || batch.length === 0) break;
-          balances = balances.concat(batch);
-          if (batch.length < pageSize) break;
-          from += pageSize;
-        }
-      }
-
-      // 4. Build balance lookup
+      const linenItemIds = (allItems || []).map(i => i.id);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const isHistorical = asOfDate && asOfDate < todayStr;
       const balMap = {};
-      for (const b of balances) {
-        if (!balMap[b.item_id]) balMap[b.item_id] = {};
-        balMap[b.item_id][b.warehouse_id] = (balMap[b.item_id][b.warehouse_id] || 0) + (parseFloat(b.quantity) || 0);
+
+      if (whIds.length > 0) {
+        if (isHistorical) {
+          // HISTORICAL: aggregate from stock_movements up to end of asOfDate
+          const endOfDayUtc = asOfDate + 'T23:59:59.999+07:00'; // WIB end of day
+          let from = 0;
+          const pageSize = 1000;
+          while (true) {
+            let q = supabase.from('stock_movements')
+              .select('item_id, warehouse_id, movement_type, quantity')
+              .eq('organization_id', selectedOrg.id)
+              .in('warehouse_id', whIds)
+              .lte('created_at', endOfDayUtc)
+              .range(from, from + pageSize - 1);
+            if (linenItemIds.length > 0 && linenItemIds.length <= 1000) {
+              q = q.in('item_id', linenItemIds);
+            }
+            const { data: batch } = await q;
+            if (!batch || batch.length === 0) break;
+            for (const m of batch) {
+              const qty = parseFloat(m.quantity) || 0;
+              const signed = m.movement_type === 'IN' ? qty : -qty;
+              if (!balMap[m.item_id]) balMap[m.item_id] = {};
+              balMap[m.item_id][m.warehouse_id] = (balMap[m.item_id][m.warehouse_id] || 0) + signed;
+            }
+            if (batch.length < pageSize) break;
+            from += pageSize;
+          }
+          // Remove zero/negative qty entries
+          for (const itemId of Object.keys(balMap)) {
+            for (const whId of Object.keys(balMap[itemId])) {
+              if (balMap[itemId][whId] <= 0) delete balMap[itemId][whId];
+            }
+            if (Object.keys(balMap[itemId]).length === 0) delete balMap[itemId];
+          }
+        } else {
+          // LIVE: use stock_balance cache
+          let from = 0;
+          const pageSize = 1000;
+          while (true) {
+            const { data: batch } = await supabase.from('stock_balance')
+              .select('item_id, warehouse_id, quantity')
+              .eq('organization_id', selectedOrg.id)
+              .in('warehouse_id', whIds)
+              .gt('quantity', 0)
+              .range(from, from + pageSize - 1);
+            if (!batch || batch.length === 0) break;
+            for (const b of batch) {
+              if (!balMap[b.item_id]) balMap[b.item_id] = {};
+              balMap[b.item_id][b.warehouse_id] = (balMap[b.item_id][b.warehouse_id] || 0) + (parseFloat(b.quantity) || 0);
+            }
+            if (batch.length < pageSize) break;
+            from += pageSize;
+          }
+        }
       }
 
       // 6. Build result
