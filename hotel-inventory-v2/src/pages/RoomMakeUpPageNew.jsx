@@ -32,6 +32,10 @@ function RoomMakeUpPageNew() {
   const [filterCount, setFilterCount] = useState('');
   const filterRoomRef = React.useRef(null);
 
+  // Pagination (client-side, 100 per page)
+  const PAGE_SIZE = 100;
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Form state
   const [showModal, setShowModal] = useState(false);
   const [viewing, setViewing] = useState(null);
@@ -89,18 +93,31 @@ function RoomMakeUpPageNew() {
     return false;
   }, [currentUser?.role?.code, currentUser?.role?.permissions]);
 
+  // Helper: paginate room_makeups query to bypass Supabase 1000-row default limit
+  async function fetchAllMakeupsPaginated() {
+    const selectCols = '*, rooms!left(room_number, floor), users:created_by(full_name, username), departments:department_id(code, name)';
+    let all = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      let q = supabase.from('room_makeups')
+        .select(selectCols)
+        .eq('organization_id', selectedOrg.id);
+      if (!canViewAllMakeups && currentUser?.id) q = q.eq('created_by', currentUser.id);
+      const { data: batch } = await q.order('created_at', { ascending: false }).range(from, from + pageSize - 1);
+      if (!batch || batch.length === 0) break;
+      all = all.concat(batch);
+      if (batch.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
+  }
+
   async function loadAll() {
     setLoading(true);
     try {
-      let muQuery = supabase.from('room_makeups')
-        .select('*, rooms!left(room_number, floor), users:created_by(full_name, username), departments:department_id(code, name)')
-        .eq('organization_id', selectedOrg.id);
-      if (!canViewAllMakeups && currentUser?.id) {
-        muQuery = muQuery.eq('created_by', currentUser.id);
-      }
-      muQuery = muQuery.order('created_at', { ascending: false });
-      const [muRes, roomRes, whRes, itemRes] = await Promise.all([
-        muQuery,
+      const [muData, roomRes, whRes, itemRes] = await Promise.all([
+        fetchAllMakeupsPaginated(),
         supabase.from('rooms').select('id, room_number, floor, warehouse_id, room_types(name)')
           .eq('organization_id', selectedOrg.id).order('room_number'),
         supabase.from('warehouses').select('id, code, name, warehouse_type')
@@ -108,7 +125,8 @@ function RoomMakeUpPageNew() {
         supabase.from('items').select('id, code, name, brand, category_id, unit_id, default_warehouse_id, item_categories(id, code, name, parent_id), units:unit_id(abbreviation)')
           .eq('organization_id', selectedOrg.id).eq('is_active', true).order('name'),
       ]);
-      setMakeups(muRes.data || []);
+      const muRes = { data: muData };
+      setMakeups(muData);
       setRooms(roomRes.data || []);
       setWarehouses(whRes.data || []);
       setAllItems(itemRes.data || []);
@@ -133,15 +151,9 @@ function RoomMakeUpPageNew() {
             .eq('status', 'PROCESSING');
         }
         showNotification(`${stuckDocs.length} dokumen stuck (PROCESSING > 5 menit) telah dikembalikan ke DRAFT.`, 'warning');
-        // Reload to reflect updated status
-        let refreshQuery = supabase.from('room_makeups')
-          .select('*, rooms!left(room_number, floor), users:created_by(full_name, username), departments:department_id(code, name)')
-          .eq('organization_id', selectedOrg.id);
-        if (!canViewAllMakeups && currentUser?.id) {
-          refreshQuery = refreshQuery.eq('created_by', currentUser.id);
-        }
-        const { data: refreshed } = await refreshQuery.order('created_at', { ascending: false });
-        setMakeups(refreshed || []);
+        // Reload to reflect updated status (with pagination)
+        const refreshed = await fetchAllMakeupsPaginated();
+        setMakeups(refreshed);
       }
     } catch (err) {
       showNotification('Error loading data: ' + err.message, 'error');
@@ -855,6 +867,13 @@ function RoomMakeUpPageNew() {
     return true;
   });
 
+  // Client-side pagination (100/page)
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageData = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  // Reset to page 1 when filters change filtered length boundary
+  React.useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterHousekeeper, filterRoom, filterCount, filterDateRange]);
+
   const isView = !!viewing && !isEditing;
   const isEditMode = !!viewing && isEditing;
   const room = rooms.find(r => r.id === selectedRoom);
@@ -1029,7 +1048,7 @@ function RoomMakeUpPageNew() {
                 )}
               </div>
             )},
-          ]} data={filtered} />
+          ]} data={pageData} />
         </div>
 
         {/* Mobile card list */}
@@ -1037,7 +1056,7 @@ function RoomMakeUpPageNew() {
           {loading ? <PageLoader /> :
            filtered.length === 0 ? <div className="p-6 text-center text-gray-400 text-sm">No data</div> :
            <div className="divide-y divide-gray-100">
-            {filtered.map(r => (
+            {pageData.map(r => (
               <div key={r.id} className="p-4 hover:bg-gray-50 active:bg-gray-100 cursor-pointer" onClick={() => r.status === 'DRAFT' ? openEdit(r) : openView(r)}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-semibold text-primary-700 text-sm">{r.makeup_number}</span>
@@ -1069,6 +1088,22 @@ function RoomMakeUpPageNew() {
             ))}
            </div>}
         </div>
+
+        {/* Pagination controls */}
+        {filtered.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm">
+            <div className="text-gray-500">
+              Menampilkan {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} dari {filtered.length} dokumen
+            </div>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" onClick={() => setCurrentPage(1)} disabled={safePage === 1}>« First</Button>
+              <Button size="sm" variant="ghost" onClick={() => setCurrentPage(Math.max(1, safePage - 1))} disabled={safePage === 1}>‹ Prev</Button>
+              <span className="px-3 text-gray-600 font-medium">Page {safePage} / {totalPages}</span>
+              <Button size="sm" variant="ghost" onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))} disabled={safePage >= totalPages}>Next ›</Button>
+              <Button size="sm" variant="ghost" onClick={() => setCurrentPage(totalPages)} disabled={safePage >= totalPages}>Last »</Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ==================== FORM MODAL ==================== */}
