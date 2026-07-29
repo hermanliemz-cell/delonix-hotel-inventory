@@ -6,6 +6,10 @@ import { Button } from '../components/FormElements';
 import { Icons } from '../components/Icons';
 import { PageLoader } from '../components/PageLoader';
 
+// Settings that apply to the whole system rather than one hotel. Stored in
+// inventory.app_settings, which has no organization_id.
+const GLOBAL_SETTING_KEYS = ['maintenance_mode', 'auto_deactivate_enabled', 'auto_deactivate_days'];
+
 function SystemSettingsPage() {
   const { selectedOrg, showNotification, currentUser } = useApp();
   const { t } = useTranslation();
@@ -66,19 +70,19 @@ function SystemSettingsPage() {
       if (error) throw error;
       const map = {};
       (data || []).forEach(r => { map[r.setting_key] = r.setting_value; });
-      // maintenance_mode is system-wide, not per-organization — it lives in
-      // app_settings so a single switch covers every hotel, including new ones.
-      const { data: globalRow, error: globalError } = await supabase
+      // These are system-wide rather than per-organization, so they live in
+      // app_settings — one switch covers every hotel, including new ones.
+      const { data: globalRows, error: globalError } = await supabase
         .from('app_settings')
-        .select('setting_value')
-        .eq('setting_key', 'maintenance_mode')
-        .maybeSingle();
+        .select('setting_key, setting_value')
+        .in('setting_key', GLOBAL_SETTING_KEYS);
       if (globalError) throw globalError;
-      map.maintenance_mode = globalRow?.setting_value === 'true' ? 'true' : 'false';
+      (globalRows || []).forEach(r => { map[r.setting_key] = r.setting_value; });
       // Apply defaults for any missing settings
       const defaults = {
         timezone: 'Asia/Bangkok', currency: 'IDR', date_format: 'DD/MM/YYYY',
-        language: 'id', low_stock_threshold: '10', auto_generate_code: 'true', fiscal_year_start: '01'
+        language: 'id', low_stock_threshold: '10', auto_generate_code: 'true', fiscal_year_start: '01',
+        maintenance_mode: 'false', auto_deactivate_enabled: 'true', auto_deactivate_days: '30'
       };
       Object.keys(defaults).forEach(k => { if (!map[k]) map[k] = defaults[k]; });
       setSettings(map);
@@ -95,29 +99,35 @@ function SystemSettingsPage() {
   async function saveSettings() {
     setSaving(true);
     try {
-      // maintenance_mode is stored globally, so keep it out of the per-org upsert.
+      const stamp = new Date().toISOString();
+      // Global keys are stored separately, so keep them out of the per-org upsert.
       const upserts = Object.entries(settings)
-        .filter(([key]) => key !== 'maintenance_mode')
+        .filter(([key]) => !GLOBAL_SETTING_KEYS.includes(key))
         .map(([key, val]) => ({
           organization_id: selectedOrg.id,
           setting_key: key,
           setting_value: val,
-          updated_at: new Date().toISOString(),
+          updated_at: stamp,
         }));
       const { error } = await supabase
         .from('system_settings')
         .upsert(upserts, { onConflict: 'organization_id,setting_key' });
       if (error) throw error;
 
+      // Clamp the window to at least 1 day. Zero or negative would mean every
+      // non-exempt user is deactivated on the next nightly run.
+      const days = Math.max(1, parseInt(settings.auto_deactivate_days, 10) || 30);
       const { error: globalError } = await supabase
         .from('app_settings')
-        .upsert({
-          setting_key: 'maintenance_mode',
-          setting_value: settings.maintenance_mode === 'true' ? 'true' : 'false',
-          updated_at: new Date().toISOString(),
-          updated_by: currentUser?.id || null,
-        }, { onConflict: 'setting_key' });
+        .upsert([
+          { setting_key: 'maintenance_mode', setting_value: settings.maintenance_mode === 'true' ? 'true' : 'false', updated_at: stamp, updated_by: currentUser?.id || null },
+          { setting_key: 'auto_deactivate_enabled', setting_value: settings.auto_deactivate_enabled === 'true' ? 'true' : 'false', updated_at: stamp, updated_by: currentUser?.id || null },
+          { setting_key: 'auto_deactivate_days', setting_value: String(days), updated_at: stamp, updated_by: currentUser?.id || null },
+        ], { onConflict: 'setting_key' });
       if (globalError) throw globalError;
+      if (String(days) !== settings.auto_deactivate_days) {
+        updateSetting('auto_deactivate_days', String(days));
+      }
       showNotification(t('settings.saved'));
       // Update the global settings cache
       if (window.__systemSettings) {
@@ -255,6 +265,34 @@ function SystemSettingsPage() {
                 <p className="text-xs text-amber-700">{t('settings.maintenanceWarning')}</p>
               </div>
             )}
+
+            <div className="mt-8 pt-6 border-t">
+              <SettingRow label={t('settings.autoDeactivate')} desc={t('settings.autoDeactivateDesc')}>
+                <div className="flex items-center gap-3">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={settings.auto_deactivate_enabled === 'true'} onChange={e => updateSetting('auto_deactivate_enabled', e.target.checked ? 'true' : 'false')} />
+                    <div className="w-14 h-7 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary-600"></div>
+                  </label>
+                  <span className={`text-sm font-bold ${settings.auto_deactivate_enabled === 'true' ? 'text-primary-600' : 'text-gray-400'}`}>
+                    {settings.auto_deactivate_enabled === 'true' ? t('common.active') : t('common.inactive')}
+                  </span>
+                </div>
+              </SettingRow>
+              <SettingRow label={t('settings.autoDeactivateDays')} desc={t('settings.autoDeactivateDaysDesc')}>
+                <input
+                  type="number"
+                  min="1"
+                  className={inputClass}
+                  value={settings.auto_deactivate_days ?? '30'}
+                  onChange={e => updateSetting('auto_deactivate_days', e.target.value)}
+                  disabled={settings.auto_deactivate_enabled !== 'true'}
+                />
+              </SettingRow>
+              <div className="mt-4 p-4 bg-sky-50 border border-sky-200 rounded-lg flex items-start gap-3">
+                <Icons.AlertTriangle className="text-sky-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-sky-700">{t('settings.autoDeactivateNote')}</p>
+              </div>
+            </div>
           </div>
         )}
       </div>

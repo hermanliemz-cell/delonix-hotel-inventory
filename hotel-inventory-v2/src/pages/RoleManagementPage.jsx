@@ -107,6 +107,7 @@ function RoleManagementPage() {
     menus: {},
     actions: {},
     allow_maintenance_access: false,
+    exempt_from_auto_deactivate: false,
   });
 
   useEffect(() => {
@@ -155,6 +156,7 @@ function RoleManagementPage() {
       menus: {},
       actions: {},
       allow_maintenance_access: false,
+      exempt_from_auto_deactivate: false,
     });
     setShowForm(true);
   }
@@ -168,6 +170,7 @@ function RoleManagementPage() {
       menus: parsed.menus,
       actions: parsed.actions,
       allow_maintenance_access: !!role.allow_maintenance_access,
+      exempt_from_auto_deactivate: !!role.exempt_from_auto_deactivate,
     });
     setShowForm(true);
   }
@@ -201,6 +204,7 @@ function RoleManagementPage() {
       description: form.description,
       permissions,
       allow_maintenance_access: form.allow_maintenance_access,
+      exempt_from_auto_deactivate: form.exempt_from_auto_deactivate,
     };
     if (editing) {
       await supabase.from('roles').update(payload).eq('id', editing.id);
@@ -424,6 +428,28 @@ function RoleManagementPage() {
                 </span>
                 <p className="text-xs text-amber-600 mt-0.5">
                   {t('roles.allowMaintenanceAccessDesc')}
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Exempt from auto-deactivation */}
+          <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!form.exempt_from_auto_deactivate}
+                onChange={e =>
+                  setForm({ ...form, exempt_from_auto_deactivate: e.target.checked })
+                }
+                className="w-4 h-4 mt-0.5 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+              />
+              <div>
+                <span className="text-sm font-semibold text-sky-800">
+                  {t('roles.exemptAutoDeactivate')}
+                </span>
+                <p className="text-xs text-sky-600 mt-0.5">
+                  {t('roles.exemptAutoDeactivateDesc')}
                 </p>
               </div>
             </label>
