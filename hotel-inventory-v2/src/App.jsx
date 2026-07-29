@@ -10,49 +10,87 @@ import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 import { initVersionCheck, checkVersionBeforeLogin, APP_VERSION } from './utils/versionCheck.js';
 import { FullPageLoader } from './components/PageLoader.jsx';
 
+// A dynamic import fails for two reasons that look identical from here: a
+// transient network blip, or a deployment that replaced the asset while this tab
+// was still holding the previous manifest. Both are recoverable, and neither
+// deserves the generic crash screen — a housekeeper mid-task should not be told
+// "unexpected error" because we shipped a release under them.
+//
+// Retry once first, which clears the blip without disturbing the page. If that
+// also fails the manifest really is stale, so reload to fetch the current one.
+// The timestamp guards against a reload loop if the module is genuinely broken.
+const CHUNK_RELOAD_KEY = 'chunk_reload_at';
+const CHUNK_RELOAD_COOLDOWN_MS = 60_000;
+
+function lazyPage(factory) {
+  return lazy(() =>
+    factory()
+      .then(clearReloadMark)
+      .catch(() =>
+        factory()
+          .then(clearReloadMark)
+          .catch((err) => {
+            const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+            if (Date.now() - last > CHUNK_RELOAD_COOLDOWN_MS) {
+              sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+              window.location.reload();
+              // Never settles — the document is being torn down.
+              return new Promise(() => {});
+            }
+            throw err;
+          })
+      )
+  );
+}
+
+function clearReloadMark(mod) {
+  sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+  return mod;
+}
+
 // Lazy-loaded page imports — each page is only downloaded when the user navigates to it
-const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
-const HotelsPage = lazy(() => import('./pages/HotelsPage.jsx'));
-const ItemsPage = lazy(() => import('./pages/ItemsPage.jsx'));
-const CategoriesPage = lazy(() => import('./pages/CategoriesPage.jsx'));
-const VendorsPage = lazy(() => import('./pages/VendorsPage.jsx'));
-const DepartmentsPage = lazy(() => import('./pages/DepartmentsPage.jsx'));
-const WarehousesPage = lazy(() => import('./pages/WarehousesPage.jsx'));
-const RoomTypesPage = lazy(() => import('./pages/RoomTypesPage.jsx'));
-const BedFormationsPage = lazy(() => import('./pages/BedFormationsPage.jsx'));
-const RoomsPage = lazy(() => import('./pages/RoomsPage.jsx'));
-const RoomMakeUpPageNew = lazy(() => import('./pages/RoomMakeUpPageNew.jsx'));
-const OpeningBalancePage = lazy(() => import('./pages/OpeningBalancePage.jsx'));
-const StockBalancePage = lazy(() => import('./pages/StockBalancePage.jsx'));
-const BinCardPage = lazy(() => import('./pages/BinCardPage.jsx'));
-const PurchaseRequestPage = lazy(() => import('./pages/PurchaseRequestPage.jsx'));
-const PurchaseOrderPage = lazy(() => import('./pages/PurchaseOrderPage.jsx'));
-const StockOpnamePage = lazy(() => import('./pages/StockOpnamePage.jsx'));
-const WriteOffPage = lazy(() => import('./pages/WriteOffPage.jsx'));
-const PurchaseInvoicePage = lazy(() => import('./pages/PurchaseInvoicePage.jsx'));
-const PurchaseReceivedPage = lazy(() => import('./pages/PurchaseReceivedPage.jsx'));
-const TransferPage = lazy(() => import('./pages/TransferPage.jsx'));
-const DirectPurchasePage = lazy(() => import('./pages/DirectPurchasePage.jsx'));
-const SingleItemUsagePage = lazy(() => import('./pages/SingleItemUsagePage.jsx'));
-const AdjustmentPage = lazy(() => import('./pages/AdjustmentPage.jsx'));
-const InUseWarehousePage = lazy(() => import('./pages/InUseWarehousePage.jsx'));
-const LaundryPage = lazy(() => import('./pages/LaundryPage.jsx'));
-const RoomConsumptionPage = lazy(() => import('./pages/RoomConsumptionPage.jsx'));
-const ItemLostPage = lazy(() => import('./pages/ItemLostPage.jsx'));
-const RMUActivityHistoryPage = lazy(() => import('./pages/RMUActivityHistoryPage.jsx'));
-const RoomAdditionalRequestPage = lazy(() => import('./pages/RoomAdditionalRequestPage.jsx'));
-const ApprovalPage = lazy(() => import('./pages/ApprovalPage.jsx'));
-const ReportsPage = lazy(() => import('./pages/ReportsPage.jsx'));
-const UserManagementPage = lazy(() => import('./pages/UserManagementPage.jsx'));
-const RoleManagementPage = lazy(() => import('./pages/RoleManagementPage.jsx'));
-const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage.jsx'));
-const CronJobsPage = lazy(() => import('./pages/CronJobsPage.jsx'));
-const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage.jsx'));
-const WorksheetPage = lazy(() => import('./pages/WorksheetPage.jsx'));
-const ItemCostHistoryPage = lazy(() => import('./pages/ItemCostHistoryPage.jsx'));
-const AmenitiesCostReportPage = lazy(() => import('./pages/AmenitiesCostReportPage.jsx'));
-const LaundryOutstandingReportPage = lazy(() => import('./pages/LaundryOutstandingReportPage.jsx'));
-const LaundryOutstandingReport2Page = lazy(() => import('./pages/LaundryOutstandingReport2Page.jsx'));
+const DashboardPage = lazyPage(() => import('./pages/DashboardPage.jsx'));
+const HotelsPage = lazyPage(() => import('./pages/HotelsPage.jsx'));
+const ItemsPage = lazyPage(() => import('./pages/ItemsPage.jsx'));
+const CategoriesPage = lazyPage(() => import('./pages/CategoriesPage.jsx'));
+const VendorsPage = lazyPage(() => import('./pages/VendorsPage.jsx'));
+const DepartmentsPage = lazyPage(() => import('./pages/DepartmentsPage.jsx'));
+const WarehousesPage = lazyPage(() => import('./pages/WarehousesPage.jsx'));
+const RoomTypesPage = lazyPage(() => import('./pages/RoomTypesPage.jsx'));
+const BedFormationsPage = lazyPage(() => import('./pages/BedFormationsPage.jsx'));
+const RoomsPage = lazyPage(() => import('./pages/RoomsPage.jsx'));
+const RoomMakeUpPageNew = lazyPage(() => import('./pages/RoomMakeUpPageNew.jsx'));
+const OpeningBalancePage = lazyPage(() => import('./pages/OpeningBalancePage.jsx'));
+const StockBalancePage = lazyPage(() => import('./pages/StockBalancePage.jsx'));
+const BinCardPage = lazyPage(() => import('./pages/BinCardPage.jsx'));
+const PurchaseRequestPage = lazyPage(() => import('./pages/PurchaseRequestPage.jsx'));
+const PurchaseOrderPage = lazyPage(() => import('./pages/PurchaseOrderPage.jsx'));
+const StockOpnamePage = lazyPage(() => import('./pages/StockOpnamePage.jsx'));
+const WriteOffPage = lazyPage(() => import('./pages/WriteOffPage.jsx'));
+const PurchaseInvoicePage = lazyPage(() => import('./pages/PurchaseInvoicePage.jsx'));
+const PurchaseReceivedPage = lazyPage(() => import('./pages/PurchaseReceivedPage.jsx'));
+const TransferPage = lazyPage(() => import('./pages/TransferPage.jsx'));
+const DirectPurchasePage = lazyPage(() => import('./pages/DirectPurchasePage.jsx'));
+const SingleItemUsagePage = lazyPage(() => import('./pages/SingleItemUsagePage.jsx'));
+const AdjustmentPage = lazyPage(() => import('./pages/AdjustmentPage.jsx'));
+const InUseWarehousePage = lazyPage(() => import('./pages/InUseWarehousePage.jsx'));
+const LaundryPage = lazyPage(() => import('./pages/LaundryPage.jsx'));
+const RoomConsumptionPage = lazyPage(() => import('./pages/RoomConsumptionPage.jsx'));
+const ItemLostPage = lazyPage(() => import('./pages/ItemLostPage.jsx'));
+const RMUActivityHistoryPage = lazyPage(() => import('./pages/RMUActivityHistoryPage.jsx'));
+const RoomAdditionalRequestPage = lazyPage(() => import('./pages/RoomAdditionalRequestPage.jsx'));
+const ApprovalPage = lazyPage(() => import('./pages/ApprovalPage.jsx'));
+const ReportsPage = lazyPage(() => import('./pages/ReportsPage.jsx'));
+const UserManagementPage = lazyPage(() => import('./pages/UserManagementPage.jsx'));
+const RoleManagementPage = lazyPage(() => import('./pages/RoleManagementPage.jsx'));
+const SystemSettingsPage = lazyPage(() => import('./pages/SystemSettingsPage.jsx'));
+const CronJobsPage = lazyPage(() => import('./pages/CronJobsPage.jsx'));
+const ChangePasswordPage = lazyPage(() => import('./pages/ChangePasswordPage.jsx'));
+const WorksheetPage = lazyPage(() => import('./pages/WorksheetPage.jsx'));
+const ItemCostHistoryPage = lazyPage(() => import('./pages/ItemCostHistoryPage.jsx'));
+const AmenitiesCostReportPage = lazyPage(() => import('./pages/AmenitiesCostReportPage.jsx'));
+const LaundryOutstandingReportPage = lazyPage(() => import('./pages/LaundryOutstandingReportPage.jsx'));
+const LaundryOutstandingReport2Page = lazyPage(() => import('./pages/LaundryOutstandingReport2Page.jsx'));
 
 // Route-to-pageId mapping for access control
 const ROUTE_PAGE_MAP = {
