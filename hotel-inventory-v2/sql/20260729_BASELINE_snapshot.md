@@ -126,17 +126,83 @@ bersih dari 29 Jul 2026. `pg_stat_reset()` **ditolak** (butuh superuser),
 jadi penghitung `seq_scan`/`idx_scan` di bagian 2 tetap kumulatif —
 bandingkan sebagai selisih terhadap angka baseline tersebut.
 
-## 8. Langkah lanjutan
+## 8. Advisor report — 217 temuan
 
-1. **Pantau 1–2 hari.** Cek ulang grafik Disk I/O di Settings → Infrastructure.
-   Jika konsumsi harian turun dari 100%, perbaikan berhasil dan upgrade
-   compute kemungkinan tidak diperlukan.
-2. **Baca advisor lengkap.** Laporan `get_advisors` berukuran ~163 rb karakter
-   dan belum dibaca seluruhnya — kemungkinan memuat temuan RLS/index lain.
-3. **Periksa pg_cron.** Schema `cron` aktif; job terjadwal yang berat bisa
+Dibaca lengkap 29 Jul 2026.
+
+| Jumlah | Level | Jenis |
+|---:|---|---|
+| 162 | INFO | `unindexed_foreign_keys` |
+| 21 | INFO | `unused_index` |
+| 13 | INFO | `no_primary_key` |
+| 13 | **WARN** | `multiple_permissive_policies` |
+| 7 | **WARN** | `auth_rls_initplan` |
+| 1 | INFO | `auth_db_connections_absolute` |
+
+**Penting: angka 162 tidak boleh ditelan mentah.** Advisor menandai semua
+FK tanpa index tanpa memeriksa apakah kolomnya dipakai memfilter.
+Mayoritas berada di tabel kecil — `items` (288 baris), `transfers` (2.282),
+`room_additional_requests` (1.957), `stock_balance` (4.899, sudah 1,8 juta
+`idx_scan`) — di mana Postgres tidak akan memakai index sekalipun dibuat.
+Menambahkan seluruh 157 sisanya justru memperlambat operasi tulis dan
+memboroskan disk. **Tidak disarankan.**
+
+Temuan yang layak ditindaklanjuti terpisah:
+- 7 `auth_rls_initplan` — policy RLS mengevaluasi ulang `auth.<fn>()`
+  per baris; menambah overhead di setiap query.
+- 13 `multiple_permissive_policies` — policy ganda pada peran/aksi yang
+  sama (contoh: `inventory.roles` punya `anon_all_roles` + `anon_read`
+  untuk `anon`/`SELECT`).
+- 21 `unused_index` — membebani operasi tulis tanpa manfaat baca.
+- 13 `no_primary_key` — sebagian besar tabel `backup_*`.
+
+## 9. Index tahap kedua — pembuatan nomor dokumen
+
+Diterapkan 29 Jul 2026. Detail: `20260729_add_number_generation_indexes.sql`.
+
+| Index | Ukuran | Query | Sebelum | Sesudah |
+|---|---:|---|---:|---:|
+| `idx_room_consumption_org_created` | 1.032 kB | number gen `RC-` | 90,6 ms | **0,113 ms** |
+| `idx_rmu_activity_history_org_created` | 1.032 kB | number gen `AH-` | 69,9 ms | **0,088 ms** |
+
+Keduanya `indisvalid = true`, memakai Index Scan, 3 buffer, berhenti di
+baris pertama. Gabungan ± 7% beban database di baseline.
+
+### Bug laten yang ditemukan saat pengujian
+
+Index ini cepat **hanya selama prefix yang dicari ada di dalam data.**
+Bila prefix tidak cocok dengan satu baris pun milik organisasi tersebut,
+Postgres menelusuri seluruh baris organisasi itu:
+
+```
+Rows Removed by Filter: 9.491
+Buffers: 3.067
+Execution Time: 596 ms      <-- vs 0,088 ms bila prefix cocok
+```
+
+Pemicu di produksi: perubahan `organizations.code`, atau **perubahan format
+nomor dokumen** — dan yang terakhir bukan hipotesis, commit `07abc29`
+mengubah format makeup menjadi `MU-{code}-YYMMXXXX`.
+
+Ditambah, pola `generateNumber()` membaca nomor terakhir lalu menambah 1
+di sisi client — **dua user yang membuat dokumen bersamaan bisa mendapat
+nomor kembar.** Pola RPC atomik `fn_generate_makeup_number` (sudah dipakai
+`room_makeups`) menutup kedua masalah sekaligus. Tabel yang masih memakai
+pola lama: `room_consumption`, `direct_purchases`, `transfers`,
+`single_item_usage`.
+
+## 10. Langkah lanjutan
+
+1. **Pantau 1–2 hari.** Cek ulang grafik Disk I/O di Settings →
+   Infrastructure. Jika konsumsi harian turun dari 100%, perbaikan berhasil
+   dan upgrade compute kemungkinan tidak diperlukan.
+2. **Ganti `generateNumber()` dengan RPC atomik** — memperbaiki race
+   condition sekaligus menghilangkan skenario 596 ms di atas.
+3. **Bereskan temuan RLS** — 7 `auth_rls_initplan` + 13 policy ganda.
+4. **Periksa pg_cron.** Schema `cron` aktif; job terjadwal yang berat bisa
    ikut menyumbang beban I/O.
-4. **Tabel backup lama.** `backup_20260419_*` (5 tabel) dan
-   `stock_movements_backup_20260405` — total ± 17 MB, tidak dipakai aplikasi.
-   Penghapusan bersifat permanen, perlu keputusan eksplisit.
-5. **Jangka panjang:** strategi arsip/partisi `stock_movements`
+5. **Tabel backup lama.** `backup_20260419_*` (5 tabel) dan
+   `stock_movements_backup_20260405` — total ± 17 MB, tidak dipakai
+   aplikasi. Penghapusan bersifat permanen, perlu keputusan eksplisit.
+6. **Jangka panjang:** strategi arsip/partisi `stock_movements`
    (502 rb baris, 173 MB, tumbuh paling cepat).
