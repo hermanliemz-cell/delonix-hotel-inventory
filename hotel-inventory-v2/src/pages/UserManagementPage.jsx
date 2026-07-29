@@ -181,6 +181,13 @@ function UserManagementPage() {
               return <div className="flex flex-wrap gap-1">{hotels.map(h => <Badge key={h.organization_id} color="blue">{h.code}</Badge>)}</div>;
             }},
             { header: t('users.department'), render: r => r.departments ? <Badge color="green">{r.departments.code}</Badge> : <span className="text-gray-400">-</span> },
+            { header: t('users.lastActivity'), render: r => {
+              if (!r.last_activity_at) return <span className="text-gray-400">-</span>;
+              const days = Math.floor((Date.now() - new Date(r.last_activity_at).getTime()) / 86400000);
+              // Warn once an account is within a week of the 30-day default.
+              const color = days >= 30 ? 'text-red-600 font-semibold' : days >= 23 ? 'text-amber-600' : 'text-gray-600';
+              return <span className={`text-sm ${color}`}>{days === 0 ? t('users.today') : t('users.daysAgo').replace('{n}', days)}</span>;
+            }},
             { header: t('common.status'), render: r => <Badge color={r.is_active?'green':'red'}>{r.is_active ? t('common.active') : t('common.inactive')}</Badge> },
           ]}
           data={users}

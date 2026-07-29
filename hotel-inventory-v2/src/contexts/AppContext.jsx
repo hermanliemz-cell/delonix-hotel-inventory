@@ -5,6 +5,18 @@ const AppContext = createContext(null);
 
 export { AppContext };
 
+// Inactivity tracking. Sessions restore from localStorage with no expiry, so
+// last_login goes stale on accounts that are in daily use but never log out.
+// users.last_activity_at is refreshed while the app is open instead, which is
+// what fn_auto_deactivate_inactive_users reads.
+//
+// Writes are throttled to once an hour per browser: the database runs on a Nano
+// instance whose disk IO budget is already tight, and a per-navigation write
+// across ~50 users would be pure waste.
+const ACTIVITY_PING_KEY = 'inventory_activity_ping';
+const ACTIVITY_PING_INTERVAL_MS = 60 * 60 * 1000;   // write at most hourly
+const ACTIVITY_CHECK_INTERVAL_MS = 10 * 60 * 1000;  // re-evaluate every 10 min
+
 /**
  * Hash password using SHA-256 with salt
  */
@@ -194,6 +206,33 @@ export function AppProvider({ children }) {
   }, [currentUser?.id, loadOrganizations, refreshRolePermissions]);
 
   /**
+   * Keep users.last_activity_at fresh while the app is open, so that a session
+   * in continuous use is never mistaken for an abandoned account.
+   */
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    let cancelled = false;
+    async function ping() {
+      const last = Number(localStorage.getItem(ACTIVITY_PING_KEY) || 0);
+      if (Date.now() - last < ACTIVITY_PING_INTERVAL_MS) return;
+      // Stamp before awaiting so two tabs waking together do not both write.
+      localStorage.setItem(ACTIVITY_PING_KEY, String(Date.now()));
+      const { error } = await supabase
+        .from('users')
+        .update({ last_activity_at: new Date().toISOString() })
+        .eq('id', currentUser.id);
+      // On failure, clear the stamp so the next check retries rather than
+      // waiting out a full hour on a transient network error.
+      if (error && !cancelled) localStorage.removeItem(ACTIVITY_PING_KEY);
+    }
+
+    ping();
+    const timer = setInterval(ping, ACTIVITY_CHECK_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [currentUser?.id]);
+
+  /**
    * Handle user login
    */
   const handleLogin = useCallback(async (username, password) => {
@@ -207,8 +246,11 @@ export function AppProvider({ children }) {
     // Check password: either default format or hashed
     if (user.password_hash !== defaultCheck && user.password_hash !== hashedPassword) return false;
 
-    // Update last_login
-    await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id);
+    // Update last_login. last_activity_at is reset too so a fresh login always
+    // restarts the inactivity clock used by fn_auto_deactivate_inactive_users.
+    const nowIso = new Date().toISOString();
+    await supabase.from('users').update({ last_login: nowIso, last_activity_at: nowIso }).eq('id', user.id);
+    localStorage.setItem(ACTIVITY_PING_KEY, String(Date.now()));
 
     // Load user's hotel access
     const { data: accessData } = await supabase.from('user_hotel_access').select('organization_id').eq('user_id', user.id);
