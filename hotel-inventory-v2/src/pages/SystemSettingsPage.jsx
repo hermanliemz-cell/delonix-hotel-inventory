@@ -7,7 +7,7 @@ import { Icons } from '../components/Icons';
 import { PageLoader } from '../components/PageLoader';
 
 function SystemSettingsPage() {
-  const { selectedOrg, showNotification } = useApp();
+  const { selectedOrg, showNotification, currentUser } = useApp();
   const { t } = useTranslation();
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
@@ -66,6 +66,15 @@ function SystemSettingsPage() {
       if (error) throw error;
       const map = {};
       (data || []).forEach(r => { map[r.setting_key] = r.setting_value; });
+      // maintenance_mode is system-wide, not per-organization — it lives in
+      // app_settings so a single switch covers every hotel, including new ones.
+      const { data: globalRow, error: globalError } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('setting_key', 'maintenance_mode')
+        .maybeSingle();
+      if (globalError) throw globalError;
+      map.maintenance_mode = globalRow?.setting_value === 'true' ? 'true' : 'false';
       // Apply defaults for any missing settings
       const defaults = {
         timezone: 'Asia/Bangkok', currency: 'IDR', date_format: 'DD/MM/YYYY',
@@ -86,16 +95,29 @@ function SystemSettingsPage() {
   async function saveSettings() {
     setSaving(true);
     try {
-      const upserts = Object.entries(settings).map(([key, val]) => ({
-        organization_id: selectedOrg.id,
-        setting_key: key,
-        setting_value: val,
-        updated_at: new Date().toISOString(),
-      }));
+      // maintenance_mode is stored globally, so keep it out of the per-org upsert.
+      const upserts = Object.entries(settings)
+        .filter(([key]) => key !== 'maintenance_mode')
+        .map(([key, val]) => ({
+          organization_id: selectedOrg.id,
+          setting_key: key,
+          setting_value: val,
+          updated_at: new Date().toISOString(),
+        }));
       const { error } = await supabase
         .from('system_settings')
         .upsert(upserts, { onConflict: 'organization_id,setting_key' });
       if (error) throw error;
+
+      const { error: globalError } = await supabase
+        .from('app_settings')
+        .upsert({
+          setting_key: 'maintenance_mode',
+          setting_value: settings.maintenance_mode === 'true' ? 'true' : 'false',
+          updated_at: new Date().toISOString(),
+          updated_by: currentUser?.id || null,
+        }, { onConflict: 'setting_key' });
+      if (globalError) throw globalError;
       showNotification(t('settings.saved'));
       // Update the global settings cache
       if (window.__systemSettings) {

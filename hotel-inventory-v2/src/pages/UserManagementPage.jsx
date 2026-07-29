@@ -89,8 +89,19 @@ function UserManagementPage() {
       showNotification(t('users.passwordRequired') || 'Password is required (min 6 characters) for new user', 'error');
       return;
     }
-    // Set organization_id to first selected hotel (for backward compatibility) or null
-    const primaryOrg = form.hotel_ids.length > 0 ? form.hotel_ids[0] : null;
+    // Role and hotel are mandatory. A user saved without either ends up with a
+    // null role_id or organization_id, which leaves them outside every
+    // permission and hotel-scoping check in the app.
+    if (!form.role_id) {
+      showNotification(t('users.roleRequired') || 'Role is required', 'error');
+      return;
+    }
+    if (!form.hotel_ids.length) {
+      showNotification(t('users.hotelRequired') || 'At least one hotel is required', 'error');
+      return;
+    }
+    // organization_id mirrors the first selected hotel (kept for backward compatibility)
+    const primaryOrg = form.hotel_ids[0];
     const payload = { full_name: form.full_name, username: form.username || null, email: form.email || null, phone: form.phone || null, role_id: form.role_id || null, organization_id: primaryOrg, department_id: form.department_id || null, is_active: form.is_active };
     if (form.password && form.password.length >= 6) {
       payload.password_hash = await hashPassword(form.password);

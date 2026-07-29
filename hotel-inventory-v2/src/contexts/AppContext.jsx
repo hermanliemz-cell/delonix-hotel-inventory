@@ -230,22 +230,20 @@ export function AppProvider({ children }) {
       department: user.departments || null
     };
 
-    // Check maintenance mode BEFORE allowing login
+    // Check maintenance mode BEFORE allowing login.
+    // The switch is system-wide (inventory.app_settings), not per-organization,
+    // so a user's organization_id is irrelevant here — including when it is null.
     const roleCode = user.roles?.code;
     const roleHasAccess = user.roles?.allow_maintenance_access === true;
     if (roleCode !== 'superadmin' && !roleHasAccess) {
-      // Check if maintenance is on for any org the user has access to
-      const orgId = user.organization_id;
-      if (orgId) {
-        const { data: maint } = await supabase.from('system_settings')
-          .select('setting_value')
-          .eq('organization_id', orgId)
-          .eq('setting_key', 'maintenance_mode')
-          .single();
-        if (maint?.setting_value === 'true') {
-          // Block login — show maintenance message
-          throw new Error('maintenance');
-        }
+      const { data: maint, error: maintError } = await supabase.from('app_settings')
+        .select('setting_value')
+        .eq('setting_key', 'maintenance_mode')
+        .maybeSingle();
+      // Fail closed: if the flag cannot be read, assume maintenance is on rather
+      // than letting everyone through on a network hiccup or a missing row.
+      if (maintError || maint?.setting_value !== 'false') {
+        throw new Error('maintenance');
       }
     }
 
