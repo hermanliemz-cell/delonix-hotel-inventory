@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { recordMovement } from '../services/stockService.js';
 import { useApp } from '../hooks/useApp';
@@ -27,6 +27,10 @@ export default function AdjustmentPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Synchronous guard. React state updates are async, so a fast second click can
+  // slip past a useState flag before it is applied — a ref changes immediately.
+  const confirmingRef = useRef(false);
+  const [confirmingId, setConfirmingId] = useState(null);
   const [form, setForm] = useState({ warehouse_id: '', description: '', notes: '' });
   const [lineItems, setLineItems] = useState([]);
   const [itemSearch, setItemSearch] = useState({});
@@ -163,9 +167,24 @@ export default function AdjustmentPage() {
   }
 
   async function handleConfirm(adj) {
+    // Claim the run before anything can await. Without this, the confirm dialog
+    // below yields control and a second click enters the function and posts the
+    // whole document a second time — 7 adjustments already carry duplicate
+    // movements from exactly that.
+    if (confirmingRef.current) {
+      showNotification('Proses sedang berjalan, harap tunggu...', 'warning');
+      return;
+    }
     if (adj.status !== 'DRAFT') { showNotification('Hanya dokumen DRAFT yang bisa di-confirm', 'error'); return; }
-    if (!(await showConfirm('Confirm adjustment ' + adj.adj_number + '? Stok akan diperbarui.', { variant: 'warning' }))) return;
+    confirmingRef.current = true;
+    setConfirmingId(adj.id);
+    // Declared out here on purpose: the rollback in the catch block needs it, and
+    // a const declared inside try does not exist in catch — the previous version
+    // threw ReferenceError there, so the cleanup never ran while the user was
+    // told "Movements sudah di-rollback".
+    const attemptStartedAt = new Date().toISOString();
     try {
+      if (!(await showConfirm('Confirm adjustment ' + adj.adj_number + '? Stok akan diperbarui.', { variant: 'warning' }))) return;
       const now = new Date().toISOString();
       const { data: adjItems } = await supabase.from('adjustment_items').select('*, items(code, name)').eq('adjustment_id', adj.id);
       if (!adjItems || adjItems.length === 0) { showNotification('Tidak ada item untuk di-confirm', 'error'); return; }
@@ -205,7 +224,6 @@ export default function AdjustmentPage() {
       }
 
       // ====== SEMUA STOK CUKUP — Proses movements ======
-      const attemptStartedAt = new Date().toISOString();
       for (const ai of adjItems) {
         const qty = parseFloat(ai.quantity);
         const unitCost = parseFloat(ai.unit_cost) || 0;
@@ -226,23 +244,49 @@ export default function AdjustmentPage() {
         if (mvErr) throw mvErr;
       }
 
-      await supabase.from('adjustments').update({
+      // Guarded so only one confirm can win. If another tab or user got here
+      // first the row is no longer DRAFT, nothing updates, and we throw into the
+      // rollback below rather than leaving a second set of movements behind.
+      const { data: locked, error: lockErr } = await supabase.from('adjustments').update({
         status: 'CONFIRMED', confirmed_by: currentUser?.id,
         confirmed_at: now, updated_at: now,
-      }).eq('id', adj.id);
+      }).eq('id', adj.id).eq('status', 'DRAFT').select().maybeSingle();
+      if (lockErr) throw lockErr;
+      if (!locked) throw new Error('Dokumen sudah di-confirm oleh proses lain');
 
       showNotification(adj.adj_number + ' confirmed — stok diperbarui', 'success');
       loadAll();
     } catch (err) {
-      // Rollback: hapus movements yang sudah ter-insert
+      // Rollback: hapus movements yang sudah ter-insert.
+      // Scoped by reference_id, not reference_number: document numbers are
+      // generated without a lock and can collide, which would delete another
+      // document's movements.
+      let rolledBack = false;
       try {
         const { data: orphaned } = await supabase.from('stock_movements')
-          .select('id').eq('reference_number', adj.adj_number).gte('created_at', attemptStartedAt);
+          .select('id').eq('reference_id', adj.id).eq('reference_type', 'ADJUSTMENT')
+          .gte('created_at', attemptStartedAt);
         if (orphaned && orphaned.length > 0) {
-          await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+          const { error: delErr } = await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+          if (delErr) throw delErr;
         }
-      } catch (cleanupErr) { console.error('[adjustment confirm rollback]', cleanupErr); }
-      showNotification('Error: ' + err.message + '. Movements sudah di-rollback.', 'error');
+        rolledBack = true;
+      } catch (cleanupErr) {
+        console.error('[adjustment confirm rollback]', cleanupErr);
+      }
+      // Only claim a rollback that actually happened. The old wording said it
+      // unconditionally, so a failed cleanup looked like a clean one and nobody
+      // went looking for the orphaned movements.
+      showNotification(
+        rolledBack
+          ? 'Error: ' + err.message + '. Movements sudah di-rollback.'
+          : 'Error: ' + err.message + '. PERHATIAN: rollback GAGAL — stok mungkin sudah berubah, mohon periksa Bin Card ' + adj.adj_number + '.',
+        'error'
+      );
+      loadAll();
+    } finally {
+      confirmingRef.current = false;
+      setConfirmingId(null);
     }
   }
 
@@ -266,7 +310,7 @@ export default function AdjustmentPage() {
           actions={(row) => (
             <div className="flex items-center gap-1">
               <button onClick={e=>{e.stopPropagation();openViewAdj(row)}} className="p-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 flex items-center gap-0.5"><Icons.Eye /> Detail</button>
-              {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();handleConfirm(row)}} className="p-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 flex items-center gap-0.5"><Icons.Check /> Confirm</button>}
+              {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();handleConfirm(row)}} disabled={confirmingRef.current} className="p-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-0.5"><Icons.Check /> {confirmingId === row.id ? 'Processing...' : 'Confirm'}</button>}
               {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();openEdit(row)}} className="p-1 text-xs bg-yellow-50 text-yellow-700 rounded hover:bg-yellow-100 flex items-center gap-0.5"><Icons.Edit /> Edit</button>}
               {row.status === 'DRAFT' && <button onClick={e=>{e.stopPropagation();handleDelete(row)}} className="p-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 flex items-center gap-0.5"><Icons.Trash /> Hapus</button>}
             </div>
