@@ -980,8 +980,9 @@ const translations = {
     'users.lastActivity': 'Last Used',
     'users.today': 'Today',
     'users.daysAgo': '{n} days ago',
-    'users.roleRequired': 'Please choose a role',
-    'users.hotelRequired': 'Please choose at least one hotel',
+    'users.roleRequired': 'Please choose a Role first — this user cannot be saved without one.',
+    'users.hotelRequired': 'Please tick at least one Hotel first — this user cannot be saved without one.',
+    'users.departmentRequired': 'Please choose a Department first — it is copied onto every document this user creates.',
     'menu.systemSettings': 'System Settings',
     'menu.cronJobs': 'CRON Jobs',
 
@@ -1939,8 +1940,9 @@ const translations = {
     'users.lastActivity': '最后使用',
     'users.today': '今天',
     'users.daysAgo': '{n} 天前',
-    'users.roleRequired': '请选择角色',
-    'users.hotelRequired': '请至少选择一家酒店',
+    'users.roleRequired': '请先选择角色——未选择时无法保存该用户。',
+    'users.hotelRequired': '请先勾选至少一家酒店——未勾选时无法保存该用户。',
+    'users.departmentRequired': '请先选择部门——该部门会写入此用户创建的每一张单据。',
     'menu.systemSettings': '系统设置',
     'menu.cronJobs': '定时任务',
 
