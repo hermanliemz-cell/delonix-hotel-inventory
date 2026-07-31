@@ -33,7 +33,8 @@ function RoomMakeUpPageNew() {
   const filterRoomRef = React.useRef(null);
 
   // Pagination (client-side, 100 per page)
-  const PAGE_SIZE = 100;
+  const PAGE_SIZE_OPTIONS = [10, 20, 50];
+  const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Form state
@@ -868,9 +869,9 @@ function RoomMakeUpPageNew() {
   });
 
   // Client-side pagination (100/page)
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
-  const pageData = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageData = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   // Reset to page 1 when filters change filtered length boundary
   React.useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterHousekeeper, filterRoom, filterCount, filterDateRange]);
 
@@ -1089,19 +1090,35 @@ function RoomMakeUpPageNew() {
            </div>}
         </div>
 
-        {/* Pagination controls */}
-        {filtered.length > PAGE_SIZE && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm">
-            <div className="text-gray-500">
-              Menampilkan {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} dari {filtered.length} dokumen
+        {/* Pagination controls — always shown so the page-size selector stays
+            reachable even when the current size already fits everything */}
+        {filtered.length > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 text-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-gray-500">
+                Menampilkan {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} dari {filtered.length} dokumen
+              </span>
+              <label className="flex items-center gap-1.5 text-gray-500">
+                <span className="hidden sm:inline">Tampilkan</span>
+                <select
+                  value={pageSize}
+                  onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                  className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                >
+                  {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <span>/ halaman</span>
+              </label>
             </div>
-            <div className="flex items-center gap-1">
-              <Button size="sm" variant="ghost" onClick={() => setCurrentPage(1)} disabled={safePage === 1}>« First</Button>
-              <Button size="sm" variant="ghost" onClick={() => setCurrentPage(Math.max(1, safePage - 1))} disabled={safePage === 1}>‹ Prev</Button>
-              <span className="px-3 text-gray-600 font-medium">Page {safePage} / {totalPages}</span>
-              <Button size="sm" variant="ghost" onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))} disabled={safePage >= totalPages}>Next ›</Button>
-              <Button size="sm" variant="ghost" onClick={() => setCurrentPage(totalPages)} disabled={safePage >= totalPages}>Last »</Button>
-            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" onClick={() => setCurrentPage(1)} disabled={safePage === 1}>« First</Button>
+                <Button size="sm" variant="ghost" onClick={() => setCurrentPage(Math.max(1, safePage - 1))} disabled={safePage === 1}>‹ Prev</Button>
+                <span className="px-3 text-gray-600 font-medium">Page {safePage} / {totalPages}</span>
+                <Button size="sm" variant="ghost" onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))} disabled={safePage >= totalPages}>Next ›</Button>
+                <Button size="sm" variant="ghost" onClick={() => setCurrentPage(totalPages)} disabled={safePage >= totalPages}>Last »</Button>
+              </div>
+            )}
           </div>
         )}
       </div>
