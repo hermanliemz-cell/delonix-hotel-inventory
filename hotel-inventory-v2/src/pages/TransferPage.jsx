@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase.js';
 import { useApp, useTranslation } from '../hooks/index.js';
 import { formatNumber, formatDate, formatDateSys, getLocalDateString } from '../utils/format.js';
@@ -23,6 +23,9 @@ function TransferPage() {
   const [showModal, setShowModal] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Synchronous guard. React state updates are async, so a fast second click can
+  // slip past setSaving before it is applied — a ref changes immediately.
+  const confirmingRef = useRef(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
@@ -179,9 +182,22 @@ function TransferPage() {
   }
 
   async function confirmTransfer(tr) {
-    if (!(await showConfirm(t('transfer.confirmMsg'), { variant: 'warning' }))) return;
+    // Claimed before the dialog awaits, so a second click cannot enter and post
+    // the transfer twice. setSaving alone is not enough — React applies state
+    // asynchronously, leaving a window where the flag is still false.
+    if (confirmingRef.current) {
+      showNotification('Proses sedang berjalan, harap tunggu...', 'warning');
+      return;
+    }
+    confirmingRef.current = true;
     setSaving(true);
+    // Declared out here on purpose: the rollback in the catch block needs it, and
+    // a const declared inside try does not exist in catch — the previous version
+    // threw ReferenceError there, so the cleanup never ran while the user was
+    // told "Movements sudah di-rollback".
+    const attemptStartedAt = new Date().toISOString();
     try {
+      if (!(await showConfirm(t('transfer.confirmMsg'), { variant: 'warning' }))) return;
       const trItems = tr.transfer_items || [];
       if (trItems.length === 0) throw new Error('No items');
 
@@ -220,7 +236,6 @@ function TransferPage() {
       }
 
       // ====== SEMUA STOK CUKUP — Proses movements ======
-      const attemptStartedAt = new Date().toISOString();
       for (const item of trItems) {
         const qty = parseFloat(item.quantity);
         if (qty <= 0) continue;
@@ -241,27 +256,52 @@ function TransferPage() {
         if (transferErr) throw new Error('Transfer movement: ' + transferErr.message);
       }
 
-      await supabase.from('transfers').update({
+      // Guarded so only one confirm can win. If another tab or user got here
+      // first the row is no longer DRAFT, nothing updates, and we throw into the
+      // rollback below rather than leaving a second set of movements behind.
+      const { data: locked, error: lockErr } = await supabase.from('transfers').update({
         status: 'CONFIRMED',
         updated_at: new Date().toISOString(),
         confirmed_at: new Date().toISOString(),
-      }).eq('id', tr.id);
+      }).eq('id', tr.id).eq('status', 'DRAFT').select().maybeSingle();
+      if (lockErr) throw lockErr;
+      if (!locked) throw new Error('Dokumen sudah di-confirm oleh proses lain');
 
       showNotification(t('transfer.successConfirm'));
       setShowModal(false);
       loadAll();
     } catch (err) {
-      // Rollback: hapus movements yang sudah ter-insert
+      // Rollback: hapus movements yang sudah ter-insert.
+      // Scoped by reference_id, not reference_number: document numbers are
+      // generated without a lock and can collide, which would delete another
+      // document's movements.
+      let rolledBack = false;
       try {
         const { data: orphaned } = await supabase.from('stock_movements')
-          .select('id').eq('reference_number', tr.transfer_number).gte('created_at', attemptStartedAt);
+          .select('id').eq('reference_id', tr.id).eq('reference_type', 'TRANSFER')
+          .gte('created_at', attemptStartedAt);
         if (orphaned && orphaned.length > 0) {
-          await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+          const { error: delErr } = await supabase.from('stock_movements').delete().in('id', orphaned.map(o => o.id));
+          if (delErr) throw delErr;
         }
-      } catch (cleanupErr) { console.error('[transfer confirm rollback]', cleanupErr); }
-      showNotification('Error: ' + err.message + '. Movements sudah di-rollback.', 'error');
+        rolledBack = true;
+      } catch (cleanupErr) {
+        console.error('[transfer confirm rollback]', cleanupErr);
+      }
+      // Only claim a rollback that actually happened. The old wording said it
+      // unconditionally, so a failed cleanup looked like a clean one and nobody
+      // went looking for the orphaned movements.
+      showNotification(
+        rolledBack
+          ? 'Error: ' + err.message + '. Movements sudah di-rollback.'
+          : 'Error: ' + err.message + '. PERHATIAN: rollback GAGAL — stok mungkin sudah berubah, mohon periksa Bin Card ' + tr.transfer_number + '.',
+        'error'
+      );
+      loadAll();
+    } finally {
+      confirmingRef.current = false;
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function revokeTransfer(tr) {
