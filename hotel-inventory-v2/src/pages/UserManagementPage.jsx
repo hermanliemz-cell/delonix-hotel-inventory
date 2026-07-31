@@ -89,15 +89,22 @@ function UserManagementPage() {
       showNotification(t('users.passwordRequired') || 'Password is required (min 6 characters) for new user', 'error');
       return;
     }
-    // Role and hotel are mandatory. A user saved without either ends up with a
-    // null role_id or organization_id, which leaves them outside every
-    // permission and hotel-scoping check in the app.
+    // Role, hotel and department are all mandatory, on edit as well as create.
+    // A missing role or hotel puts the account outside every permission and
+    // hotel-scoping check. A missing department is quieter but not harmless: the
+    // value is copied onto every document the user creates, so it silently
+    // blanks the Dept column on their whole history. Three accounts reached
+    // production that way, and 8,754 rows had to be backfilled to repair it.
     if (!form.role_id) {
-      showNotification(t('users.roleRequired') || 'Role is required', 'error');
+      showNotification(t('users.roleRequired'), 'error');
       return;
     }
     if (!form.hotel_ids.length) {
-      showNotification(t('users.hotelRequired') || 'At least one hotel is required', 'error');
+      showNotification(t('users.hotelRequired'), 'error');
+      return;
+    }
+    if (!form.department_id) {
+      showNotification(t('users.departmentRequired'), 'error');
       return;
     }
     // organization_id mirrors the first selected hotel (kept for backward compatibility)
@@ -235,14 +242,14 @@ function UserManagementPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.role')}</label>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.role')} <span className="text-red-500">*</span></label>
               <select value={form.role_id} onChange={e => setForm({...form, role_id: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
                 <option value="">{t('users.selectRole')}</option>
                 {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.hotel')}</label>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.hotel')} <span className="text-red-500">*</span></label>
               <div className="border border-gray-200 rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto bg-white">
                 {availableOrgs.map(o => (
                   <label key={o.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
@@ -259,7 +266,7 @@ function UserManagementPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.department')}</label>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">{t('users.department')} <span className="text-red-500">*</span></label>
               <select value={form.department_id} onChange={e => setForm({...form, department_id: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
                 <option value="">{t('users.selectDept')}</option>
                 {filteredDepts.map(d => <option key={d.id} value={d.id}>{d.code} - {d.name}</option>)}
