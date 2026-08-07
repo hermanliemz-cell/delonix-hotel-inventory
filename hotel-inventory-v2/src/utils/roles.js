@@ -4,7 +4,7 @@
 export const ROLE_PAGE_ACCESS = {
   superadmin: '*', // all pages
   gm: '*',
-  warehouse: ['dashboard','items','categories','vendors','warehouses','stock','movements','pr','po','pi','gr','transfer','direct-purchase','opening-balance','writeoff','opname','single-usage','in-use-warehouse','reports','change-password'],
+  warehouse: ['dashboard','items','categories','vendors','vendor-types','warehouses','stock','movements','pr','po','pi','gr','transfer','direct-purchase','opening-balance','writeoff','opname','single-usage','in-use-warehouse','reports','change-password'],
   housekeeping: ['dashboard','items','room-makeup-new','worksheet','room-consumption','item-lost-in-room','rmu-activity-history','room-additional-request','rooms','room-types','bed-formations','in-use-warehouse','single-usage','movements','change-password'],
   engineering: ['dashboard','items','stock','movements','pr','single-usage','in-use-warehouse','change-password'],
   fnb: ['dashboard','items','stock','movements','pr','single-usage','in-use-warehouse','change-password'],

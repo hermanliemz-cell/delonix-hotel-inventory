@@ -21,6 +21,7 @@ const ALL_MENU_GROUPS = [
     { id: 'hotels', label: 'Hotels' },
     { id: 'departments', label: 'Departments' },
     { id: 'vendors', label: 'Vendors' },
+    { id: 'vendor-types', label: 'Vendor Types' },
     { id: 'categories', label: 'Categories' },
     { id: 'room-types', label: 'Room Types' },
     { id: 'bed-formations', label: 'Bed Formations' },

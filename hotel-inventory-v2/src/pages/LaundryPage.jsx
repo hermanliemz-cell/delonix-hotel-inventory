@@ -83,10 +83,13 @@ function LaundryPage() {
         .order('name');
       setCategories(catData || []);
 
-      // Load vendors for laundry
+      // Only active vendors typed as Laundry may be handed linen. The type is a
+      // global master (inventory.vendor_types); the inner join drops any vendor
+      // without a type rather than silently offering it here.
       const { data: vendorData } = await supabase.from('vendors')
-        .select('id, code, name')
+        .select('id, code, name, vendor_types!inner(code)')
         .eq('is_active', true)
+        .eq('vendor_types.code', 'LDR')
         .order('name');
       setVendors(vendorData || []);
 
@@ -370,8 +373,6 @@ function LaundryPage() {
     }
   }, [activeTab, selectedVendor, laundryWarehouse?.id]);
 
-  // Default vendor for legacy (untracked) laundry items
-  const BONVIVO_VENDOR_ID = '27a3bed2-7ff6-48f6-b579-e999def3dcfc';
 
   async function loadVendorLaundryItems() {
     setLoadingVendorItems(true);
@@ -415,45 +416,23 @@ function LaundryPage() {
         vendorNetQty[m.item_id] = (vendorNetQty[m.item_id] || 0) - (parseFloat(m.quantity) || 0);
       });
 
-      // 5. Get ALL vendor-tracked movements (all vendors combined) to find "tracked" totals
-      const { data: allTrackedSends } = await supabase.from('stock_movements')
-        .select('item_id, quantity')
-        .eq('organization_id', selectedOrg.id)
-        .eq('reference_type', 'LAUNDRY_SEND')
-        .eq('movement_type', 'IN')
-        .not('vendor_id', 'is', null)
-        .eq('warehouse_id', laundryWarehouse.id);
+      // Steps 5 and 6 previously fetched every vendor's movements to work out an
+      // "untracked" remainder for the hardcoded default vendor. With that gone the
+      // figure has no consumer, so the two full-table reads are dropped — this
+      // screen runs on every vendor selection and the database is IO-bound.
 
-      const { data: allTrackedReceives } = await supabase.from('stock_movements')
-        .select('item_id, quantity')
-        .eq('organization_id', selectedOrg.id)
-        .eq('reference_type', 'LAUNDRY_RECEIVE')
-        .eq('movement_type', 'OUT')
-        .not('vendor_id', 'is', null)
-        .eq('warehouse_id', laundryWarehouse.id);
-
-      // 6. Calculate total tracked qty per item (across all vendors)
-      const totalTracked = {};
-      (allTrackedSends || []).forEach(m => {
-        totalTracked[m.item_id] = (totalTracked[m.item_id] || 0) + (parseFloat(m.quantity) || 0);
-      });
-      (allTrackedReceives || []).forEach(m => {
-        totalTracked[m.item_id] = (totalTracked[m.item_id] || 0) - (parseFloat(m.quantity) || 0);
-      });
-
-      // 7. Build final items list
-      // For each laundry item: vendor_qty = vendor_net + (if BonVivo: untracked legacy qty)
+      // 5. Build final items list — each vendor shows only what was actually
+      // sent to it and not yet received back.
+      //
+      // Untracked stock (physically in the laundry warehouse but not covered by
+      // any vendor movement, e.g. put there by an adjustment or transfer) used to
+      // be attributed to a hardcoded BonVivo id. That made BonVivo display the
+      // whole warehouse regardless of what it actually held, and tied the screen
+      // to one vendor that can never be retired. It now belongs to no vendor,
+      // which is the truth — such stock needs an adjustment to resolve, not a
+      // handover.
       const vendorItems = allLaundryItems.map(item => {
         let qty = vendorNetQty[item.item_id] || 0;
-
-        // Legacy/untracked items (stock_balance qty not covered by any vendor movements)
-        // are attributed to BonVivo as the default vendor
-        if (selectedVendor === BONVIVO_VENDOR_ID) {
-          const tracked = totalTracked[item.item_id] || 0;
-          const untracked = Math.max(0, item.quantity - tracked);
-          qty += untracked;
-        }
-
         // Cap at stock_balance: can't have more outstanding than physical stock
         qty = Math.min(qty, parseFloat(item.quantity) || 0);
         return { ...item, quantity: qty };

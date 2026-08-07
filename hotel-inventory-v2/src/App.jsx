@@ -54,6 +54,7 @@ const HotelsPage = lazyPage(() => import('./pages/HotelsPage.jsx'));
 const ItemsPage = lazyPage(() => import('./pages/ItemsPage.jsx'));
 const CategoriesPage = lazyPage(() => import('./pages/CategoriesPage.jsx'));
 const VendorsPage = lazyPage(() => import('./pages/VendorsPage.jsx'));
+const VendorTypesPage = lazyPage(() => import('./pages/VendorTypesPage.jsx'));
 const DepartmentsPage = lazyPage(() => import('./pages/DepartmentsPage.jsx'));
 const WarehousesPage = lazyPage(() => import('./pages/WarehousesPage.jsx'));
 const RoomTypesPage = lazyPage(() => import('./pages/RoomTypesPage.jsx'));
@@ -100,6 +101,7 @@ const ROUTE_PAGE_MAP = {
   '/items': 'items',
   '/categories': 'categories',
   '/vendors': 'vendors',
+  '/vendor-types': 'vendor-types',
   '/departments': 'departments',
   '/warehouses': 'warehouses',
   '/room-types': 'room-types',
@@ -376,6 +378,7 @@ function MainLayout() {
         { id: 'hotels', label: t('menu.hotels'), icon: Icons.Building },
         { id: 'departments', label: t('menu.departments'), icon: Icons.Building },
         { id: 'vendors', label: t('menu.vendors'), icon: Icons.Truck },
+        { id: 'vendor-types', label: t('menu.vendorTypes'), icon: Icons.Tag },
         { id: 'categories', label: t('menu.categories'), icon: Icons.Tag },
         { id: 'room-types', label: t('menu.roomTypes'), icon: Icons.Tag },
         { id: 'bed-formations', label: t('menu.bedFormations'), icon: Icons.Bed },
@@ -663,6 +666,7 @@ function MainLayout() {
                   <Route path="/items" element={<ProtectedRoute pageId="items"><ItemsPage /></ProtectedRoute>} />
                   <Route path="/categories" element={<ProtectedRoute pageId="categories"><CategoriesPage /></ProtectedRoute>} />
                   <Route path="/vendors" element={<ProtectedRoute pageId="vendors"><VendorsPage /></ProtectedRoute>} />
+                  <Route path="/vendor-types" element={<ProtectedRoute pageId="vendor-types"><VendorTypesPage /></ProtectedRoute>} />
                   <Route path="/departments" element={<ProtectedRoute pageId="departments"><DepartmentsPage /></ProtectedRoute>} />
                   <Route path="/warehouses" element={<ProtectedRoute pageId="warehouses"><WarehousesPage /></ProtectedRoute>} />
                   <Route path="/room-types" element={<ProtectedRoute pageId="room-types"><RoomTypesPage /></ProtectedRoute>} />
