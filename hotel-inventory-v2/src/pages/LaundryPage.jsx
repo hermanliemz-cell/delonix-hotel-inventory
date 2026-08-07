@@ -374,6 +374,31 @@ function LaundryPage() {
   }, [activeTab, selectedVendor, laundryWarehouse?.id]);
 
 
+  // Reads every matching movement for the selected vendor, 1000 at a time.
+  async function fetchAllMovements(referenceType, movementType) {
+    const PAGE = 1000;
+    const all = [];
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data, error } = await supabase.from('stock_movements')
+        .select('item_id, quantity')
+        .eq('organization_id', selectedOrg.id)
+        .eq('reference_type', referenceType)
+        .eq('movement_type', movementType)
+        .eq('vendor_id', selectedVendor)
+        .eq('warehouse_id', laundryWarehouse.id)
+        .order('created_at', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  }
+
   async function loadVendorLaundryItems() {
     setLoadingVendorItems(true);
     try {
@@ -389,23 +414,17 @@ function LaundryPage() {
         return;
       }
 
-      // 2. Get vendor-specific SEND movements (items sent TO laundry for selected vendor)
-      const { data: vendorSends } = await supabase.from('stock_movements')
-        .select('item_id, quantity')
-        .eq('organization_id', selectedOrg.id)
-        .eq('reference_type', 'LAUNDRY_SEND')
-        .eq('movement_type', 'IN')
-        .eq('vendor_id', selectedVendor)
-        .eq('warehouse_id', laundryWarehouse.id);
-
-      // 3. Get vendor-specific RECEIVE movements (items received FROM laundry for selected vendor)
-      const { data: vendorReceives } = await supabase.from('stock_movements')
-        .select('item_id, quantity')
-        .eq('organization_id', selectedOrg.id)
-        .eq('reference_type', 'LAUNDRY_RECEIVE')
-        .eq('movement_type', 'OUT')
-        .eq('vendor_id', selectedVendor)
-        .eq('warehouse_id', laundryWarehouse.id);
+      // 2 & 3. Vendor-specific SEND and RECEIVE movements.
+      //
+      // These must be paginated. Supabase caps a request at 1000 rows and returns
+      // the truncated set without an error, so a busy vendor's outstanding was
+      // computed from partial data and came out too low — Teddy Bear at DAI had
+      // 1055 sends, so 55 were silently dropped and the screen showed 223 instead
+      // of 736.
+      const [vendorSends, vendorReceives] = await Promise.all([
+        fetchAllMovements('LAUNDRY_SEND', 'IN'),
+        fetchAllMovements('LAUNDRY_RECEIVE', 'OUT'),
+      ]);
 
       // 4. Calculate vendor-specific net qty per item
       const vendorNetQty = {};
