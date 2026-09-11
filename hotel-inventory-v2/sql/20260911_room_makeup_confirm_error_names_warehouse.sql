@@ -1,0 +1,28 @@
+-- ============================================================
+-- 20260911_room_makeup_confirm_error_names_warehouse.sql
+-- Migrasi Supabase: room_makeup_confirm_error_names_warehouse
+--
+-- LATAR: MU-DCI-26090965 gagal confirm dengan
+--   "Stok tidak cukup: LIN-007 - ...: saldo=0.00, diminta=1.00"
+-- Pesan tidak menyebut gudang maupun jenis baris, sehingga terbaca seperti
+-- kekurangan stok pengganti di HK Store -- padahal yang kurang adalah
+-- stok di kamar untuk baris "tarik kotor" yang bocor dari dokumen lain.
+--
+-- PERUBAHAN (hanya pesan; logika validasi & posting tidak berubah):
+--   out_req diberi kolom label per jenis baris, pre-validasi join ke
+--   inventory.warehouses, dan pesan menjadi:
+--     "LIN-007 - Duvet Cover ... di Room 1104 (tarik kotor): saldo=0, diminta=1.00"
+--   Label: pengganti, tarik kotor, rusak, hilang, ke HK Store, amenity.
+--
+-- Diterapkan dengan pg_get_functiondef + replace() per fragmen, setiap
+-- fragmen diperiksa ada sebelum EXECUTE.
+--
+-- DIUJI 11 Sep 2026: baris LIN-007 disisipkan sementara ke MU-DCI-26090965
+-- di dalam blok yang di-rollback; pesan keluar sesuai contoh di atas.
+--
+-- Pasangan di sisi aplikasi (v2.0.65, RoomMakeUpPageNew.jsx):
+--   - Save hanya menulis aksi untuk item yang ada di stok kamar, dan
+--     menolak bila total aksi melebihi stok kamar.
+--   - View/Edit/pilih kamar memakai token muat; hasil yang tiba setelah
+--     user pindah dokumen dibuang.
+-- ============================================================

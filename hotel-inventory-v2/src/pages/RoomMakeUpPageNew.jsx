@@ -31,6 +31,7 @@ function RoomMakeUpPageNew() {
   const [filterDateRange, setFilterDateRange] = useState('today');
   const [filterCount, setFilterCount] = useState('');
   const filterRoomRef = React.useRef(null);
+  const loadSeqRef = React.useRef(0);
 
   // Pagination (client-side, 100 per page)
   const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -189,7 +190,17 @@ function RoomMakeUpPageNew() {
   }
 
   // ==================== ROOM SELECT ====================
+  // Every form load takes a token; a load that awaits past a newer one drops its
+  // results. Without this a slow View/Edit could land another document's lines
+  // in the form — including dirty lines for items this room does not hold, which
+  // render nowhere but were still saved.
+  function beginLoad() {
+    const token = ++loadSeqRef.current;
+    return () => token !== loadSeqRef.current;
+  }
+
   async function handleRoomSelect(roomId) {
+    const stale = beginLoad();
     setLinenActions({});
     setReplaceRows({});
     setAmenityQty({});
@@ -213,6 +224,7 @@ function RoomMakeUpPageNew() {
       const { data: standards } = await supabase.from('room_category_standards')
         .select('*, item_categories(id, code, name)')
         .eq('room_id', roomId).order('sort_order');
+      if (stale()) return;
 
       const linenStds = (standards || []).filter(s => s.standard_type === 'linen');
       const amenityStds = (standards || []).filter(s => s.standard_type === 'guest_amenities');
@@ -226,6 +238,7 @@ function RoomMakeUpPageNew() {
           .eq('organization_id', selectedOrg.id)
           .eq('warehouse_id', room.warehouse_id)
           .gt('quantity', 0);
+        if (stale()) return;
         setLinenRoomStock(roomStock || []);
       } else {
         setLinenRoomStock([]);
@@ -240,6 +253,7 @@ function RoomMakeUpPageNew() {
 
       const { data: activities } = await supabase.from('room_activity_checklist')
         .select('*').eq('room_id', roomId).eq('is_active', true).order('sort_order');
+      if (stale()) return;
       setActivityList(activities || []);
 
       const checks = {};
@@ -260,6 +274,7 @@ function RoomMakeUpPageNew() {
 
   // ==================== FORM OPEN/CLOSE ====================
   function openNew() {
+    beginLoad();
     setViewing(null);
     setIsEditing(false);
     setSelectedRoom('');
@@ -274,6 +289,7 @@ function RoomMakeUpPageNew() {
   }
 
   async function openView(mu) {
+    const stale = beginLoad();
     setViewing(mu);
     setIsEditing(false);
     setSelectedRoom(mu.room_id);
@@ -288,6 +304,7 @@ function RoomMakeUpPageNew() {
       const { data: standards } = await supabase.from('room_category_standards')
         .select('*, item_categories(id, code, name)')
         .eq('room_id', mu.room_id).order('sort_order');
+      if (stale()) return;
       const linenStds = (standards || []).filter(s => s.standard_type === 'linen');
       const amenityStds = (standards || []).filter(s => s.standard_type === 'guest_amenities');
       setLinenCategories(linenStds.map(s => ({ ...s.item_categories, maxQty: s.quantity || 1 })).filter(c => c.id));
@@ -297,6 +314,7 @@ function RoomMakeUpPageNew() {
         const { data: roomStock } = await supabase.from('stock_balance')
           .select('id, item_id, quantity, avg_cost, items(id, code, name, brand, category_id, units:unit_id(abbreviation))')
           .eq('organization_id', selectedOrg.id).eq('warehouse_id', room.warehouse_id).gt('quantity', 0);
+        if (stale()) return;
         setLinenRoomStock(roomStock || []);
       }
 
@@ -305,6 +323,7 @@ function RoomMakeUpPageNew() {
 
       const { data: muItems } = await supabase.from('room_makeup_items')
         .select('*, items(id, code, name, brand, units:unit_id(abbreviation))').eq('makeup_id', mu.id);
+      if (stale()) return;
       const actions = {};
       const rRows = {};
       (muItems || []).forEach(mi => {
@@ -326,6 +345,7 @@ function RoomMakeUpPageNew() {
 
       const { data: consumption } = await supabase.from('room_consumption')
         .select('*, room_consumption_items(*)').eq('makeup_id', mu.id);
+      if (stale()) return;
       const aqty = {};
       if (consumption && consumption.length > 0) {
         (consumption[0].room_consumption_items || []).forEach(ci => {
@@ -339,6 +359,7 @@ function RoomMakeUpPageNew() {
         .select('*, rmu_activity_history_items(*)').eq('makeup_id', mu.id);
       const { data: activities } = await supabase.from('room_activity_checklist')
         .select('*').eq('room_id', mu.room_id).eq('is_active', true).order('sort_order');
+      if (stale()) return;
       setActivityList(activities || []);
 
       const checks = {};
@@ -364,6 +385,7 @@ function RoomMakeUpPageNew() {
 
   // ==================== OPEN EDIT (Draft) ====================
   async function openEdit(mu) {
+    const stale = beginLoad();
     setViewing(mu);
     setIsEditing(true);
     setSelectedRoom(mu.room_id);
@@ -377,6 +399,7 @@ function RoomMakeUpPageNew() {
       const { data: standards } = await supabase.from('room_category_standards')
         .select('*, item_categories(id, code, name)')
         .eq('room_id', mu.room_id).order('sort_order');
+      if (stale()) return;
       const linenStds = (standards || []).filter(s => s.standard_type === 'linen');
       const amenityStds = (standards || []).filter(s => s.standard_type === 'guest_amenities');
       setLinenCategories(linenStds.map(s => ({ ...s.item_categories, maxQty: s.quantity || 1 })).filter(c => c.id));
@@ -386,6 +409,7 @@ function RoomMakeUpPageNew() {
         const { data: roomStock } = await supabase.from('stock_balance')
           .select('id, item_id, quantity, avg_cost, items(id, code, name, brand, category_id, units:unit_id(abbreviation))')
           .eq('organization_id', selectedOrg.id).eq('warehouse_id', room.warehouse_id).gt('quantity', 0);
+        if (stale()) return;
         setLinenRoomStock(roomStock || []);
       }
 
@@ -394,6 +418,7 @@ function RoomMakeUpPageNew() {
 
       const { data: muItems } = await supabase.from('room_makeup_items')
         .select('*, items(id, code, name, brand, units:unit_id(abbreviation))').eq('makeup_id', mu.id);
+      if (stale()) return;
       const actions = {};
       const rRows = {};
       (muItems || []).forEach(mi => {
@@ -415,6 +440,7 @@ function RoomMakeUpPageNew() {
 
       const { data: consumption } = await supabase.from('room_consumption')
         .select('*, room_consumption_items(*)').eq('makeup_id', mu.id);
+      if (stale()) return;
       const aqty = {};
       if (consumption && consumption.length > 0) {
         (consumption[0].room_consumption_items || []).forEach(ci => {
@@ -428,6 +454,7 @@ function RoomMakeUpPageNew() {
         .select('*, rmu_activity_history_items(*)').eq('makeup_id', mu.id);
       const { data: activities } = await supabase.from('room_activity_checklist')
         .select('*').eq('room_id', mu.room_id).eq('is_active', true).order('sort_order');
+      if (stale()) return;
       setActivityList(activities || []);
 
       const checks = {};
@@ -475,7 +502,23 @@ function RoomMakeUpPageNew() {
     }
 
 
-    const hasLinenActions = Object.values(linenActions).some(a => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0 || a.toHkQty > 0));
+    // Only items the room holds have inputs on screen, so only those may be saved.
+    // Anything else in linenActions came from another document and is dropped here;
+    // on Edit this also clears such lines from an existing draft.
+    const roomActions = Object.entries(linenActions).filter(([itemId, a]) =>
+      a && linenRoomStock.some(s => s.item_id === itemId));
+    for (const [itemId, a] of roomActions) {
+      const stockItem = linenRoomStock.find(s => s.item_id === itemId);
+      const total = (parseFloat(a.dirtyQty) || 0) + (parseFloat(a.damageQty) || 0)
+        + (parseFloat(a.lostQty) || 0) + (parseFloat(a.toHkQty) || 0);
+      if (total > (parseFloat(stockItem.quantity) || 0)) {
+        const code = stockItem.items?.code || '';
+        showNotification(`${code} ${stockItem.items?.name || ''}: total tarik ${total} melebihi stok di kamar (${stockItem.quantity}).`, 'error');
+        return;
+      }
+    }
+
+    const hasLinenActions = roomActions.some(([, a]) => (a.dirtyQty > 0 || a.damageQty > 0 || a.lostQty > 0 || a.toHkQty > 0));
     const hasReplaceRows = Object.values(replaceRows).some(rows => rows.some(r => r.itemId && r.qty > 0));
     const hasAmenities = Object.values(amenityQty).some(a => a.itemId && a.qty > 0);
     const hasActivities = activityList.length > 0;
@@ -547,8 +590,7 @@ function RoomMakeUpPageNew() {
           linenMuItems.push({ makeup_id: muId, item_id: row.itemId, type: 'replace', default_qty: stockItem?.quantity || 0, actual_qty: parseFloat(row.qty), dirty_qty: 0, warehouse_id: hkStore?.id, notes: 'Replace - HK Store to Room' });
         }
       }
-      for (const [itemId, actionData] of Object.entries(linenActions)) {
-        if (!actionData) continue;
+      for (const [itemId, actionData] of roomActions) {
         const stockItem = linenRoomStock.find(s => s.item_id === itemId);
         const defaultQty = stockItem?.quantity || 0;
         if (actionData.dirtyQty > 0) {
