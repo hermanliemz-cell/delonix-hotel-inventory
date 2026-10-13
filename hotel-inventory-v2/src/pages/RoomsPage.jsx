@@ -82,24 +82,21 @@ function RoomsPage() {
         const { data: newRoom, error } = await supabase.from('rooms').insert(payload).select().single();
         if (error) throw error;
 
-        // Auto-create warehouse for new room
+        // Auto-link the warehouse for the new room. The room row is already
+        // saved at this point, so a failure here must be named plainly — the
+        // room stays in the list with a Link Warehouse button rather than
+        // looking finished while makeups post half their movements.
         if (newRoom) {
-          const whCode = 'RM-' + (selectedOrg.code || '') + '-' + form.room_number.trim();
-          const whName = 'Room ' + form.room_number.trim();
-          const { data: wh, error: whErr } = await supabase.from('warehouses').insert({
-            organization_id: selectedOrg.id,
-            code: whCode,
-            name: whName,
-            warehouse_type: 'room',
-            is_active: true
-          }).select().single();
-          if (whErr) throw whErr;
-
-          // Update room with warehouse_id
-          const { error: rmErr } = await supabase.from('rooms').update({ warehouse_id: wh.id }).eq('id', newRoom.id);
-          if (rmErr) throw rmErr;
-
-          showNotification('Room created with warehouse ' + whCode);
+          try {
+            const whCode = await linkRoomWarehouse(newRoom);
+            showNotification('Room created with warehouse ' + whCode);
+          } catch (whErr) {
+            showNotification(t('room.errorLinkWarehouse') + ': ' + whErr.message, 'error');
+            setShowModal(false);
+            loadRooms();
+            setSaving(false);
+            return;
+          }
         }
       }
       showNotification(t('room.successSave'));
@@ -138,28 +135,47 @@ function RoomsPage() {
     } catch (err) { showNotification('Error: ' + err.message, 'error'); }
   }
 
-  async function toggleWarehouse(room) {
-    try {
-      if (room.warehouse_id) {
-        // Disable warehouse: delete warehouse record, clear warehouse_id
-        await supabase.from('warehouses').update({ is_active: false }).eq('id', room.warehouse_id);
-        await supabase.from('rooms').update({ warehouse_id: null }).eq('id', room.id);
-        showNotification(t('room.warehouseDisabled'));
-      } else {
-        // Enable warehouse: create warehouse record, set warehouse_id
-        const whCode = 'RM-' + (selectedOrg.code || '') + '-' + room.room_number;
-        const whName = 'Room ' + room.room_number;
-        const { data: wh, error: whErr } = await supabase.from('warehouses').insert({
-          organization_id: selectedOrg.id, code: whCode, name: whName,
-          warehouse_type: 'room', description: 'Warehouse for room ' + room.room_number, is_active: true
-        }).select().single();
-        if (whErr) throw whErr;
-        const { error: rmErr } = await supabase.from('rooms').update({ warehouse_id: wh.id }).eq('id', room.id);
-        if (rmErr) throw rmErr;
-        showNotification(t('room.warehouseEnabled'));
+  // Link a room to its warehouse, reusing the one that already carries the code.
+  // A room deleted and re-created keeps its old warehouse (delete only
+  // deactivates it), and warehouses are unique per (organization, code) — so
+  // always inserting a new one fails there and leaves the room unlinked. A room
+  // without a warehouse is not cosmetic: the auto-confirm cron skips the
+  // room-side leg of every makeup movement and posts only half of each pair.
+  async function linkRoomWarehouse(room) {
+    const whCode = 'RM-' + (selectedOrg.code || '') + '-' + room.room_number;
+    const whName = 'Room ' + room.room_number;
+
+    const { data: existing, error: findErr } = await supabase.from('warehouses')
+      .select('id, is_active').eq('organization_id', selectedOrg.id).eq('code', whCode).maybeSingle();
+    if (findErr) throw findErr;
+
+    let whId = existing?.id;
+    if (whId) {
+      if (!existing.is_active) {
+        const { error: actErr } = await supabase.from('warehouses')
+          .update({ is_active: true, name: whName }).eq('id', whId);
+        if (actErr) throw actErr;
       }
+    } else {
+      const { data: wh, error: whErr } = await supabase.from('warehouses').insert({
+        organization_id: selectedOrg.id, code: whCode, name: whName,
+        warehouse_type: 'room', description: 'Warehouse for room ' + room.room_number, is_active: true
+      }).select().single();
+      if (whErr) throw whErr;
+      whId = wh.id;
+    }
+
+    const { error: rmErr } = await supabase.from('rooms').update({ warehouse_id: whId }).eq('id', room.id);
+    if (rmErr) throw rmErr;
+    return whCode;
+  }
+
+  async function handleLinkWarehouse(room) {
+    try {
+      const whCode = await linkRoomWarehouse(room);
+      showNotification(t('room.warehouseEnabled') + ': ' + whCode);
       loadRooms();
-    } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+    } catch (err) { showNotification(t('room.errorLinkWarehouse') + ': ' + err.message, 'error'); }
   }
 
   const typeColors = { STD: 'gray', SUP: 'blue', DLX: 'purple', STE: 'amber', CON: 'teal' };
@@ -214,7 +230,9 @@ function RoomsPage() {
             { header: t('room.bedFormation'), render: r => r.bed_formations ? <span className="text-sm">{r.bed_formations.name}</span> : <span className="text-gray-400">-</span> },
             { header: t('room.warehouse'), render: r => r.warehouse_id
               ? <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 px-2 py-1 rounded-full"><Icons.Link /> {r.warehouses?.code || 'RM-' + r.room_number}</span>
-              : <span className="text-gray-400 text-xs">{t('room.warehouseInactive')}</span>
+              : <button onClick={(e) => { e.stopPropagation(); handleLinkWarehouse(r); }}
+                  className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2 py-1 rounded-full hover:bg-amber-100"
+                  title={t('room.linkWarehouseHint')}><Icons.Link /> {t('room.linkWarehouse')}</button>
             },
             { header: t('common.status'), render: r => <Badge color={r.is_active ? 'green' : 'red'}>{r.is_active ? t('common.active') : t('common.inactive')}</Badge> },
           ]}
